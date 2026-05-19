@@ -14,12 +14,19 @@ DEFAULT_CONFIG: dict = {
         "quit_penalty_min": 5,
         "quit_penalty_max": 10,
         "hint_decay": [0.75, 0.50, 0.25],
+        "k_newbie": 40,
+        "k_veteran": 20,
+        "k_newbie_threshold": 20,
+        "k_veteran_threshold": 100,
     },
     "pp": {
         "base_formula_coefficient": 10,
         "base_formula_offset": 800,
         "decay_factor": 0.95,
         "max_problems": 100,
+        "performance_factor_wa_penalty": 0.03,
+        "performance_factor_time_penalty": 0.01,
+        "performance_factor_time_min": 0.6,
     },
     "challenge": {
         "weight_within_100": 0.50,
@@ -64,6 +71,10 @@ DEFAULT_CONFIG: dict = {
         "max_retries": 3,
         "cache_ttl_seconds": 300,
     },
+    "melo": {
+        "training_global_coefficient": 0.5,
+        "training_melo_coefficient": 2.0,
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -79,10 +90,17 @@ VALIDATION_RULES: dict[str, dict] = {
     "elo.divisor": {"type": (int, float), "min": 100, "max": 1000},
     "elo.quit_penalty_min": {"type": int, "min": 0, "max": 50},
     "elo.quit_penalty_max": {"type": int, "min": 0, "max": 50},
+    "elo.k_newbie": {"type": (int, float), "min": 1, "max": 100},
+    "elo.k_veteran": {"type": (int, float), "min": 1, "max": 100},
+    "elo.k_newbie_threshold": {"type": int, "min": 1, "max": 1000},
+    "elo.k_veteran_threshold": {"type": int, "min": 1, "max": 10000},
     "pp.base_formula_coefficient": {"type": (int, float), "min": 1, "max": 100},
     "pp.base_formula_offset": {"type": int, "min": 0, "max": 2000},
     "pp.decay_factor": {"type": (int, float), "min": 0.0, "max": 1.0},
     "pp.max_problems": {"type": int, "min": 1, "max": 10000},
+    "pp.performance_factor_wa_penalty": {"type": (int, float), "min": 0.0, "max": 0.1},
+    "pp.performance_factor_time_penalty": {"type": (int, float), "min": 0.0, "max": 0.1},
+    "pp.performance_factor_time_min": {"type": (int, float), "min": 0.0, "max": 1.0},
     "challenge.weight_within_100": {"type": (int, float), "min": 0.0, "max": 1.0},
     "challenge.weight_challenge_zone": {"type": (int, float), "min": 0.0, "max": 1.0},
     "challenge.weight_consolidation_zone": {"type": (int, float), "min": 0.0, "max": 1.0},
@@ -92,4 +110,6 @@ VALIDATION_RULES: dict[str, dict] = {
     "cf_api.request_interval_seconds": {"type": (int, float), "min": 0.1, "max": 60},
     "cf_api.max_retries": {"type": int, "min": 0, "max": 20},
     "cf_api.cache_ttl_seconds": {"type": (int, float), "min": 0, "max": 86400},
+    "melo.training_global_coefficient": {"type": (int, float), "min": 0.0, "max": 10.0},
+    "melo.training_melo_coefficient": {"type": (int, float), "min": 0.0, "max": 10.0},
 }

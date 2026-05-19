@@ -2,10 +2,11 @@ import uuid
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.elo_history import EloHistory
+from app.models.pp_record import PPRecord
 
 # ---------------------------------------------------------------------------
 # Enums & data classes
@@ -50,6 +51,16 @@ _DEFAULT_CONFIG = EloConfig()
 
 
 # ---------------------------------------------------------------------------
+# K-factor segment function defaults
+# ---------------------------------------------------------------------------
+
+_K_NEWBIE: float = 40.0
+_K_VETERAN: float = 20.0
+_K_NEWBIE_THRESHOLD: int = 20
+_K_VETERAN_THRESHOLD: int = 100
+
+
+# ---------------------------------------------------------------------------
 # Core service
 # ---------------------------------------------------------------------------
 
@@ -61,6 +72,65 @@ class EloService:
     so it can persist history records.  All calculation helpers are static
     methods to make testing straightforward.
     """
+
+    # ------------------------------------------------------------------
+    # K-factor segmented function
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_k_factor(
+        submission_count: int,
+        config: dict | None = None,
+    ) -> float:
+        """Return the K-factor based on the user's total submission count.
+
+        The segmented formula:
+
+        - If N_sub <= newbie_threshold:  K = k_newbie
+        - If N_sub >= veteran_threshold: K = k_veteran
+        - Otherwise (linear interpolation):
+          K = k_newbie - (N_sub - newbie_threshold) * (k_newbie - k_veteran) / (veteran_threshold - newbie_threshold)
+
+        Parameters
+        ----------
+        submission_count:
+            The total number of submissions (approximated by PP records).
+        config:
+            Optional dict with keys ``k_newbie``, ``k_veteran``,
+            ``k_newbie_threshold``, ``k_veteran_threshold``.  Falls back to
+            module-level defaults when not provided.
+        """
+        k_newbie = _K_NEWBIE
+        k_veteran = _K_VETERAN
+        newbie_threshold = _K_NEWBIE_THRESHOLD
+        veteran_threshold = _K_VETERAN_THRESHOLD
+
+        if config is not None:
+            k_newbie = float(config.get("k_newbie", k_newbie))
+            k_veteran = float(config.get("k_veteran", k_veteran))
+            newbie_threshold = int(config.get("k_newbie_threshold", newbie_threshold))
+            veteran_threshold = int(config.get("k_veteran_threshold", veteran_threshold))
+
+        if submission_count <= newbie_threshold:
+            return k_newbie
+        if submission_count >= veteran_threshold:
+            return k_veteran
+
+        # Linear interpolation between newbie and veteran thresholds
+        ratio = (submission_count - newbie_threshold) / (veteran_threshold - newbie_threshold)
+        return k_newbie - ratio * (k_newbie - k_veteran)
+
+    @staticmethod
+    async def get_submission_count(db: AsyncSession, user_id: uuid.UUID) -> int:
+        """Return the total submission count for a user.
+
+        Currently approximated by counting rows in the ``pp_records`` table,
+        which represents successfully solved problems.  This gives a reasonable
+        proxy for overall engagement that drives the K-factor segmentation.
+        """
+        stmt = select(func.count()).select_from(PPRecord).where(PPRecord.user_id == user_id)
+        result = await db.scalar(stmt)
+        return result or 0
 
     # ------------------------------------------------------------------
     # 1. Standard Elo (random challenge)
@@ -309,8 +379,24 @@ class EloService:
         session_id: uuid.UUID,
         hint_level_challenger: int = 0,
         config: EloConfig | None = None,
+        challenger_submission_count: int | None = None,
+        opponent_submission_count: int | None = None,
+        k_factor_config: dict | None = None,
     ) -> tuple[int, int, int, int]:
         """Process a completed challenge and record Elo history for both players.
+
+        Parameters
+        ----------
+        challenger_submission_count :
+            Total historical submissions for the challenger.  When provided,
+            the K-factor is calculated via ``calculate_k_factor`` instead of
+            using the fixed default.
+        opponent_submission_count :
+            Same for the opponent.
+        k_factor_config :
+            Dict with K-factor configuration keys (``k_newbie``, etc.) passed
+            through to ``calculate_k_factor``.  When ``None`` the module-level
+            defaults are used.
 
         Returns
         -------
@@ -319,13 +405,32 @@ class EloService:
         if config is None:
             config = _DEFAULT_CONFIG
 
-        new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            challenger_rating,
-            opponent_rating,
-            actual_score_a,
-            config=config,
-            hint_level=hint_level_challenger,
-        )
+        # Determine K-factor for challenger
+        k_challenger = config.k_factor
+        if challenger_submission_count is not None:
+            k_challenger = EloService.calculate_k_factor(challenger_submission_count, k_factor_config)
+
+        # Determine K-factor for opponent
+        k_opponent = config.k_factor
+        if opponent_submission_count is not None:
+            k_opponent = EloService.calculate_k_factor(opponent_submission_count, k_factor_config)
+
+        # Use challenger's K for the challenge calculation when both K-factors differ.
+        # In a two-player Elo system, we use separate K-factors for each player.
+        expected_a = EloService.calculate_expected_score(challenger_rating, opponent_rating)
+        expected_b = 1.0 - expected_a
+        actual_score_b = 1.0 - actual_score_a
+
+        raw_change_a = k_challenger * (actual_score_a - expected_a)
+
+        # Apply hint attenuation only to positive gains for challenger
+        if raw_change_a > 0 and hint_level_challenger > 0:
+            attenuation = config.hint_attenuation.get(hint_level_challenger, 0.0)
+            raw_change_a *= attenuation
+
+        new_a = round(challenger_rating + raw_change_a)
+        new_b = round(opponent_rating + k_opponent * (actual_score_b - expected_b))
+        change_a = new_a - challenger_rating
         change_b = new_b - opponent_rating
 
         # Determine reason for challenger
@@ -363,12 +468,24 @@ class EloService:
         opponent_id: uuid.UUID | None = None,
         opponent_rating: int | None = None,
         config: EloConfig | None = None,
+        user_submission_count: int | None = None,
+        opponent_submission_count: int | None = None,
+        k_factor_config: dict | None = None,
     ) -> tuple[int, int]:
         """Process Elo changes when a player quits a challenge.
 
         For 3+ submissions the quit is treated as a normal loss against the
         opponent.  In that case ``opponent_id`` and ``opponent_rating`` must be
         provided.
+
+        Parameters
+        ----------
+        user_submission_count :
+            Total historical submissions for the quitting user.
+        opponent_submission_count :
+            Total historical submissions for the opponent.
+        k_factor_config :
+            Dict with K-factor configuration keys for segmented K calculation.
 
         Returns
         -------
@@ -385,15 +502,29 @@ class EloService:
                 raise ValueError(
                     "opponent_id and opponent_rating are required when submissions >= 3 (normal loss)"
                 )
-            new_a, _new_b, change_a = EloService.calculate_challenge_elo(
-                current_rating, opponent_rating, actual_score_a=0.0, config=config
-            )
+
+            # Calculate K-factors
+            k_user = config.k_factor
+            if user_submission_count is not None:
+                k_user = EloService.calculate_k_factor(user_submission_count, k_factor_config)
+            k_opponent = config.k_factor
+            if opponent_submission_count is not None:
+                k_opponent = EloService.calculate_k_factor(opponent_submission_count, k_factor_config)
+
+            expected_a = EloService.calculate_expected_score(current_rating, opponent_rating)
+            expected_b = 1.0 - expected_a
+            raw_change_a = k_user * (0.0 - expected_a)
+            new_a = round(current_rating + raw_change_a)
+            raw_change_b = k_opponent * (1.0 - expected_b)
+            new_b = round(opponent_rating + raw_change_b)
+            change_a = new_a - current_rating
+
             await EloService.record_elo_history(
                 db, user_id, current_rating, new_a, EloReason.QUIT_PENALTY, session_id
             )
             # Also record opponent's win
             await EloService.record_elo_history(
-                db, opponent_id, opponent_rating, _new_b, EloReason.CHALLENGE_WIN, session_id
+                db, opponent_id, opponent_rating, new_b, EloReason.CHALLENGE_WIN, session_id
             )
             return new_a, change_a
 
@@ -418,8 +549,19 @@ class EloService:
         contest_session_id: uuid.UUID,
         k_factor: float | None = None,
         config: EloConfig | None = None,
+        user_submission_count: int | None = None,
+        k_factor_config: dict | None = None,
     ) -> tuple[int, int]:
         """Process a completed contest session and record Elo history.
+
+        Parameters
+        ----------
+        user_submission_count :
+            Total historical submissions for the user.  When provided,
+            the K-factor is calculated via ``calculate_k_factor`` instead of
+            using the fixed default or explicit ``k_factor``.
+        k_factor_config :
+            Dict with K-factor configuration keys for segmented K calculation.
 
         Returns
         -------
@@ -428,8 +570,15 @@ class EloService:
         if config is None:
             config = _DEFAULT_CONFIG
 
+        # Determine effective K-factor
+        effective_k = k_factor
+        if effective_k is None:
+            effective_k = config.k_factor
+        if user_submission_count is not None:
+            effective_k = EloService.calculate_k_factor(user_submission_count, k_factor_config)
+
         new_rating, elo_change = EloService.calculate_contest_elo(
-            current_rating, solved_problems, total_problems, time_used_seconds, time_limit_seconds, k_factor, config
+            current_rating, solved_problems, total_problems, time_used_seconds, time_limit_seconds, effective_k, config
         )
         await EloService.record_elo_history(
             db, user_id, current_rating, new_rating, EloReason.CONTEST, contest_session_id

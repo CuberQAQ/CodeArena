@@ -11,6 +11,7 @@ from app.models.topic_category import TopicCategory
 from app.models.training_problem_record import TrainingProblemRecord
 from app.models.training_session import TrainingSession
 from app.models.user import User
+from app.models.user_tag_elo import UserTagElo
 
 __all__ = [
     "Base",
@@ -26,4 +27,5 @@ __all__ = [
     "TokenTransaction",
     "HintPurchase",
     "SystemConfig",
+    "UserTagElo",
 ]

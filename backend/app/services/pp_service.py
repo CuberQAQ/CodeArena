@@ -1,7 +1,7 @@
 """PP (Performance Points) calculation engine.
 
-Provides single-problem base PP calculation, total PP aggregation with decay,
-PP record management, and ranking queries.
+Provides single-problem base PP calculation, performance factor computation,
+total PP aggregation with decay, PP record management, and ranking queries.
 """
 
 import math
@@ -32,6 +32,9 @@ class PPConfig:
     base_formula_offset: int = 800
     decay_factor: float = 0.95
     max_problems: int = 100
+    performance_factor_wa_penalty: float = 0.03
+    performance_factor_time_penalty: float = 0.01
+    performance_factor_time_min: float = 0.6
 
 
 _DEFAULT_CONFIG = PPConfig()
@@ -85,7 +88,51 @@ class PPService:
         return math.sqrt((problem_rating - config.base_formula_offset) / 100.0) * config.base_formula_coefficient
 
     # ------------------------------------------------------------------
-    # 2. Total PP aggregation
+    # 2. Performance factor
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_performance_factor(
+        wa_count: int,
+        time_spent_minutes: float,
+        config: PPConfig | None = None,
+    ) -> float:
+        """Return the performance factor f(wa, t) for a solve attempt.
+
+        Formula::
+
+            f(wa, t) = (1 - wa_penalty * wa_count)
+                       * max(time_min, 1 - time_penalty * t_minutes)
+
+        Parameters
+        ----------
+        wa_count :
+            Number of wrong answers (WA/TLE/RE/MLE) before AC.
+        time_spent_minutes :
+            Time from first attempt to AC, in minutes.
+        config :
+            Optional config override.
+
+        Returns
+        -------
+        float
+            Performance factor in [time_min, 1.0].
+        """
+        if config is None:
+            config = _DEFAULT_CONFIG
+
+        wa_factor = 1.0 - config.performance_factor_wa_penalty * wa_count
+        time_factor = max(
+            config.performance_factor_time_min,
+            1.0 - config.performance_factor_time_penalty * time_spent_minutes,
+        )
+
+        # The wa_factor can go below time_min for extreme wa counts, which is
+        # intentional -- time_min only protects the time component.
+        return wa_factor * time_factor
+
+    # ------------------------------------------------------------------
+    # 3. Total PP aggregation
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -93,7 +140,7 @@ class PPService:
         base_pp_values: list[float],
         config: PPConfig | None = None,
     ) -> float:
-        """Compute the total PP from an ordered list of base PP values.
+        """Compute the total PP from an ordered list of PP values.
 
         The list should already be sorted **descending**.  Only the first
         ``max_problems`` entries are considered.  Each entry is multiplied by
@@ -104,7 +151,7 @@ class PPService:
         Parameters
         ----------
         base_pp_values :
-            Base PP values sorted in descending order.
+            PP values sorted in descending order.
         config :
             Optional config override.
 
@@ -123,7 +170,7 @@ class PPService:
         return round(total, 2)
 
     # ------------------------------------------------------------------
-    # 3. PP record management
+    # 4. PP record management
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -133,6 +180,8 @@ class PPService:
         cf_problem_id: str,
         problem_rating: int,
         hints_used: int = 0,
+        wa_count: int = 0,
+        time_spent: float = 0.0,
         config: PPConfig | None = None,
     ) -> PPRecord:
         """Create or update a PP record for a user solving a problem.
@@ -158,6 +207,10 @@ class PPService:
             Difficulty rating of the problem.
         hints_used :
             Number of hints used in this solve attempt.
+        wa_count :
+            Number of wrong answers (WA/TLE/RE/MLE) in this attempt.
+        time_spent :
+            Time from first attempt to AC, in minutes.
         config :
             Optional config override.
 
@@ -170,6 +223,8 @@ class PPService:
             config = _DEFAULT_CONFIG
 
         base_pp = PPService.calculate_base_pp(problem_rating, config)
+        performance_factor = PPService.calculate_performance_factor(wa_count, time_spent, config)
+        final_pp = base_pp * performance_factor
 
         # Check for existing record
         stmt = select(PPRecord).where(
@@ -189,6 +244,10 @@ class PPService:
                 base_pp=base_pp,
                 solved_at=now,
                 hints_used=hints_used,
+                wa_count=wa_count,
+                time_spent_minutes=time_spent,
+                performance_factor=performance_factor,
+                final_pp=final_pp,
             )
             db.add(record)
             await db.flush()
@@ -201,6 +260,10 @@ class PPService:
                 existing.problem_rating = problem_rating
                 existing.base_pp = base_pp
                 existing.solved_at = now
+                existing.wa_count = wa_count
+                existing.time_spent_minutes = time_spent
+                existing.performance_factor = performance_factor
+                existing.final_pp = final_pp
 
             await db.flush()
             record = existing
@@ -211,7 +274,7 @@ class PPService:
         return record
 
     # ------------------------------------------------------------------
-    # 4. Total PP calculation for a user (DB query)
+    # 5. Total PP calculation for a user (DB query)
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -221,6 +284,9 @@ class PPService:
         config: PPConfig | None = None,
     ) -> float:
         """Compute total PP for a user by querying their PP records.
+
+        Uses ``final_pp`` (base_pp * performance_factor) for aggregation,
+        sorted descending.
 
         Parameters
         ----------
@@ -240,9 +306,9 @@ class PPService:
             config = _DEFAULT_CONFIG
 
         stmt = (
-            select(PPRecord.base_pp)
+            select(PPRecord.final_pp)
             .where(PPRecord.user_id == user_id)
-            .order_by(PPRecord.base_pp.desc())
+            .order_by(PPRecord.final_pp.desc())
             .limit(config.max_problems)
         )
         result = await db.execute(stmt)
@@ -251,7 +317,7 @@ class PPService:
         return PPService.aggregate_total_pp(pp_values, config)
 
     # ------------------------------------------------------------------
-    # 5. Refresh user.pp field
+    # 6. Refresh user.pp field
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -291,7 +357,7 @@ class PPService:
         return total_pp
 
     # ------------------------------------------------------------------
-    # 6. PP Ranking
+    # 7. PP Ranking
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -346,7 +412,7 @@ class PPService:
         return ranking, total
 
     # ------------------------------------------------------------------
-    # 7. Utility – get user rank
+    # 8. Utility – get user rank
     # ------------------------------------------------------------------
 
     @staticmethod

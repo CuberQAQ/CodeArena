@@ -47,6 +47,10 @@ class _TestPPRecord(_TestBase):
     base_pp: Mapped[float] = mapped_column(Float, nullable=False)
     solved_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.now)
     hints_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    wa_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    time_spent_minutes: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    performance_factor: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    final_pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
 
 # ---------------------------------------------------------------------------
@@ -98,11 +102,15 @@ async def db(async_engine):
         cf_problem_id: str,
         problem_rating: int,
         hints_used: int = 0,
+        wa_count: int = 0,
+        time_spent: float = 0.0,
         config: PPConfig | None = None,
     ):
         if config is None:
             config = PPConfig()
         base_pp = PPService.calculate_base_pp(problem_rating, config)
+        performance_factor = PPService.calculate_performance_factor(wa_count, time_spent, config)
+        final_pp = base_pp * performance_factor
 
         from sqlalchemy import select
 
@@ -123,6 +131,10 @@ async def db(async_engine):
                 base_pp=base_pp,
                 solved_at=now,
                 hints_used=hints_used,
+                wa_count=wa_count,
+                time_spent_minutes=time_spent,
+                performance_factor=performance_factor,
+                final_pp=final_pp,
             )
             db_session.add(record)
             await db_session.flush()
@@ -132,6 +144,10 @@ async def db(async_engine):
                 existing.problem_rating = problem_rating
                 existing.base_pp = base_pp
                 existing.solved_at = now
+                existing.wa_count = wa_count
+                existing.time_spent_minutes = time_spent
+                existing.performance_factor = performance_factor
+                existing.final_pp = final_pp
             await db_session.flush()
             record = existing
 
@@ -149,9 +165,9 @@ async def db(async_engine):
         from sqlalchemy import select
 
         stmt = (
-            select(_TestPPRecord.base_pp)
+            select(_TestPPRecord.final_pp)
             .where(_TestPPRecord.user_id == user_id)
-            .order_by(_TestPPRecord.base_pp.desc())
+            .order_by(_TestPPRecord.final_pp.desc())
             .limit(config.max_problems)
         )
         result = await db_session.execute(stmt)
@@ -268,10 +284,14 @@ async def _create_pp_record(
     cf_problem_id: str,
     problem_rating: int,
     hints_used: int = 0,
+    wa_count: int = 0,
+    time_spent_minutes: float = 0.0,
+    performance_factor: float = 1.0,
 ) -> uuid.UUID:
     """Helper: insert a _TestPPRecord row directly and return the id."""
     config = PPConfig()
     base_pp = PPService.calculate_base_pp(problem_rating, config)
+    final_pp = base_pp * performance_factor
     rid = uuid.uuid4()
     db.add(
         _TestPPRecord(
@@ -282,6 +302,10 @@ async def _create_pp_record(
             base_pp=base_pp,
             solved_at=datetime.now(),
             hints_used=hints_used,
+            wa_count=wa_count,
+            time_spent_minutes=time_spent_minutes,
+            performance_factor=performance_factor,
+            final_pp=final_pp,
         )
     )
     await db.flush()
@@ -351,7 +375,73 @@ class TestCalculateBasePP:
 
 
 # ---------------------------------------------------------------------------
-# 2. Total PP aggregation
+# 2. Performance factor calculation
+# ---------------------------------------------------------------------------
+
+
+class TestCalculatePerformanceFactor:
+    """Verify performance factor formula: (1 - 0.03*wa) * max(0.6, 1 - 0.01*t)."""
+
+    def test_perfect_performance(self):
+        """wa=0, t=0 => f=1.0."""
+        assert PPService.calculate_performance_factor(0, 0.0) == pytest.approx(1.0, abs=1e-6)
+
+    def test_multiple_wrong_answers(self):
+        """wa=10, t=0 => (1 - 0.3) * max(0.6, 1.0) = 0.7 * 1.0 = 0.7."""
+        assert PPService.calculate_performance_factor(10, 0.0) == pytest.approx(0.7, abs=1e-6)
+
+    def test_long_time(self):
+        """wa=0, t=40 => 1.0 * max(0.6, 1 - 0.4) = 1.0 * 0.6 = 0.6."""
+        assert PPService.calculate_performance_factor(0, 40.0) == pytest.approx(0.6, abs=1e-6)
+
+    def test_time_floor_protection(self):
+        """wa=0, t=100 => 1.0 * max(0.6, 1 - 1.0) = 1.0 * 0.6 = 0.6."""
+        assert PPService.calculate_performance_factor(0, 100.0) == pytest.approx(0.6, abs=1e-6)
+
+    def test_precise_calculation(self):
+        """wa=5, t=30 => (1 - 0.15) * max(0.6, 1 - 0.30) = 0.85 * 0.70 = 0.595."""
+        assert PPService.calculate_performance_factor(5, 30.0) == pytest.approx(0.595, abs=1e-6)
+
+    def test_zero_time_with_wa(self):
+        """wa=3, t=0 => (1 - 0.09) * 1.0 = 0.91."""
+        assert PPService.calculate_performance_factor(3, 0.0) == pytest.approx(0.91, abs=1e-6)
+
+    def test_zero_wa_with_time(self):
+        """wa=0, t=10 => 1.0 * max(0.6, 0.90) = 0.90."""
+        assert PPService.calculate_performance_factor(0, 10.0) == pytest.approx(0.90, abs=1e-6)
+
+    def test_custom_config(self):
+        """Custom penalty parameters."""
+        config = PPConfig(
+            performance_factor_wa_penalty=0.05,
+            performance_factor_time_penalty=0.02,
+            performance_factor_time_min=0.5,
+        )
+        # wa=2, t=20 => (1 - 0.10) * max(0.5, 1 - 0.40) = 0.90 * 0.60 = 0.54
+        assert PPService.calculate_performance_factor(2, 20.0, config) == pytest.approx(0.54, abs=1e-6)
+
+    def test_extreme_wa_count(self):
+        """Very high wa_count should still compute correctly (can go negative)."""
+        # wa=50 => (1 - 1.5) = -0.5 * 1.0 = -0.5
+        result = PPService.calculate_performance_factor(50, 0.0)
+        assert result == pytest.approx(-0.5, abs=1e-6)
+
+    def test_time_at_boundary(self):
+        """t=40 is exactly where time factor hits the floor."""
+        # 1 - 0.01 * 40 = 0.6, which equals the floor
+        assert PPService.calculate_performance_factor(0, 40.0) == pytest.approx(0.6, abs=1e-6)
+
+    def test_time_just_above_floor(self):
+        """t=39 => 1 - 0.39 = 0.61 > 0.6, so no floor applied."""
+        assert PPService.calculate_performance_factor(0, 39.0) == pytest.approx(0.61, abs=1e-6)
+
+    def test_time_just_below_floor(self):
+        """t=41 => 1 - 0.41 = 0.59 < 0.6, floor applied => 0.6."""
+        assert PPService.calculate_performance_factor(0, 41.0) == pytest.approx(0.6, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# 3. Total PP aggregation
 # ---------------------------------------------------------------------------
 
 
@@ -452,7 +542,7 @@ class TestAggregateTotalPP:
 
 
 # ---------------------------------------------------------------------------
-# 3. PP record management (integration)
+# 4. PP record management (integration)
 # ---------------------------------------------------------------------------
 
 
@@ -468,6 +558,27 @@ class TestRecordPP:
         assert record.problem_rating == 1200
         assert record.base_pp == pytest.approx(20.0, abs=1e-6)
         assert record.hints_used == 0
+        assert record.wa_count == 0
+        assert record.time_spent_minutes == 0.0
+        assert record.performance_factor == pytest.approx(1.0, abs=1e-6)
+        assert record.final_pp == pytest.approx(20.0, abs=1e-6)
+
+    async def test_create_record_with_performance_data(self, db: AsyncSession):
+        uid = await _create_user(db, "alice")
+
+        record = await PPService.record_pp(
+            db, uid, "1234A", 1500, wa_count=5, time_spent=30.0
+        )
+        await db.flush()
+
+        base_pp = PPService.calculate_base_pp(1500)
+        pf = PPService.calculate_performance_factor(5, 30.0)
+        expected_final = base_pp * pf
+
+        assert record.wa_count == 5
+        assert record.time_spent_minutes == pytest.approx(30.0, abs=1e-6)
+        assert record.performance_factor == pytest.approx(pf, abs=1e-6)
+        assert record.final_pp == pytest.approx(expected_final, abs=1e-6)
 
     async def test_update_with_higher_rating(self, db: AsyncSession):
         uid = await _create_user(db, "alice")
@@ -551,7 +662,10 @@ class TestRecordPP:
 
         # User should have PP reflecting both problems
         total_pp = await PPService.calculate_user_total_pp(db, uid)
-        expected = PPService.calculate_base_pp(1500) * 1 + PPService.calculate_base_pp(1200) * 0.95
+        base_pp_1500 = PPService.calculate_base_pp(1500)
+        base_pp_1200 = PPService.calculate_base_pp(1200)
+        # Perfect performance => final_pp == base_pp
+        expected = base_pp_1500 * 1.0 + base_pp_1200 * 0.95
         assert total_pp == pytest.approx(round(expected, 2), abs=0.01)
 
     async def test_rating_below_offset_creates_zero_pp_record(self, db: AsyncSession):
@@ -562,6 +676,7 @@ class TestRecordPP:
 
         assert record.base_pp == 0.0
         assert record.problem_rating == 600
+        assert record.final_pp == pytest.approx(0.0, abs=1e-6)
 
 
 async def _get_pp_record(db: AsyncSession, user_id: uuid.UUID, cf_problem_id: str):
@@ -577,7 +692,7 @@ async def _get_pp_record(db: AsyncSession, user_id: uuid.UUID, cf_problem_id: st
 
 
 # ---------------------------------------------------------------------------
-# 4. Total PP calculation for a user
+# 5. Total PP calculation for a user
 # ---------------------------------------------------------------------------
 
 
@@ -601,11 +716,51 @@ class TestCalculateUserTotalPP:
 
         result = await PPService.calculate_user_total_pp(db, uid)
 
-        # Sorted desc: 26.46, 20, 10
+        # Sorted desc by final_pp (same as base_pp with default pf=1.0): 26.46, 20, 10
         base_pp_1500 = PPService.calculate_base_pp(1500)
         base_pp_1200 = PPService.calculate_base_pp(1200)
         base_pp_900 = PPService.calculate_base_pp(900)
         expected = base_pp_1500 + base_pp_1200 * 0.95 + base_pp_900 * 0.95**2
+        assert result == pytest.approx(round(expected, 2), abs=0.01)
+
+    async def test_uses_final_pp_for_aggregation(self, db: AsyncSession):
+        """Aggregation should use final_pp, not base_pp."""
+        uid = await _create_user(db, "alice")
+
+        # Create a record with reduced performance factor (wa=5, t=30 => f=0.595)
+        base_pp = PPService.calculate_base_pp(1200)  # 20.0
+        pf = PPService.calculate_performance_factor(5, 30.0)  # 0.595
+        final_pp = base_pp * pf  # 11.9
+        await _create_pp_record(
+            db, uid, "1234A", 1200,
+            wa_count=5, time_spent_minutes=30.0,
+            performance_factor=pf,
+        )
+
+        result = await PPService.calculate_user_total_pp(db, uid)
+        assert result == pytest.approx(round(final_pp, 2), abs=0.01)
+
+    async def test_sorted_by_final_pp_descending(self, db: AsyncSession):
+        """Records with lower base_pp but higher performance factor can rank higher."""
+        uid = await _create_user(db, "alice")
+
+        # Problem A: rating 1200, perfect => final_pp = 20.0
+        await _create_pp_record(
+            db, uid, "1234A", 1200,
+            performance_factor=1.0,
+        )
+
+        # Problem B: rating 1500, poor performance => final_pp = 26.46 * 0.7 = 18.52
+        pf_b = 0.7
+        base_pp_b = PPService.calculate_base_pp(1500)
+        await _create_pp_record(
+            db, uid, "5678B", 1500,
+            performance_factor=pf_b,
+        )
+
+        # Problem A should rank first (20.0 > 18.52)
+        result = await PPService.calculate_user_total_pp(db, uid)
+        expected = 20.0 + base_pp_b * pf_b * 0.95
         assert result == pytest.approx(round(expected, 2), abs=0.01)
 
     async def test_duplicate_problem_takes_highest_rating(self, db: AsyncSession):
@@ -625,7 +780,7 @@ class TestCalculateUserTotalPP:
 
 
 # ---------------------------------------------------------------------------
-# 5. Refresh user PP
+# 6. Refresh user PP
 # ---------------------------------------------------------------------------
 
 
@@ -654,7 +809,7 @@ class TestRefreshUserPP:
 
 
 # ---------------------------------------------------------------------------
-# 6. PP Ranking
+# 7. PP Ranking
 # ---------------------------------------------------------------------------
 
 
@@ -748,7 +903,7 @@ class TestGetPPRanking:
 
 
 # ---------------------------------------------------------------------------
-# 7. Get user rank
+# 8. Get user rank
 # ---------------------------------------------------------------------------
 
 
@@ -786,7 +941,7 @@ class TestGetUserRank:
 
 
 # ---------------------------------------------------------------------------
-# 8. Edge cases & boundary conditions
+# 9. Edge cases & boundary conditions
 # ---------------------------------------------------------------------------
 
 
@@ -820,6 +975,9 @@ class TestEdgeCases:
         assert config.base_formula_offset == 800
         assert config.decay_factor == 0.95
         assert config.max_problems == 100
+        assert config.performance_factor_wa_penalty == 0.03
+        assert config.performance_factor_time_penalty == 0.01
+        assert config.performance_factor_time_min == 0.6
 
     def test_geometric_series_formula_verification(self):
         """Verify decay formula: sum = P * (1 - r^n) / (1 - r)."""
@@ -890,3 +1048,125 @@ class TestEdgeCases:
         result = PPService.aggregate_total_pp(pp_values, config)
         expected = base_pp * (1 - 0.9**10) / (1 - 0.9)
         assert result == pytest.approx(round(expected, 2), abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# 10. Performance factor integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestPerformanceFactorIntegration:
+    """End-to-end tests for performance factor affecting PP calculation."""
+
+    async def test_perfect_solve_full_pp(self, db: AsyncSession):
+        """Perfect solve (wa=0, t=0) gives full base_pp as final_pp."""
+        uid = await _create_user(db, "alice", pp=0.0)
+        record = await PPService.record_pp(
+            db, uid, "1234A", 1200, wa_count=0, time_spent=0.0
+        )
+        await db.flush()
+
+        base_pp = PPService.calculate_base_pp(1200)
+        assert record.base_pp == pytest.approx(base_pp, abs=1e-6)
+        assert record.performance_factor == pytest.approx(1.0, abs=1e-6)
+        assert record.final_pp == pytest.approx(base_pp, abs=1e-6)
+
+    async def test_poor_solve_reduced_pp(self, db: AsyncSession):
+        """Poor solve (wa=5, t=30) gives reduced final_pp."""
+        uid = await _create_user(db, "alice", pp=0.0)
+        record = await PPService.record_pp(
+            db, uid, "1234A", 1200, wa_count=5, time_spent=30.0
+        )
+        await db.flush()
+
+        base_pp = PPService.calculate_base_pp(1200)  # 20.0
+        pf = PPService.calculate_performance_factor(5, 30.0)  # 0.595
+        expected_final = base_pp * pf  # 11.9
+
+        assert record.performance_factor == pytest.approx(pf, abs=1e-6)
+        assert record.final_pp == pytest.approx(expected_final, abs=1e-6)
+
+    async def test_old_records_compatible(self, db: AsyncSession):
+        """Old records with performance_factor=1.0 are fully compatible."""
+        uid = await _create_user(db, "alice", pp=0.0)
+
+        # Simulate an old record (created before performance factor feature)
+        await _create_pp_record(
+            db, uid, "1234A", 1200,
+            wa_count=0, time_spent_minutes=0.0,
+            performance_factor=1.0,
+        )
+
+        total_pp = await PPService.calculate_user_total_pp(db, uid)
+        expected = PPService.calculate_base_pp(1200)  # 20.0
+        assert total_pp == pytest.approx(round(expected, 2), abs=0.01)
+
+    async def test_mixed_performances_aggregated_correctly(self, db: AsyncSession):
+        """Multiple problems with different performance factors aggregate correctly."""
+        uid = await _create_user(db, "alice", pp=0.0)
+
+        # Problem A: rating 1500, perfect => pf=1.0, final=26.46
+        base_1500 = PPService.calculate_base_pp(1500)
+        await _create_pp_record(
+            db, uid, "1234A", 1500,
+            wa_count=0, time_spent_minutes=0.0,
+            performance_factor=1.0,
+        )
+
+        # Problem B: rating 1200, poor => pf=0.595, final=11.9
+        base_1200 = PPService.calculate_base_pp(1200)
+        pf_b = PPService.calculate_performance_factor(5, 30.0)
+        await _create_pp_record(
+            db, uid, "5678B", 1200,
+            wa_count=5, time_spent_minutes=30.0,
+            performance_factor=pf_b,
+        )
+
+        # Sorted by final_pp desc: 26.46 (A), 11.9 (B)
+        total_pp = await PPService.calculate_user_total_pp(db, uid)
+        final_a = base_1500 * 1.0  # 26.46
+        final_b = base_1200 * pf_b  # 11.9
+        expected = round(final_a + final_b * 0.95, 2)
+        assert total_pp == pytest.approx(expected, abs=0.01)
+
+    async def test_update_higher_rating_updates_performance_data(self, db: AsyncSession):
+        """When re-solving with higher rating, wa_count and time are updated."""
+        uid = await _create_user(db, "alice", pp=0.0)
+
+        # First solve at 1200
+        record1 = await PPService.record_pp(
+            db, uid, "1234A", 1200, wa_count=2, time_spent=10.0
+        )
+        await db.flush()
+        assert record1.wa_count == 2
+        assert record1.time_spent_minutes == pytest.approx(10.0, abs=1e-6)
+
+        # Re-solve at 1500 with different performance
+        record2 = await PPService.record_pp(
+            db, uid, "1234A", 1500, wa_count=0, time_spent=5.0
+        )
+        await db.flush()
+        assert record2.wa_count == 0
+        assert record2.time_spent_minutes == pytest.approx(5.0, abs=1e-6)
+        assert record2.problem_rating == 1500
+
+    async def test_update_lower_rating_preserves_performance_data(self, db: AsyncSession):
+        """When re-solving with lower rating, wa_count and time are NOT updated."""
+        uid = await _create_user(db, "alice", pp=0.0)
+
+        # First solve at 1500
+        await PPService.record_pp(
+            db, uid, "1234A", 1500, wa_count=1, time_spent=15.0
+        )
+        await db.flush()
+
+        # Re-solve at 1200 (lower, should not update)
+        record2 = await PPService.record_pp(
+            db, uid, "1234A", 1200, wa_count=3, time_spent=25.0
+        )
+        await db.flush()
+
+        # Should keep the original higher rating data
+        assert record2.problem_rating == 1500
+        assert record2.wa_count == 1
+        assert record2.time_spent_minutes == pytest.approx(15.0, abs=1e-6)

@@ -617,11 +617,15 @@ class TrainingService:
                 streak_count = 0
 
             # Record PP
+            wa_count = max(0, attempts - 1)
+            time_spent_minutes = (time_spent or 0.0) / 60.0
             await PPService.record_pp(
                 db=db,
                 user_id=user.id,
                 cf_problem_id=problem_id,
                 problem_rating=problem_rating,
+                wa_count=wa_count,
+                time_spent=time_spent_minutes,
             )
 
             # Small Elo gain for training (use a fixed small bonus)

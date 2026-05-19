@@ -26,6 +26,8 @@ from app.services.challenge_service import (
     _set_pending,
     _tokens_for_rating,
 )
+from app.services.config_service import ConfigService
+from app.services.elo_service import EloService
 from app.services.match_service import MatchResult, MatchService, QueueEntry
 
 # ---------------------------------------------------------------------------
@@ -126,11 +128,22 @@ async def db(async_engine):
         user.tokens += amount
         return amount
 
+    async def _mock_get_config(db, key):
+        """Return default elo config for tests."""
+        from app.core.default_config import DEFAULT_CONFIG
+        return DEFAULT_CONFIG.get("elo", {})
+
+    async def _mock_get_submission_count(db, user_id):
+        """Return 0 submissions for tests (no PP records table)."""
+        return 0
+
     async with session_factory() as session:
         with (
             patch.object(challenge_svc_module, "User", _TestUser),
             patch.object(challenge_svc_module, "ChallengeSession", _TestChallengeSession),
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
+            patch.object(ConfigService, "get_config", _mock_get_config),
+            patch.object(EloService, "get_submission_count", _mock_get_submission_count),
         ):
             yield session
 
@@ -543,10 +556,33 @@ class TestSubmitResult:
 # ---------------------------------------------------------------------------
 
 
+def _setup_elo_mocks(mock_elo_cls):
+    """Add K-factor related async mocks to an EloService mock."""
+    mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
+
+
+def _setup_config_mocks(mock_config_cls):
+    """Add get_config mock to a ConfigService mock."""
+    mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
+
+
+def _get_elo_config():
+    """Return default elo config for tests."""
+    return {
+        "k_newbie": 40,
+        "k_veteran": 20,
+        "k_newbie_threshold": 20,
+        "k_veteran_threshold": 100,
+    }
+
+
 class TestSettlement:
+    @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_settlement_challenger_wins(self, mock_elo_cls, mock_pp_cls, db):
+    async def test_settlement_challenger_wins(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -573,9 +609,12 @@ class TestSettlement:
         assert session.result == "challenger_win"
         assert session.elo_change == 30
 
+    @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_settlement_opponent_wins(self, mock_elo_cls, mock_pp_cls, db):
+    async def test_settlement_opponent_wins(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -596,9 +635,12 @@ class TestSettlement:
         assert result.settled is True
         assert result.result == "opponent_win"
 
+    @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_settlement_both_solved_faster_wins(self, mock_elo_cls, mock_pp_cls, db):
+    async def test_settlement_both_solved_faster_wins(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -619,9 +661,12 @@ class TestSettlement:
         assert result.settled is True
         assert result.result == "challenger_win"
 
+    @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_settlement_neither_solved_draw(self, mock_elo_cls, mock_pp_cls, db):
+    async def test_settlement_neither_solved_draw(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -640,9 +685,12 @@ class TestSettlement:
         assert result.settled is True
         assert result.result == "draw"
 
+    @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_settlement_awards_tokens(self, mock_elo_cls, mock_pp_cls, db):
+    async def test_settlement_awards_tokens(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -671,8 +719,11 @@ class TestSettlement:
 
 
 class TestQuitChallenge:
+    @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_quit_zero_submissions(self, mock_elo_cls, db):
+    async def test_quit_zero_submissions(self, mock_elo_cls, mock_config_cls, db):
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200)
         user_b = _make_test_user(db, username="user_b", elo=1200)
         db.add_all([user_a, user_b])
@@ -688,8 +739,11 @@ class TestQuitChallenge:
         assert result["status"] == "quit"
         assert result["penalty"] == 0
 
+    @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_quit_with_penalty(self, mock_elo_cls, db):
+    async def test_quit_with_penalty(self, mock_elo_cls, mock_config_cls, db):
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200)
         user_b = _make_test_user(db, username="user_b", elo=1200)
         db.add_all([user_a, user_b])
@@ -849,9 +903,12 @@ class TestBuildProblemInfo:
 class TestFullChallengeFlow:
     """Integration test for the complete challenge lifecycle."""
 
+    @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_complete_flow(self, mock_elo_cls, mock_pp_cls, db):
+    async def test_complete_flow(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
         # Create two users
         user_a = _make_test_user(db, username="player_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="player_b", elo=1250, tokens=0)

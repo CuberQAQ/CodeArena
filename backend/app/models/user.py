@@ -53,6 +53,7 @@ class User(Base, UUIDPrimaryKeyMixin):
     contest_sessions = relationship("ContestSession", back_populates="user", cascade="all, delete-orphan")
     token_transactions = relationship("TokenTransaction", back_populates="user", cascade="all, delete-orphan")
     hint_purchases = relationship("HintPurchase", back_populates="user", cascade="all, delete-orphan")
+    user_tag_elos = relationship("UserTagElo", back_populates="user", cascade="all, delete-orphan")
 
 
     def __repr__(self) -> str:

@@ -21,12 +21,17 @@ class PPRecord(Base, UUIDPrimaryKeyMixin):
     base_pp: Mapped[float] = mapped_column(Float, nullable=False)
     solved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     hints_used: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    wa_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    time_spent_minutes: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
+    performance_factor: Mapped[float] = mapped_column(Float, server_default="1.0", nullable=False)
+    final_pp: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="pp_records")
 
     __table_args__ = (
         Index("ix_pp_records_user_base_pp", "user_id", base_pp.desc()),
+        Index("ix_pp_records_user_final_pp", "user_id", final_pp.desc()),
     )
 
     def __repr__(self) -> str:

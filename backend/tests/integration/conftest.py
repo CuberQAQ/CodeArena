@@ -8,11 +8,9 @@ Provides:
 """
 
 import uuid
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
-import pytest
 import pytest_asyncio
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, TypeDecorator, event
 from sqlalchemy.dialects.sqlite import JSON
@@ -20,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.security import create_access_token, hash_password
-
+from app.services.config_service import ConfigService
+from app.services.elo_service import EloService
 
 # ---------------------------------------------------------------------------
 # Custom UUID type for SQLite compatibility
@@ -237,17 +236,16 @@ class _TestSystemConfig(TestBase):
 
 # All services that import models
 from app.core import security as _security_mod
-from app.services import economy_service as _eco_mod
+from app.services import admin_service as _admin_mod
 from app.services import auth_service as _auth_mod
 from app.services import challenge_service as _chal_mod
-from app.services import training_service as _train_mod
-from app.services import contest_service as _contest_mod
-from app.services import hint_service as _hint_mod
-from app.services import elo_service as _elo_mod
-from app.services import pp_service as _pp_mod
-from app.services import admin_service as _admin_mod
 from app.services import config_service as _config_mod
-
+from app.services import contest_service as _contest_mod
+from app.services import economy_service as _eco_mod
+from app.services import elo_service as _elo_mod
+from app.services import hint_service as _hint_mod
+from app.services import pp_service as _pp_mod
+from app.services import training_service as _train_mod
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -274,6 +272,26 @@ async def db_engine():
         await conn.run_sync(TestBase.metadata.drop_all)
 
     await engine.dispose()
+
+
+async def _mock_get_config(db, key):
+    """Return default config section for integration tests."""
+    from app.core.default_config import DEFAULT_CONFIG
+
+    # Return the requested section from DEFAULT_CONFIG
+    parts = key.split(".")
+    node = DEFAULT_CONFIG
+    for part in parts:
+        if isinstance(node, dict) and part in node:
+            node = node[part]
+        else:
+            raise KeyError(f"Unknown config key: '{key}'")
+    return node
+
+
+async def _mock_get_submission_count(db, user_id):
+    """Return 0 submissions for integration tests (avoids querying pp_records)."""
+    return 0
 
 
 def _apply_model_patches():
@@ -310,6 +328,9 @@ def _apply_model_patches():
         patch.object(_admin_mod, "ContestSession", _TestContestSession),
         patch.object(_admin_mod, "TrainingSession", _TestTrainingSession),
         patch.object(_config_mod, "SystemConfig", _TestSystemConfig),
+        # Patch ConfigService and EloService for K-factor segmentation
+        patch.object(ConfigService, "get_config", _mock_get_config),
+        patch.object(EloService, "get_submission_count", _mock_get_submission_count),
     ]
     for p in patches_list:
         p.start()

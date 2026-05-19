@@ -526,9 +526,9 @@ class TestEndToEnd:
         assert value["request_interval_seconds"] == 2
 
     async def test_full_config_all_sections_present(self, db: AsyncSession):
-        """get_all_config returns all 6 top-level sections."""
+        """get_all_config returns all 7 top-level sections."""
         result = await ConfigService.get_all_config(db)
-        expected_sections = {"elo", "pp", "challenge", "economy", "contest", "cf_api"}
+        expected_sections = {"elo", "pp", "challenge", "economy", "contest", "cf_api", "melo"}
         assert set(result.keys()) == expected_sections
 
 

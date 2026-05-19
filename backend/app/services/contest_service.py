@@ -32,6 +32,7 @@ from app.schemas.contest import (
 )
 from app.services import economy_service as economy_svc
 from app.services.cf_api_service import CFApiService
+from app.services.config_service import ConfigService
 from app.services.elo_service import EloService
 from app.services.pp_service import PPService
 
@@ -385,11 +386,15 @@ class ContestService:
             session.problems_solved += 1
 
             # Record PP
+            wa_count = max(0, attempts - 1)
+            time_spent_minutes = (time_spent or 0.0) / 60.0
             await PPService.record_pp(
                 db=db,
                 user_id=user.id,
                 cf_problem_id=problem_id,
                 problem_rating=problem_rating,
+                wa_count=wa_count,
+                time_spent=time_spent_minutes,
             )
 
         # Award tokens via economy_service (enforces daily cap, updates daily_tokens_earned)
@@ -474,7 +479,16 @@ class ContestService:
             )
             db.add(history)
         else:
-            # 3+ submissions: M-Elo formula
+            # 3+ submissions: M-Elo formula with K-factor segmentation
+            elo_config = await ConfigService.get_config(db, "elo")
+            k_factor_config = {
+                "k_newbie": elo_config.get("k_newbie", 40),
+                "k_veteran": elo_config.get("k_veteran", 20),
+                "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
+                "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
+            }
+            user_sub_count = await EloService.get_submission_count(db, user.id)
+
             new_rating, elo_change = await EloService.process_contest_result(
                 db=db,
                 user_id=user.id,
@@ -484,6 +498,8 @@ class ContestService:
                 time_used_seconds=time_used,
                 time_limit_seconds=time_limit_seconds,
                 contest_session_id=contest_id,
+                user_submission_count=user_sub_count,
+                k_factor_config=k_factor_config,
             )
             user.elo = new_rating
             session.elo_change = elo_change
@@ -632,6 +648,15 @@ class ContestService:
         if session.submissions == 0:
             session.elo_change = 0
         else:
+            elo_config = await ConfigService.get_config(db, "elo")
+            k_factor_config = {
+                "k_newbie": elo_config.get("k_newbie", 40),
+                "k_veteran": elo_config.get("k_veteran", 20),
+                "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
+                "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
+            }
+            user_sub_count = await EloService.get_submission_count(db, user.id)
+
             new_rating, elo_change = await EloService.process_contest_result(
                 db=db,
                 user_id=user.id,
@@ -641,6 +666,8 @@ class ContestService:
                 time_used_seconds=time_used,
                 time_limit_seconds=time_limit_seconds,
                 contest_session_id=session.id,
+                user_submission_count=user_sub_count,
+                k_factor_config=k_factor_config,
             )
             user.elo = new_rating
             session.elo_change = elo_change

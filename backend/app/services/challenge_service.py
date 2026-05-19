@@ -28,6 +28,7 @@ from app.schemas.challenge import (
 )
 from app.services import economy_service as economy_svc
 from app.services.cf_api_service import CFApiService
+from app.services.config_service import ConfigService
 from app.services.elo_service import EloService
 from app.services.match_service import MatchService
 from app.services.pp_service import PPService
@@ -479,6 +480,17 @@ class ChallengeService:
         opponent = await db.get(User, opponent_id)
         opponent_elo = opponent.elo if opponent else 1200
 
+        # Load K-factor config for segmented calculation
+        elo_config = await ConfigService.get_config(db, "elo")
+        k_factor_config = {
+            "k_newbie": elo_config.get("k_newbie", 40),
+            "k_veteran": elo_config.get("k_veteran", 20),
+            "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
+            "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
+        }
+        user_sub_count = await EloService.get_submission_count(db, user.id)
+        opp_sub_count = await EloService.get_submission_count(db, opponent_id) if opponent else None
+
         # Process quit penalty via EloService
         new_rating, elo_change = await EloService.process_quit_penalty(
             db=db,
@@ -488,6 +500,9 @@ class ChallengeService:
             session_id=session.id,
             opponent_id=opponent_id,
             opponent_rating=opponent_elo,
+            user_submission_count=user_sub_count,
+            opponent_submission_count=opp_sub_count,
+            k_factor_config=k_factor_config,
         )
 
         # Update user's Elo
@@ -673,7 +688,17 @@ async def _settle_challenge(
         actual_score_a = 0.5
         result = "draw"
 
-    # Process Elo
+    # Process Elo with K-factor segmentation
+    elo_config = await ConfigService.get_config(db, "elo")
+    k_factor_config = {
+        "k_newbie": elo_config.get("k_newbie", 40),
+        "k_veteran": elo_config.get("k_veteran", 20),
+        "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
+        "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
+    }
+    challenger_sub_count = await EloService.get_submission_count(db, challenger.id)
+    opponent_sub_count = await EloService.get_submission_count(db, opponent.id)
+
     new_challenger_elo, new_opponent_elo, challenger_elo_change, _opponent_elo_change = (
         await EloService.process_challenge_result(
             db=db,
@@ -683,6 +708,9 @@ async def _settle_challenge(
             opponent_rating=opponent.elo,
             actual_score_a=actual_score_a,
             session_id=session.id,
+            challenger_submission_count=challenger_sub_count,
+            opponent_submission_count=opponent_sub_count,
+            k_factor_config=k_factor_config,
         )
     )
 
@@ -757,19 +785,27 @@ async def _settle_challenge(
 
     # Record PP for solvers
     if session.challenger_solved and session.problem_rating > 0:
+        challenger_wa = max(0, (session.challenger_submissions or 0) - 1)
+        challenger_time_min = (session.challenger_time or 0.0) / 60.0
         await PPService.record_pp(
             db=db,
             user_id=challenger.id,
             cf_problem_id=session.problem_id,
             problem_rating=session.problem_rating,
+            wa_count=challenger_wa,
+            time_spent=challenger_time_min,
         )
 
     if session.opponent_solved and session.problem_rating > 0:
+        opponent_wa = max(0, (session.opponent_submissions or 0) - 1)
+        opponent_time_min = (session.opponent_time or 0.0) / 60.0
         await PPService.record_pp(
             db=db,
             user_id=opponent.id,
             cf_problem_id=session.problem_id,
             problem_rating=session.problem_rating,
+            wa_count=opponent_wa,
+            time_spent=opponent_time_min,
         )
 
     # Update session

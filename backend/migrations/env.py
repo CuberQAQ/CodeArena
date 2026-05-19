@@ -17,6 +17,7 @@ import app.models.topic_category  # noqa: F401
 import app.models.training_problem_record  # noqa: F401
 import app.models.training_session  # noqa: F401
 import app.models.user  # noqa: F401
+import app.models.user_tag_elo  # noqa: F401
 from app.core.config import settings
 from app.models import Base  # noqa: F401 - ensure all models are imported for autogenerate
 

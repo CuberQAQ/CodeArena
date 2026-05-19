@@ -127,3 +127,22 @@ class AbandonTrainingResponse(BaseModel):
     status: str = "abandoned"
     problems_solved: int = 0
     total_problems: int = 0
+
+
+class UserTagEloInfo(BaseModel):
+    """M-Elo (per-tag Elo) record for a user."""
+
+    tag: str
+    elo: int
+    total_submissions: int = 0
+    first_ac_at: datetime | None = None
+    shield_active: bool = True
+
+    model_config = {"from_attributes": True}
+
+
+class MEloListResponse(BaseModel):
+    """Response for the user's all tag M-Elo list."""
+
+    melos: list[UserTagEloInfo] = []
+    global_elo: int = 1200

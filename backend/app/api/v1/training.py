@@ -1,6 +1,6 @@
 """Training API routes.
 
-Mounts eight endpoints under ``/api/v1/training/``:
+Mounts nine endpoints under ``/api/v1/training/``:
   GET  /topics              -- list all topics
   GET  /topics/{id}         -- topic detail with problems
   POST /start               -- start training session
@@ -9,6 +9,7 @@ Mounts eight endpoints under ``/api/v1/training/``:
   POST /session/{id}/abandon -- abandon training
   GET  /progress            -- progress across all topics
   GET  /progress/{topic_id} -- progress for a single topic
+  GET  /melo                -- get user's all tag M-Elo (for radar chart)
 """
 
 from uuid import UUID
@@ -20,8 +21,14 @@ from app.core.database import get_db
 from app.core.response import success_response
 from app.core.security import get_current_user
 from app.models.user import User
-from app.schemas.training import StartTrainingRequest, SubmitTrainingProblemRequest
+from app.schemas.training import (
+    MEloListResponse,
+    StartTrainingRequest,
+    SubmitTrainingProblemRequest,
+    UserTagEloInfo,
+)
 from app.services.cf_api_service import CFApiService
+from app.services.melo_service import MEloService
 from app.services.training_service import TrainingService
 
 router = APIRouter(prefix="/training", tags=["Training"])
@@ -196,4 +203,33 @@ async def get_topic_progress(
     return success_response(
         data=progress.model_dump(mode="json"),
         message="Topic progress retrieved",
+    )
+
+
+@router.get("/melo")
+async def get_melo(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the user's all tag M-Elo records for radar chart visualization."""
+    melos = await MEloService.get_all_melos(db, user_id=current_user.id)
+
+    melo_infos = [
+        UserTagEloInfo(
+            tag=m.tag,
+            elo=m.elo,
+            total_submissions=m.total_submissions,
+            first_ac_at=m.first_ac_at,
+            shield_active=m.first_ac_at is None,
+        )
+        for m in melos
+    ]
+
+    response = MEloListResponse(
+        melos=melo_infos,
+        global_elo=current_user.elo,
+    )
+    return success_response(
+        data=response.model_dump(mode="json"),
+        message="M-Elo retrieved",
     )
