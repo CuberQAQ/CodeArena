@@ -44,6 +44,9 @@ export function RadarChart({ data }: RadarChartProps) {
     );
   }
 
+  const maxValue = Math.max(...data.map((d) => d.value), 0.1);
+  const fullMark = Math.max(maxValue * 1.3, maxValue + 0.1);
+
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <h3 className="mb-4 text-sm font-semibold text-foreground">Skill Radar</h3>
@@ -56,7 +59,7 @@ export function RadarChart({ data }: RadarChartProps) {
           />
           <PolarRadiusAxis
             angle={90}
-            domain={[0, 100]}
+            domain={[0, fullMark]}
             tick={{ fontSize: 9, fill: "rgba(255,255,255,0.4)" }}
             axisLine={false}
           />

@@ -24,11 +24,14 @@ import { StatsPanel } from "./StatsPanel";
 // ---------------------------------------------------------------------------
 
 function buildRadarData(progress: TrainingProgress): RadarDataPoint[] {
-  return progress.topics.map((t) => ({
+  const raw = progress.topics.map((t) => ({
     topic: t.topic_name.length > 8 ? t.topic_name.slice(0, 7) + "." : t.topic_name,
     value: Math.round(t.completion_rate * 100) / 100,
     fullMark: 100,
   }));
+  const maxVal = Math.max(...raw.map((r) => r.value), 0.1);
+  const fullMark = Math.max(maxVal * 1.3, maxVal + 0.1);
+  return raw.map((r) => ({ ...r, fullMark }));
 }
 
 function buildStatsFromTransactions(
