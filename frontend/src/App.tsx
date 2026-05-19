@@ -1,20 +1,89 @@
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
 
-function App() {
-  const [count, setCount] = useState(0)
+import { useAuthStore } from "@/stores/auth";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AdminRoute } from "@/components/AdminRoute";
+import { AuthLayout } from "@/layouts/AuthLayout";
+import { MainLayout } from "@/layouts/MainLayout";
+import { AdminLayout } from "@/layouts/AdminLayout";
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-foreground">
-      <h1 className="text-4xl font-bold mb-4">Code Arena</h1>
-      <p className="text-muted-foreground mb-8">
-        Competitive Programming Gamification Platform
-      </p>
-      <Button onClick={() => setCount((c) => c + 1)}>
-        Count is {count}
-      </Button>
-    </div>
-  )
+// Pages
+import LoginPage from "@/pages/LoginPage";
+import RegisterPage from "@/pages/RegisterPage";
+import DashboardPage from "@/pages/DashboardPage";
+import ChallengePage from "@/pages/ChallengePage";
+import TrainingPage from "@/pages/TrainingPage";
+import TrainingDetailPage from "@/pages/TrainingDetailPage";
+import ContestPage from "@/pages/ContestPage";
+import ContestDetailPage from "@/pages/ContestDetailPage";
+import ProfilePage from "@/pages/ProfilePage";
+import CFBindPage from "@/pages/CFBindPage";
+import LeaderboardPage from "@/pages/LeaderboardPage";
+import AdminOverviewPage from "@/pages/AdminOverviewPage";
+import AdminConfigPage from "@/pages/AdminConfigPage";
+
+function AuthInitializer({ children }: { children: React.ReactNode }) {
+  const hydrate = useAuthStore((s) => s.hydrate);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  return <>{children}</>;
 }
 
-export default App
+function App() {
+  return (
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthInitializer>
+          <Routes>
+            {/* ---- Auth routes (no login required) ---- */}
+            <Route element={<AuthLayout />}>
+              <Route path="/" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+            </Route>
+
+            {/* ---- Main app routes (login required) ---- */}
+            <Route
+              element={
+                <ProtectedRoute>
+                  <MainLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/challenge" element={<ChallengePage />} />
+              <Route path="/training" element={<TrainingPage />} />
+              <Route path="/training/:id" element={<TrainingDetailPage />} />
+              <Route path="/contest" element={<ContestPage />} />
+              <Route path="/contest/:id" element={<ContestDetailPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/profile/cf-bind" element={<CFBindPage />} />
+              <Route path="/leaderboard" element={<LeaderboardPage />} />
+            </Route>
+
+            {/* ---- Admin routes (login + admin required) ---- */}
+            <Route
+              element={
+                <AdminRoute>
+                  <AdminLayout />
+                </AdminRoute>
+              }
+            >
+              <Route path="/admin" element={<AdminOverviewPage />} />
+              <Route path="/admin/config" element={<AdminConfigPage />} />
+            </Route>
+
+            {/* ---- Catch-all ---- */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthInitializer>
+      </BrowserRouter>
+    </ErrorBoundary>
+  );
+}
+
+export default App;
