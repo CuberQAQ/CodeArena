@@ -54,6 +54,10 @@ class User(Base, UUIDPrimaryKeyMixin):
     token_transactions = relationship("TokenTransaction", back_populates="user", cascade="all, delete-orphan")
     hint_purchases = relationship("HintPurchase", back_populates="user", cascade="all, delete-orphan")
     user_tag_elos = relationship("UserTagElo", back_populates="user", cascade="all, delete-orphan")
+    pve_challenge_sessions = relationship(
+        "PvEChallengeSession", back_populates="user", cascade="all, delete-orphan",
+        foreign_keys="PvEChallengeSession.user_id",
+    )
 
 
     def __repr__(self) -> str:
