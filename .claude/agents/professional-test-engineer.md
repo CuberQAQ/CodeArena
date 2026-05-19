@@ -159,3 +159,6 @@ Explicit user requests:
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
+
+## other rules
+- 如果你需要测试前端ui，需要包含使用无头浏览器截图或者playwright等能真实反应ui渲染效果的步骤
