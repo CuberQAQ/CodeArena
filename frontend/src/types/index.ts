@@ -360,3 +360,35 @@ export interface DashboardStats {
   total_tokens_earned: number;
   total_tokens_spent: number;
 }
+
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+
+export interface AdminSystemStats {
+  users: { total: number; active: number };
+  challenges: { total: number; active: number };
+  training: { total_sessions: number; active_sessions: number };
+  contests: { total: number; active: number };
+}
+
+export interface AdminUserItem {
+  id: string;
+  username: string;
+  email: string;
+  elo: number;
+  pp: number;
+  tokens: number;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string | null;
+  last_login_at: string | null;
+}
+
+export interface AdminUserList {
+  items: AdminUserItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
