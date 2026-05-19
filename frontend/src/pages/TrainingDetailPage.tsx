@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { StreakEffect } from "@/components/animations/StreakEffect";
+import { CoinAnimation } from "@/components/animations/CoinAnimation";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
 import type {
@@ -37,6 +39,8 @@ export default function TrainingDetailPage() {
   const [submitSolved, setSubmitSolved] = useState(true);
   const [submitAttempts, setSubmitAttempts] = useState(1);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastTokensEarned, setLastTokensEarned] = useState(0);
+  const [tokenTriggerKey, setTokenTriggerKey] = useState(0);
 
   useEffect(() => {
     if (!topicId) return;
@@ -92,6 +96,11 @@ export default function TrainingDetailPage() {
         },
       );
       const data = res.data.data;
+      // Trigger coin animation if tokens earned
+      if (data.tokens_earned > 0) {
+        setLastTokensEarned(data.tokens_earned);
+        setTokenTriggerKey((k) => k + 1);
+      }
       // Refresh session
       const sessRes = await api.get<ApiResponse<TrainingSessionInfo>>(
         `/training/session/${session.id}`,
@@ -280,9 +289,18 @@ export default function TrainingDetailPage() {
             <p className="text-xs text-muted-foreground">Total</p>
             <p className="mt-1 text-xl font-bold text-foreground">{session.total_problems}</p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4 text-center">
+          <div className="relative rounded-xl border border-border bg-card p-4 text-center">
             <p className="text-xs text-muted-foreground">Streak</p>
-            <p className="mt-1 text-xl font-bold text-yellow-400">{session.streak_count}</p>
+            <div className="mt-1 flex items-center justify-center">
+              <StreakEffect streak={session.streak_count} />
+            </div>
+            {/* Coin animation overlay */}
+            <div className="absolute -top-2 right-2">
+              <CoinAnimation
+                amount={lastTokensEarned}
+                triggerKey={tokenTriggerKey}
+              />
+            </div>
           </div>
         </div>
 

@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { MatchWaiting } from "@/components/animations/MatchWaiting";
+import { EloChange } from "@/components/animations/EloChange";
+import { AcceptedCelebration } from "@/components/animations/AcceptedCelebration";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
 import type {
@@ -29,6 +32,8 @@ export default function ChallengePage() {
   const [solved, setSolved] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [quitSubmissions, setQuitSubmissions] = useState(0);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [eloTriggerKey, setEloTriggerKey] = useState(0);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -139,6 +144,10 @@ export default function ChallengePage() {
           `/challenge/${sessionId}`,
         );
         setChallenge(detailRes.data.data);
+        setEloTriggerKey((k) => k + 1);
+        if (data.elo_change != null && data.elo_change > 0) {
+          setShowCelebration(true);
+        }
         setPhase("result");
       } else {
         // Waiting for opponent
@@ -181,6 +190,7 @@ export default function ChallengePage() {
         `/challenge/${sessionId}`,
       );
       setChallenge(detailRes.data.data);
+      setEloTriggerKey((k) => k + 1);
       setPhase("result");
     } catch (err) {
       setError(extractApiError(err, "Failed to quit challenge"));
@@ -198,6 +208,7 @@ export default function ChallengePage() {
     setSolved(false);
     setAttempts(0);
     setQuitSubmissions(0);
+    setShowCelebration(false);
   };
 
   // ── IDLE ────────────────────────────────────────────────────────
@@ -255,9 +266,7 @@ export default function ChallengePage() {
   if (phase === "queuing") {
     return (
       <div className="mx-auto max-w-2xl text-center">
-        <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-primary/10">
-          <Loader2 className="size-10 animate-spin text-primary" />
-        </div>
+        <MatchWaiting className="mb-6" />
         <h1 className="text-2xl font-bold text-foreground">Finding Opponent...</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Waiting for a suitable opponent. This may take a moment.
@@ -434,6 +443,10 @@ export default function ChallengePage() {
 
     return (
       <div className="mx-auto max-w-2xl space-y-5">
+        <AcceptedCelebration
+          active={showCelebration}
+          onComplete={() => setShowCelebration(false)}
+        />
         <div className="text-center">
           <div
             className={`mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl ${
@@ -456,18 +469,9 @@ export default function ChallengePage() {
             {isWin ? "Victory!" : isDraw ? "Draw" : isQuit ? "Challenge Abandoned" : "Defeat"}
           </h1>
           {challenge.elo_change != null && (
-            <p
-              className={`mt-2 text-lg font-bold ${
-                challenge.elo_change > 0
-                  ? "text-green-400"
-                  : challenge.elo_change < 0
-                    ? "text-red-400"
-                    : "text-muted-foreground"
-              }`}
-            >
-              Elo: {challenge.elo_change > 0 ? "+" : ""}
-              {challenge.elo_change}
-            </p>
+            <div className="mt-2">
+              <EloChange value={challenge.elo_change} triggerKey={eloTriggerKey} />
+            </div>
           )}
         </div>
 

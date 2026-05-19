@@ -1,0 +1,100 @@
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { usePrefersReducedMotion } from "@/hooks/useAnimation";
+
+interface StreakEffectProps {
+  /** Current streak count. */
+  streak: number;
+  /** Optional class name for positioning. */
+  className?: string;
+}
+
+/**
+ * Streak counter with escalation effects.
+ * - Shows "x2", "x3", "x4" etc with increasing visual intensity.
+ * - Screen edge glow at higher streaks.
+ * - Respects prefers-reduced-motion.
+ */
+export function StreakEffect({ streak, className = "" }: StreakEffectProps) {
+  const [prevStreak, setPrevStreak] = useState(0);
+  const [pulsing, setPulsing] = useState(false);
+  const reduced = usePrefersReducedMotion();
+
+  useEffect(() => {
+    if (streak > prevStreak && streak >= 2) {
+      setPulsing(true);
+      const t = setTimeout(() => setPulsing(false), 600);
+      return () => clearTimeout(t);
+    }
+    setPrevStreak(streak);
+  }, [streak, prevStreak]);
+
+  if (streak < 2) return null;
+
+  const intensity = Math.min(streak, 6);
+  // Color shifts from yellow to orange to red as streak grows
+  const glowColor =
+    intensity <= 2
+      ? "rgba(255, 187, 0, 0.3)"
+      : intensity <= 4
+        ? "rgba(255, 140, 0, 0.4)"
+        : "rgba(255, 60, 0, 0.5)";
+
+  return (
+    <>
+      {/* Screen edge glow */}
+      {!reduced && pulsing && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.6 }}
+          className="pointer-events-none fixed inset-0 z-40"
+          style={{
+            boxShadow: `inset 0 0 ${40 * intensity}px ${10 * intensity}px ${glowColor}`,
+          }}
+        />
+      )}
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={streak}
+          initial={reduced ? false : { scale: 0.5, opacity: 0 }}
+          animate={{
+            scale: pulsing && !reduced ? [1, 1.3, 1] : 1,
+            opacity: 1,
+          }}
+          exit={reduced ? { opacity: 0 } : { scale: 0.5, opacity: 0 }}
+          transition={
+            reduced
+              ? { duration: 0 }
+              : {
+                  scale: { duration: 0.4, ease: "easeInOut" },
+                  opacity: { duration: 0.2 },
+                }
+          }
+          className={`flex items-center gap-2 ${className}`}
+        >
+          <span
+            className="text-3xl font-black tabular-nums"
+            style={{
+              color:
+                intensity <= 2
+                  ? "#FFBB00"
+                  : intensity <= 4
+                    ? "#FF8C00"
+                    : "#FF3C00",
+              textShadow:
+                intensity > 3 && !reduced
+                  ? `0 0 ${intensity * 4}px ${glowColor}`
+                  : "none",
+            }}
+          >
+            x{streak}
+          </span>
+          <span className="text-sm font-medium text-muted-foreground">streak</span>
+        </motion.div>
+      </AnimatePresence>
+    </>
+  );
+}
