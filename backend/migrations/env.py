@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.models.challenge_session  # noqa: F401
+import app.models.contest_bot  # noqa: F401
 import app.models.contest_problem_record  # noqa: F401
 import app.models.contest_session  # noqa: F401
 import app.models.elo_history  # noqa: F401

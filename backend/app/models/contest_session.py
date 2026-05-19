@@ -32,6 +32,9 @@ class ContestSession(Base, UUIDPrimaryKeyMixin):
     problem_records = relationship(
         "ContestProblemRecord", back_populates="contest", cascade="all, delete-orphan"
     )
+    bots = relationship(
+        "ContestBot", back_populates="contest", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<ContestSession(id={self.id}, contest_tier={self.contest_tier})>"

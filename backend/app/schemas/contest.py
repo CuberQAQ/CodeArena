@@ -114,3 +114,21 @@ class ContestHistoryItem(BaseModel):
     ended_at: datetime | None = None
     status: str = "active"
     elo_change: int | None = None
+
+
+class LeaderboardEntry(BaseModel):
+    """A single entry on the contest leaderboard (human or bot)."""
+
+    rank: int
+    name: str
+    elo: int
+    solved: int
+    is_bot: bool = False
+
+
+class LeaderboardResponse(BaseModel):
+    """Full leaderboard for a contest session with timing info."""
+
+    leaderboard: list[LeaderboardEntry] = []
+    time_elapsed: int = 0
+    time_total: int = 0

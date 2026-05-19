@@ -22,6 +22,7 @@ from app.services import elo_service as elo_svc_module
 from app.services import pp_service as pp_svc_module
 from app.services.config_service import ConfigService
 from app.services.contest_service import TIER_CONFIGS, ContestService, _tokens_for_rating
+from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
 
 # ---------------------------------------------------------------------------
@@ -193,6 +194,9 @@ async def db(async_engine):
             # Patch ConfigService and EloService.get_submission_count for K-factor
             patch.object(ConfigService, "get_config", _mock_get_config),
             patch.object(EloService, "get_submission_count", _mock_get_submission_count),
+            # Patch ContestSimulationService to avoid DB operations on contest_bots table
+            patch.object(ContestSimulationService, "generate_bots", AsyncMock(return_value=[])),
+            patch.object(ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),
         ):
             yield session
 

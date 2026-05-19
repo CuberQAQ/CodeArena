@@ -180,3 +180,21 @@ async def get_contest_result(
         data=result.model_dump(mode="json"),
         message="Contest result retrieved",
     )
+
+
+@router.get("/{contest_id}/leaderboard")
+async def get_leaderboard(
+    contest_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the combined human+bot leaderboard for an active contest."""
+    result = await ContestService.get_leaderboard(
+        db=db,
+        user=current_user,
+        contest_id=contest_id,
+    )
+    return success_response(
+        data=result.model_dump(mode="json"),
+        message="Leaderboard retrieved",
+    )

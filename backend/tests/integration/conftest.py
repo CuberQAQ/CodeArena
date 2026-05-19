@@ -245,6 +245,7 @@ from app.services import auth_service as _auth_mod
 from app.services import challenge_service as _chal_mod
 from app.services import config_service as _config_mod
 from app.services import contest_service as _contest_mod
+from app.services import contest_simulation_service as _sim_mod
 from app.services import economy_service as _eco_mod
 from app.services import elo_service as _elo_mod
 from app.services import hint_service as _hint_mod
@@ -335,6 +336,9 @@ def _apply_model_patches():
         # Patch ConfigService and EloService for K-factor segmentation
         patch.object(ConfigService, "get_config", _mock_get_config),
         patch.object(EloService, "get_submission_count", _mock_get_submission_count),
+        # Patch ContestSimulationService to avoid DB operations on contest_bots table
+        patch.object(_sim_mod.ContestSimulationService, "generate_bots", AsyncMock(return_value=[])),
+        patch.object(_sim_mod.ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),
     ]
     for p in patches_list:
         p.start()
