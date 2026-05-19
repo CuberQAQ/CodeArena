@@ -52,7 +52,8 @@ async def list_topics(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all topic categories."""
-    topics = await TrainingService.list_topics(db, user_id=current_user.id)
+    cf_service = _get_cf_service()
+    topics = await TrainingService.list_topics(db, user_id=current_user.id, cf_service=cf_service)
     return success_response(
         data=[t.model_dump(mode="json") for t in topics],
         message="Topics retrieved",

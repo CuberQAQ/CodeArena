@@ -1908,3 +1908,51 @@ Dashboard 页面的 Analytics 区域始终显示 "no data"，原因是：
 #### 技术备注
 - 使用 `GET /contest/active` 端点而非在每个页面都查询 history
 - ContestPage 的 useEffect 中在加载 tiers 的同时检查活跃比赛
+
+---
+
+### Task 14.3: Training 专题列表进度和星级显示修复
+**状态**: 🟢 已完成 (2026-05-20)
+**优先级**: P1
+**依赖**: Task 6.1
+
+#### 任务描述
+Training 专题列表页面（TrainingPage.tsx）所有 topic 的星级和进度都显示 0，解题后显示 "6/0"。Dashboard 的 Skill Radar 也是空的。
+
+**根因分析**：
+1. `backend/app/services/training_service.py` 的 `list_topics()` 方法中 `total_problems` 硬编码为 0，`stars` 也为 0
+2. `list_topics()` 不接受 `cf_service` 参数，无法调用 CF API 获取各专题的题目总数
+3. 对比 `get_progress()` 方法（正确工作），它传入了 `cf_service` 并调用 `_fetch_topic_problems()` 获取题目列表
+
+**需要修改的文件**：
+
+1. **`backend/app/services/training_service.py`** - 修改 `list_topics()` 方法：
+   - 添加 `cf_service: CFApiService` 参数
+   - 在循环中调用 `_fetch_topic_problems(cf_service, cf_tags)` 获取各专题题目列表
+   - 用 `len(problems)` 作为 `total_problems`
+   - 计算 `completion_rate` 和 `stars`（使用已有的 `calculate_stars()` 函数）
+
+2. **`backend/app/api/v1/training.py`** - 修改 `list_topics` 路由：
+   - 调用 `_get_cf_service()` 获取 cf_service 实例
+   - 将 `cf_service` 传入 `TrainingService.list_topics()`
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **list_topics 接受 cf_service**: 方法签名包含 cf_service 参数
+- [ ] **total_problems > 0**: 有题目的专题返回的 total_problems 大于 0
+- [ ] **solved_count 正确**: 已解题目的 solved_count 与实际一致
+- [ ] **stars 计算**: completion_rate > 0 时 stars > 0，completion_rate == 0 时 stars == 0
+- [ ] **前端显示**: TrainingPage 各专题卡片显示正确的进度百分比和星级
+- [ ] **前端显示 solved/total**: 不再显示 "6/0"，而是 "6/N"
+- [ ] **Radar 数据**: `/training/progress` 返回正确数据（此端点未受影响，但需确认）
+- [ ] **TypeScript 编译通过**: 无编译错误
+- [ ] **后端测试通过**: 现有测试不回归
+
+#### 验收标准
+1. TrainingPage 各专题显示正确的星级、进度和 solved/total
+2. Dashboard Skill Radar 正确展示各专题完成率
+3. 无 CF API 数据的专题（如空 tag）优雅处理（total=0, solved=0）
+
+#### 技术备注
+- `_fetch_topic_problems()` 已有 CF API 缓存（TTL 30 分钟），不会每次请求都调 CF API
+- `calculate_stars()` 函数已存在，直接复用
+- 参照 `get_progress()` 的实现模式

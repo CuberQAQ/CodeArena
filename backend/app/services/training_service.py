@@ -234,6 +234,7 @@ class TrainingService:
     async def list_topics(
         db: AsyncSession,
         user_id: uuid.UUID | None = None,
+        cf_service: CFApiService | None = None,
     ) -> list[TopicInfo]:
         """Return all topics with optional solved-count and stars for a user."""
         await TrainingService.ensure_topics(db)
@@ -248,7 +249,14 @@ class TrainingService:
             total_problems = 0
             stars = 0
 
+            cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
+
             if user_id is not None:
+                # Fetch total problems from CF API (same as get_progress)
+                if cf_service is not None:
+                    problems = await TrainingService._fetch_topic_problems(cf_service, cf_tags)
+                    total_problems = len(problems)
+
                 # Count distinct solved problems for this user and topic
                 solved_stmt = (
                     select(func.count(TrainingProblemRecord.id))
@@ -261,7 +269,9 @@ class TrainingService:
                 solved_result = await db.execute(solved_stmt)
                 solved_count = solved_result.scalar_one()
 
-            cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
+                # Calculate completion rate and stars
+                completion_rate = (solved_count / total_problems * 100) if total_problems > 0 else 0.0
+                stars = calculate_stars(completion_rate)
 
             topic_infos.append(TopicInfo(
                 id=topic.id,
