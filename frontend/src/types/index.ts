@@ -49,3 +49,275 @@ export interface ApiErrorResponse {
   };
   detail?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Challenge
+// ---------------------------------------------------------------------------
+
+export interface OpponentInfo {
+  id: string;
+  username: string;
+  elo: number;
+  cf_handle: string | null;
+}
+
+export interface MatchResult {
+  session_id: string;
+  opponent: OpponentInfo;
+  status: string;
+}
+
+export interface QueueStatus {
+  in_queue: boolean;
+  matched: boolean;
+  session_id: string | null;
+  opponent: OpponentInfo | null;
+  both_ready: boolean;
+}
+
+export interface ProblemInfo {
+  contest_id: number;
+  index: string;
+  name: string;
+  rating: number | null;
+  tags: string[];
+  url: string;
+}
+
+export interface ChallengeDetail {
+  id: string;
+  challenger_id: string;
+  opponent_id: string;
+  problem_id: string;
+  problem_rating: number;
+  problem: ProblemInfo | null;
+  challenger_solved: boolean;
+  opponent_solved: boolean;
+  challenger_submissions: number;
+  opponent_submissions: number;
+  challenger_time: number | null;
+  opponent_time: number | null;
+  status: string;
+  result: string | null;
+  elo_change: number | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface StartChallengeResponse {
+  session_id: string;
+  problem: ProblemInfo;
+  status: string;
+}
+
+export interface SubmitResultResponse {
+  session_id: string;
+  solved: boolean;
+  status: string;
+  settled: boolean;
+  result: string | null;
+  elo_change: number | null;
+  tokens_earned: number | null;
+}
+
+export interface QuitChallengeResponse {
+  session_id: string;
+  status: string;
+  elo_change: number | null;
+  penalty: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Training
+// ---------------------------------------------------------------------------
+
+export interface TopicProblemInfo {
+  problem_id: string;
+  contest_id: number;
+  index: string;
+  name: string;
+  rating: number | null;
+  tags: string[];
+  url: string;
+  solved: boolean;
+  attempts: number;
+  time_spent: number | null;
+}
+
+export interface TopicInfo {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  cf_tags: string[];
+  display_order: number;
+  total_problems: number;
+  solved_count: number;
+  stars: number;
+}
+
+export interface TopicDetail extends TopicInfo {
+  problems: TopicProblemInfo[];
+}
+
+export interface TrainingSessionInfo {
+  id: string;
+  topic_id: string;
+  topic_name: string;
+  problems_solved: number;
+  total_problems: number;
+  streak_count: number;
+  status: string;
+  created_at: string | null;
+  completed_at: string | null;
+  last_solved_rating: number | null;
+  streak_tokens_earned: number;
+}
+
+export interface SubmitTrainingResponse {
+  session_id: string;
+  problem_id: string;
+  solved: boolean;
+  streak_count: number;
+  streak_tokens: number;
+  total_streak_tokens: number;
+  tokens_earned: number;
+  elo_change: number | null;
+}
+
+export interface TopicProgress {
+  topic_id: string;
+  topic_name: string;
+  slug: string;
+  total_problems: number;
+  solved_count: number;
+  completion_rate: number;
+  stars: number;
+  total_attempts: number;
+  total_time_spent: number;
+}
+
+export interface TrainingProgress {
+  topics: TopicProgress[];
+  total_solved: number;
+  total_problems: number;
+}
+
+export interface AbandonTrainingResponse {
+  session_id: string;
+  status: string;
+  problems_solved: number;
+  total_problems: number;
+}
+
+// ---------------------------------------------------------------------------
+// Contest
+// ---------------------------------------------------------------------------
+
+export interface TierInfo {
+  tier: string;
+  name: string;
+  min_elo: number | null;
+  max_elo: number | null;
+  duration_minutes: number;
+  problem_count: number;
+  rating_range: number[];
+  eligible: boolean;
+}
+
+export interface ContestProblemInfo {
+  problem_id: string;
+  contest_id: number;
+  index: string;
+  name: string;
+  rating: number;
+  url: string;
+  solved: boolean;
+  attempts: number;
+  time_spent: number | null;
+}
+
+export interface ContestSessionInfo {
+  id: string;
+  tier: string;
+  problems: ContestProblemInfo[];
+  total_problems: number;
+  problems_solved: number;
+  submissions: number;
+  time_limit_minutes: number;
+  started_at: string | null;
+  ended_at: string | null;
+  remaining_seconds: number | null;
+  status: string;
+  elo_change: number | null;
+}
+
+export interface SubmitContestResponse {
+  contest_id: string;
+  problem_id: string;
+  solved: boolean;
+  tokens_earned: number;
+}
+
+export interface ContestResult {
+  id: string;
+  tier: string;
+  total_problems: number;
+  problems_solved: number;
+  submissions: number;
+  time_limit_minutes: number;
+  started_at: string | null;
+  ended_at: string | null;
+  status: string;
+  elo_change: number | null;
+  problems: ContestProblemInfo[];
+}
+
+export interface ContestHistoryItem {
+  id: string;
+  tier: string;
+  total_problems: number;
+  problems_solved: number;
+  submissions: number;
+  time_limit_minutes: number;
+  started_at: string | null;
+  ended_at: string | null;
+  status: string;
+  elo_change: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Economy
+// ---------------------------------------------------------------------------
+
+export interface TokenBalance {
+  tokens: number;
+  daily_tokens_earned: number;
+  daily_cap: number;
+  daily_remaining: number;
+}
+
+export interface TransactionItem {
+  id: string;
+  amount: number;
+  type: string;
+  reference_type: string | null;
+  reference_id: string | null;
+  balance_after: number;
+  created_at: string | null;
+}
+
+export interface TransactionList {
+  items: TransactionItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DailyStatus {
+  date: string;
+  daily_tokens_earned: number;
+  daily_cap: number;
+  daily_remaining: number;
+  breakdown: Record<string, number>;
+}
