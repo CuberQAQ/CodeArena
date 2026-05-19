@@ -61,6 +61,30 @@
 - Uses economy_service.spend_tokens for token deduction
 - Test pattern: patch HintPurchase + economy_svc.spend_tokens
 
+## Admin System (Task 12.1)
+- Admin service: `app/services/admin_service.py` (stateless functions, receives db)
+- Routes: `app/api/v1/admin.py` (8 endpoints under /api/v1/admin/)
+- Schemas: `app/schemas/admin.py`
+- Permission: `_require_admin` dependency checks `user.is_admin`
+- Config CRUD: delegates to ConfigService (get_all_config, set_config, reset_config)
+- Config metadata: `get_config_metadata()` derives structure from DEFAULT_CONFIG
+- User management: list_users (paginated, searchable), toggle_active, toggle_admin
+- Stats: counts from User, ChallengeSession, TrainingSession, ContestSession
+- Frontend: AdminOverviewPage (stats cards + user table), AdminConfigPage (expandable sections, per-field save/reset)
+- Test pattern: patch User, ChallengeSession, TrainingSession, ContestSession in admin_svc_module
+
+## Deployment Configuration (Task 13.2)
+- Production compose: `docker-compose.prod.yml` with internal/frontend network isolation
+- Backend: Gunicorn + 4 Uvicorn workers, non-root `appuser` (UID 1000)
+- Frontend: multi-stage build (node:22-alpine build + nginx:1.27-alpine serve), non-root `nginx` user
+- Nginx: reverse proxy /api/ to backend, SPA fallback, gzip, security headers
+- DB: postgres:16-alpine, not exposed to host, health check with pg_isready
+- All passwords via env vars; POSTGRES_PASSWORD uses `${:?}` required syntax
+- Logs: json-file driver with rotation (db 10m/3, backend 50m/5, frontend 10m/3)
+- `.env.example` has JWT_SECRET generation instructions (python secrets / openssl)
+- Health checks: backend at /api/v1/health, frontend at /, db via pg_isready
+- Dev compose unchanged: `docker-compose.yml` + `docker-compose.dev.yml` overlay
+
 Notes:
 - Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.
 - In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing (e.g., a bug you found, a function signature the caller asked for) — do not recap code you merely read.

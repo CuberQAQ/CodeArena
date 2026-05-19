@@ -2,6 +2,15 @@
 
 ## Project: Code Arena (竞技编程游戏化平台)
 
+### Project File Structure
+- `requirements.md` — 需求文档（独立于 task.md）
+- `task.md` — 任务清单（链接引用 requirements.md）
+- 需求变更时必须通过 requirements-auditor 评估影响
+
+### Agent Workflow
+- requirements-auditor 在三个节点被调用：🅰️ task生成后、🅱️ 需求更新后、🅲 全部完成后
+- 三个 agent 各有独立记忆目录，feature-engineer 和 professional-test-engineer 不直接读取 task.md
+
 ### Confirmed Decisions (Round 1 - Core Gameplay)
 
 - **Q12 随机挑战难度匹配**: 方案 B - 概率加权匹配
