@@ -26,8 +26,8 @@ frontend/.vite/
 
 # ---- Environment ----
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # ---- IDE ----
 .vscode/
@@ -54,6 +54,8 @@ htmlcov/
 .coverage.*
 coverage.xml
 .pytest_cache/
+test-results/
+playwright-report/
 
 # ---- Build artifacts ----
 *.tar.gz
