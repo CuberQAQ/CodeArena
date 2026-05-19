@@ -287,6 +287,84 @@ export interface ContestHistoryItem {
 }
 
 // ---------------------------------------------------------------------------
+// PvE Challenge
+// ---------------------------------------------------------------------------
+
+export interface PvEProblemInfo {
+  contest_id: number;
+  index: string;
+  name: string;
+  rating: number | null;
+  tags: string[];
+  url: string;
+}
+
+export interface PvEStartResponse {
+  session_id: string;
+  problem: PvEProblemInfo;
+  status: string;
+}
+
+export interface PvEDetailResponse {
+  id: string;
+  user_id: string;
+  problem_id: string;
+  problem_rating: number;
+  problem_tags: string[];
+  problem: PvEProblemInfo | null;
+  status: string;
+  error_count: number;
+  time_spent: number | null;
+  hints_used: number;
+  elo_change: number | null;
+  pp_change: number | null;
+  s_value: number | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface PvESubmitResultResponse {
+  session_id: string;
+  solved: boolean;
+  status: string;
+  elo_change: number | null;
+  pp_change: number | null;
+  s_value: number | null;
+  tokens_earned: number;
+  overkill_multiplier: number;
+}
+
+export interface PvEQuitResponse {
+  session_id: string;
+  status: string;
+  elo_change: number | null;
+  penalty: number | null;
+}
+
+export interface PvEHistoryItem {
+  id: string;
+  problem_id: string;
+  problem_rating: number;
+  problem_tags: string[];
+  status: string;
+  error_count: number;
+  time_spent: number | null;
+  hints_used: number;
+  elo_change: number | null;
+  pp_change: number | null;
+  s_value: number | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface PvEHistoryResponse {
+  items: PvEHistoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// ---------------------------------------------------------------------------
 // Economy
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle } from "lucide-react";
+import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { MatchWaiting } from "@/components/animations/MatchWaiting";
@@ -232,7 +232,7 @@ export default function ChallengePage() {
           </div>
         )}
 
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <Button size="lg" onClick={handleJoinQueue} disabled={loading}>
             {loading ? (
               <>
@@ -245,6 +245,15 @@ export default function ChallengePage() {
                 Find Opponent
               </>
             )}
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={() => navigate("/pve-challenge")}
+            disabled={loading}
+          >
+            <Sparkles className="mr-2 size-4 text-purple-400" />
+            Solo Challenge
           </Button>
         </div>
 

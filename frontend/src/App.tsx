@@ -14,6 +14,7 @@ import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ChallengePage from "@/pages/ChallengePage";
+import PvEChallengePage from "@/pages/challenge/PvEChallengePage";
 import TrainingPage from "@/pages/TrainingPage";
 import TrainingDetailPage from "@/pages/TrainingDetailPage";
 import ContestPage from "@/pages/ContestPage";
@@ -56,6 +57,7 @@ function App() {
             >
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/challenge" element={<ChallengePage />} />
+              <Route path="/pve-challenge" element={<PvEChallengePage />} />
               <Route path="/training" element={<TrainingPage />} />
               <Route path="/training/:id" element={<TrainingDetailPage />} />
               <Route path="/contest" element={<ContestPage />} />
