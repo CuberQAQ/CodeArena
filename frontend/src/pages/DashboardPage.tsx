@@ -10,6 +10,7 @@ import {
   Star,
   ArrowRight,
   RefreshCw,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
@@ -17,7 +18,7 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { DashboardCharts } from "@/components/charts/DashboardCharts";
 import { getRatingColor } from "@/utils";
 import api from "@/services/api";
-import type { ApiResponse, TransactionItem } from "@/types";
+import type { ApiResponse, TransactionItem, ContestSessionInfo } from "@/types";
 
 interface QuickAction {
   to: string;
@@ -63,6 +64,7 @@ export default function DashboardPage() {
   const { user, fetchUser } = useAuthStore();
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [loadingTx, setLoadingTx] = useState(true);
+  const [activeContest, setActiveContest] = useState<ContestSessionInfo | null>(null);
 
   useEffect(() => {
     fetchUser().catch(() => {});
@@ -71,6 +73,10 @@ export default function DashboardPage() {
       .then((res) => setTransactions(res.data.data.items ?? []))
       .catch(() => {})
       .finally(() => setLoadingTx(false));
+    api
+      .get<ApiResponse<ContestSessionInfo | null>>("/contest/active")
+      .then((res) => setActiveContest((res.data.data as ContestSessionInfo | null) ?? null))
+      .catch(() => {});
   }, [fetchUser]);
 
   if (!user) {
@@ -135,6 +141,28 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Active Contest Banner */}
+      {activeContest && (
+        <div className="flex items-center justify-between rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+              <Play className="size-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                You have an active contest!
+              </p>
+              <p className="text-xs text-muted-foreground capitalize">
+                {activeContest.tier} tier &middot; {activeContest.problems_solved}/{activeContest.total_problems} solved
+              </p>
+            </div>
+          </div>
+          <Button onClick={() => navigate(`/contest/${activeContest.id}`)}>
+            Resume Contest
+          </Button>
+        </div>
+      )}
 
       {/* CF Handle Status */}
       {!user.cf_handle && (

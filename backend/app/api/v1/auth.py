@@ -9,11 +9,14 @@ Mounts five endpoints under ``/api/v1/auth/``:
 """
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.response import success_response
 from app.core.security import get_current_user
+from app.models.elo_history import EloHistory
+from app.models.pp_record import PPRecord
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
@@ -108,4 +111,56 @@ async def update_profile(
     return success_response(
         data=UserInfo.model_validate(user).model_dump(mode="json"),
         message="Profile updated",
+    )
+
+
+@router.get("/elo-history")
+async def get_elo_history(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the authenticated user's Elo rating history."""
+    result = await db.execute(
+        select(EloHistory)
+        .where(EloHistory.user_id == current_user.id)
+        .order_by(EloHistory.created_at.asc())
+    )
+    records = result.scalars().all()
+    return success_response(
+        data=[
+            {
+                "date": r.created_at.isoformat(),
+                "elo": r.elo_after,
+                "change": r.elo_change,
+                "reason": r.reason,
+            }
+            for r in records
+        ],
+    )
+
+
+@router.get("/pp-contributions")
+async def get_pp_contributions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = 20,
+):
+    """Return the authenticated user's top PP contributions."""
+    result = await db.execute(
+        select(PPRecord)
+        .where(PPRecord.user_id == current_user.id)
+        .order_by(PPRecord.base_pp.desc())
+        .limit(limit)
+    )
+    records = result.scalars().all()
+    return success_response(
+        data=[
+            {
+                "problem_id": r.cf_problem_id,
+                "problem_name": r.cf_problem_id,
+                "rating": r.problem_rating,
+                "pp": r.base_pp,
+            }
+            for r in records
+        ],
     )

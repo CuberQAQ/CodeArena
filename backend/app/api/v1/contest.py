@@ -1,12 +1,13 @@
 """Contest API routes.
 
-Mounts seven endpoints under ``/api/v1/contest/``:
+Mounts eight endpoints under ``/api/v1/contest/``:
   GET  /tiers           -- list available tiers (auth required)
   POST /start           -- start contest session (auth required)
+  GET  /active          -- get currently active contest session (auth required)
+  GET  /history         -- get contest history (auth required)
   GET  /{id}            -- get contest status with remaining time (auth required)
   POST /{id}/submit     -- submit problem result (auth required)
   POST /{id}/end        -- end contest (auth required)
-  GET  /history         -- get contest history (auth required)
   GET  /{id}/result     -- get contest result detail (auth required)
 """
 
@@ -88,6 +89,19 @@ async def get_contest_history(
     return success_response(
         data=[h.model_dump(mode="json") for h in history],
         message="Contest history retrieved",
+    )
+
+
+@router.get("/active")
+async def get_active_contest(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the user's currently active contest session, if any."""
+    result = await ContestService.get_active_contest(db, user=current_user)
+    return success_response(
+        data=result.model_dump(mode="json") if result else None,
+        message="Active contest retrieved",
     )
 
 

@@ -1813,3 +1813,98 @@ code-arena/
 
 **最终** (阶段 13):
 13.1 -> 13.2
+
+---
+
+## 阶段 14: 生产部署 Bug 修复
+
+### Task 14.1: Dashboard Analytics 数据展示修复
+**状态**: 🟢 已完成 (2026-05-20)
+**优先级**: P1
+**依赖**: Task 10.1
+
+#### 任务描述
+Dashboard 页面的 Analytics 区域始终显示 "no data"，原因是：
+1. 后端缺少 `/auth/elo-history` 和 `/auth/pp-contributions` 两个 API 端点
+2. 前端 `DashboardCharts.tsx` 中的对应 fetch 调用被注释
+
+**已完成的代码变更**（需要验证并部署）：
+
+1. **后端** `backend/app/api/v1/auth.py` - 已添加两个端点：
+   - `GET /auth/elo-history` - 返回用户 Elo 历史记录，从 `elo_history` 表按 `created_at` 升序查询
+   - `GET /auth/pp-contributions?limit=20` - 返回用户 PP 贡献前 N 题，从 `pp_records` 表按 `base_pp` 降序查询
+
+2. **前端** `frontend/src/components/charts/DashboardCharts.tsx` - 已取消注释：
+   - `/auth/elo-history` 请求并设置 `eloData`
+   - `/auth/pp-contributions?limit=20` 请求并设置 `ppData`
+
+**需要完成的工作**：
+- 验证现有代码变更的正确性和完整性
+- 确保前端 TypeScript 编译通过
+- 构建 Docker 镜像并部署
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **后端端点 - elo-history**: GET /api/v1/auth/elo-history 返回正确的 Elo 历史数据
+- [ ] **后端端点 - pp-contributions**: GET /api/v1/auth/pp-contributions 返回正确的 PP 贡献数据
+- [ ] **端点认证**: 未认证请求返回 401
+- [ ] **前端 - EloChart**: 有数据时正确渲染趋势图，无数据时显示空状态
+- [ ] **前端 - PPChart**: 有数据时正确渲染贡献图，无数据时显示空状态
+- [ ] **前端 - 编译通过**: TypeScript 编译无错误
+- [ ] **Docker 构建**: `docker compose build` 成功
+
+#### 验收标准
+1. Analytics 区域正确显示 Elo 趋势图和 PP 贡献图
+2. 无数据时显示友好的空状态提示
+3. Docker 镜像构建成功
+
+#### 技术备注
+- 代码变更已存在但未构建部署，此任务主要是验证 + 构建 + 部署
+
+---
+
+### Task 14.2: 活跃比赛会话导航
+**状态**: 🟢 已完成 (2026-05-20)
+**优先级**: P1
+**依赖**: Task 7.1, Task 9.2
+
+#### 任务描述
+当用户有一个活跃的虚拟比赛会话（contest session status === "active"）时，如果导航离开了比赛页面（如回到 Dashboard），没有任何方式返回到正在进行的比赛。需要在 ContestPage 和 DashboardPage 上检测并展示活跃比赛，提供一键返回功能。
+
+**需要修改的文件**：
+
+1. **后端** `backend/app/services/contest_service.py` - 添加获取活跃比赛会话的方法：
+   - `get_active_contest(db, user)` - 查询 `contest_sessions` 表中 `user_id` 匹配且 `status == "active"` 的记录
+   - 如果存在且超时，自动结束
+
+2. **后端** `backend/app/api/v1/contest.py` - 添加 API 端点：
+   - `GET /contest/active` - 返回当前活跃比赛会话的 ID 和基本信息，无活跃比赛返回 null
+
+3. **前端** `frontend/src/pages/ContestPage.tsx` - 页面加载时检查活跃比赛：
+   - 如果存在活跃比赛，显示 "Resume Contest" 卡片，点击导航到 `/contest/{id}`
+   - 同时显示 tier 选择卡片，但点击时提示已有活跃比赛
+
+4. **前端** `frontend/src/pages/DashboardPage.tsx` - Quick Actions 中的 Contest 卡片：
+   - 如果存在活跃比赛，显示 "Resume" 按钮和剩余时间提示
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **后端 - GET /contest/active 无活跃**: 未开始比赛时返回 `data: null`
+- [ ] **后端 - GET /contest/active 有活跃**: 返回活跃比赛的 id、tier、remaining_seconds
+- [ ] **后端 - 超时自动结束**: 超时的活跃比赛被自动结束，GET /contest/active 返回 null
+- [ ] **后端 - 认证要求**: 未认证请求返回 401
+- [ ] **前端 - ContestPage 显示 Resume**: 有活跃比赛时显示 Resume Contest 卡片
+- [ ] **前端 - ContestPage Resume 导航**: 点击 Resume 导航到 `/contest/{id}`
+- [ ] **前端 - ContestPage 阻止新比赛**: 有活跃比赛时 Start Contest 按钮禁用或提示
+- [ ] **前端 - Dashboard 显示活跃比赛**: Dashboard Quick Actions 中 Virtual Contest 卡片显示活跃比赛提示
+- [ ] **前端 - Dashboard 一键恢复**: 点击可导航到活跃比赛页面
+- [ ] **前端 - 无活跃比赛**: 页面正常显示，不出现活跃比赛相关的 UI 元素
+- [ ] **前端 - TypeScript 编译通过**: 无编译错误
+
+#### 验收标准
+1. 有活跃比赛时，ContestPage 显示 Resume Contest 入口
+2. 有活跃比赛时，Dashboard 的 Virtual Contest 卡片显示恢复提示
+3. 无活跃比赛时，页面正常显示，无多余 UI
+4. 超时比赛被自动结束
+
+#### 技术备注
+- 使用 `GET /contest/active` 端点而非在每个页面都查询 history
+- ContestPage 的 useEffect 中在加载 tiers 的同时检查活跃比赛

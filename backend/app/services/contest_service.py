@@ -216,7 +216,53 @@ class ContestService:
         )
 
     # ------------------------------------------------------------------
-    # 3. Get contest status
+    # 3. Get active contest
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def get_active_contest(
+        db: AsyncSession,
+        user: User,
+    ) -> ContestSessionInfo | None:
+        """Get the user's currently active contest session, if any."""
+        active_stmt = select(ContestSession).where(
+            ContestSession.user_id == user.id,
+            ContestSession.status == "active",
+        )
+        active_result = await db.execute(active_stmt)
+        session = active_result.scalar_one_or_none()
+
+        if session is None:
+            return None
+
+        # Calculate remaining time
+        remaining = ContestService._calculate_remaining(session)
+
+        # If time expired, auto-end the contest and return None
+        if remaining is not None and remaining <= 0:
+            await ContestService._auto_end_expired(db, session, user)
+            return None
+
+        # Build problem info list from stored data + problem records
+        problem_infos = await ContestService._build_problem_infos(db, session)
+
+        return ContestSessionInfo(
+            id=session.id,
+            tier=session.contest_tier,
+            problems=problem_infos,
+            total_problems=session.total_problems,
+            problems_solved=session.problems_solved,
+            submissions=session.submissions,
+            time_limit_minutes=session.time_limit,
+            started_at=session.started_at,
+            ended_at=session.ended_at,
+            remaining_seconds=remaining,
+            status=session.status,
+            elo_change=session.elo_change,
+        )
+
+    # ------------------------------------------------------------------
+    # 4. Get contest status
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -257,7 +303,7 @@ class ContestService:
         )
 
     # ------------------------------------------------------------------
-    # 4. Submit problem result
+    # 5. Submit problem result
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -377,7 +423,7 @@ class ContestService:
         )
 
     # ------------------------------------------------------------------
-    # 5. End contest
+    # 6. End contest
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -462,7 +508,7 @@ class ContestService:
         )
 
     # ------------------------------------------------------------------
-    # 6. Get contest history
+    # 7. Get contest history
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -496,7 +542,7 @@ class ContestService:
         ]
 
     # ------------------------------------------------------------------
-    # 7. Get contest result
+    # 8. Get contest result
     # ------------------------------------------------------------------
 
     @staticmethod

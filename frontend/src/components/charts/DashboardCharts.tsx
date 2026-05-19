@@ -124,21 +124,19 @@ export function DashboardCharts() {
         setStats(buildStatsFromTransactions(transactions, 0, []));
       }
 
-      // Note: Elo history and PP records endpoints are not yet available in the
-      // backend API. The chart components accept these via props and display an
-      // empty-state message when data is empty. Once the backend exposes
-      // /auth/elo-history and /auth/pp-records endpoints, uncomment the fetches
-      // below.
-      //
-      // const eloResult = await api.get<ApiResponse<EloHistoryPoint[]>>("/auth/elo-history").then(r => r.data.data).catch(() => []);
-      // setEloData(eloResult);
-      //
-      // const ppResult = await api.get<ApiResponse<PPContributionItem[]>>("/auth/pp-contributions?limit=20").then(r => r.data.data).catch(() => []);
-      // setPpData(ppResult);
+      // Elo history
+      const eloResult = await api
+        .get<ApiResponse<EloHistoryPoint[]>>("/auth/elo-history")
+        .then((r) => r.data.data)
+        .catch(() => []);
+      setEloData(eloResult);
 
-      // For now, keep eloData and ppData as empty arrays so the empty state renders.
-      setEloData([]);
-      setPpData([]);
+      // PP contributions
+      const ppResult = await api
+        .get<ApiResponse<PPContributionItem[]>>("/auth/pp-contributions?limit=20")
+        .then((r) => r.data.data)
+        .catch(() => []);
+      setPpData(ppResult);
     } catch {
       // Silently fail - charts show empty state
     } finally {

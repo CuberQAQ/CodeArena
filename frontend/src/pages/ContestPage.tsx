@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trophy, Loader2, Target, ShieldCheck, Crown } from "lucide-react";
+import { Trophy, Loader2, Target, ShieldCheck, Crown, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { extractApiError } from "@/utils";
 import api from "@/services/api";
-import type { ApiResponse, TierInfo, ContestHistoryItem } from "@/types";
+import type { ApiResponse, TierInfo, ContestHistoryItem, ContestSessionInfo } from "@/types";
 
 const TIER_ICONS: Record<string, React.ElementType> = {
   beginner: ShieldCheck,
@@ -29,6 +29,7 @@ export default function ContestPage() {
   const navigate = useNavigate();
   const [tiers, setTiers] = useState<TierInfo[]>([]);
   const [history, setHistory] = useState<ContestHistoryItem[]>([]);
+  const [activeContest, setActiveContest] = useState<ContestSessionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -39,9 +40,14 @@ export default function ContestPage() {
       api
         .get<ApiResponse<ContestHistoryItem[]>>("/contest/history?limit=5")
         .catch(() => ({ data: { data: [] } })),
-    ]).then(([tiersRes, historyRes]) => {
+      api
+        .get<ApiResponse<ContestSessionInfo | null>>("/contest/active")
+        .then((res) => (res.data.data as ContestSessionInfo | null) ?? null)
+        .catch(() => null),
+    ]).then(([tiersRes, historyRes, activeRes]) => {
       setTiers((tiersRes.data as ApiResponse<TierInfo[]>).data ?? []);
       setHistory((historyRes.data as ApiResponse<ContestHistoryItem[]>).data ?? []);
+      setActiveContest(activeRes);
       setLoading(false);
     });
   }, []);
@@ -63,6 +69,8 @@ export default function ContestPage() {
     return <LoadingSpinner text="Loading contests..." className="py-20" />;
   }
 
+  const hasActiveContest = activeContest !== null;
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
@@ -75,6 +83,28 @@ export default function ContestPage() {
       {error && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {/* Active contest resume banner */}
+      {hasActiveContest && (
+        <div className="flex items-center justify-between rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+              <Play className="size-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                You have an active contest in progress!
+              </p>
+              <p className="text-xs text-muted-foreground capitalize">
+                {activeContest.tier} tier &middot; {activeContest.problems_solved}/{activeContest.total_problems} solved
+              </p>
+            </div>
+          </div>
+          <Button onClick={() => navigate(`/contest/${activeContest.id}`)}>
+            Resume Contest
+          </Button>
         </div>
       )}
 
@@ -132,13 +162,15 @@ export default function ContestPage() {
                 <Button
                   className="mt-4 w-full"
                   onClick={() => handleStart(tier.tier)}
-                  disabled={isStarting || !tier.eligible}
+                  disabled={isStarting || !tier.eligible || hasActiveContest}
                 >
                   {isStarting ? (
                     <>
                       <Loader2 className="mr-2 size-4 animate-spin" />
                       Starting...
                     </>
+                  ) : hasActiveContest ? (
+                    "Active Contest Running"
                   ) : !tier.eligible ? (
                     "Elo Required"
                   ) : (

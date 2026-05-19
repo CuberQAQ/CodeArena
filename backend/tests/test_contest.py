@@ -1199,3 +1199,127 @@ class TestEndContestValidation:
 
         with pytest.raises(BadRequestException, match="not active"):
             await ContestService.end_contest(db, user, started.id)
+
+
+# ===========================================================================
+# Test: Get active contest
+# ===========================================================================
+
+
+class TestGetActiveContest:
+    """Verify get_active_contest returns the active session or None."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_active(self, db):
+        """Returns None when the user has no active contest."""
+        user = _make_user(elo=1300)
+        db.add(user)
+        await db.flush()
+
+        result = await ContestService.get_active_contest(db, user)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_after_ended(self, db):
+        """Returns None after contest has been ended."""
+        user = _make_user(elo=1300)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        started = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        await db.commit()
+
+        await ContestService.end_contest(db, user, started.id)
+        await db.commit()
+
+        result = await ContestService.get_active_contest(db, user)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_active_contest_info(self, db):
+        """Returns ContestSessionInfo when user has an active contest."""
+        user = _make_user(elo=1300)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        started = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        await db.commit()
+
+        result = await ContestService.get_active_contest(db, user)
+        assert result is not None
+        assert result.id == started.id
+        assert result.tier == "beginner"
+        assert result.status == "active"
+        assert result.remaining_seconds is not None
+        assert result.remaining_seconds > 0
+        assert len(result.problems) == 4
+
+    @pytest.mark.asyncio
+    async def test_auto_ends_expired_contest(self, db):
+        """Auto-ends contest and returns None when time has expired."""
+        user = _make_user(elo=1300)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        started = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        await db.commit()
+
+        # Manually set started_at to past to simulate expiry
+        session = await db.get(_TestContestSession, started.id)
+        session.started_at = datetime.now(UTC) - timedelta(minutes=91)
+        await db.flush()
+
+        result = await ContestService.get_active_contest(db, user)
+        assert result is None
+
+        # Verify the contest was auto-ended
+        await db.refresh(session)
+        assert session.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_includes_problem_info(self, db):
+        """Returned info includes problem details with solve status."""
+        user = _make_user(elo=1300)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        started = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        await db.commit()
+
+        # Solve one problem
+        problem = started.problems[0]
+        await ContestService.submit_problem(
+            db, user, started.id,
+            problem_id=problem.problem_id,
+            solved=True,
+            attempts=1,
+            time_spent=300.0,
+        )
+        await db.commit()
+
+        result = await ContestService.get_active_contest(db, user)
+        assert result is not None
+        assert result.problems_solved == 1
+
+        solved_problem = next(p for p in result.problems if p.problem_id == problem.problem_id)
+        assert solved_problem.solved is True
+
+    @pytest.mark.asyncio
+    async def test_does_not_return_other_users_contest(self, db):
+        """Only returns active contests belonging to the requesting user."""
+        user1 = _make_user(elo=1300)
+        user2 = _make_user(elo=1300)
+        db.add_all([user1, user2])
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        await ContestService.start_contest(db, user1, "beginner", cf_mock)
+        await db.commit()
+
+        # user2 should have no active contest
+        result = await ContestService.get_active_contest(db, user2)
+        assert result is None
