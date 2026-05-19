@@ -732,6 +732,7 @@ class TrainingService:
                 problem_rating=problem_rating,
                 wa_count=wa_count,
                 time_spent=time_spent_minutes,
+                user_elo=user.elo,
             )
 
             # Elo calculation with shield and polarization

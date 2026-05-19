@@ -835,6 +835,7 @@ async def _settle_challenge(
             problem_rating=session.problem_rating,
             wa_count=challenger_wa,
             time_spent=challenger_time_min,
+            user_elo=new_challenger_elo,
         )
 
     if session.opponent_solved and session.problem_rating > 0:
@@ -847,6 +848,7 @@ async def _settle_challenge(
             problem_rating=session.problem_rating,
             wa_count=opponent_wa,
             time_spent=opponent_time_min,
+            user_elo=new_opponent_elo,
         )
 
     # Update session

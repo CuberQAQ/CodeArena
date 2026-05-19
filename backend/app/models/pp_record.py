@@ -25,6 +25,7 @@ class PPRecord(Base, UUIDPrimaryKeyMixin):
     time_spent_minutes: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
     performance_factor: Mapped[float] = mapped_column(Float, server_default="1.0", nullable=False)
     final_pp: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
+    overkill_multiplier: Mapped[float] = mapped_column(Float, server_default="1.0", nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="pp_records")

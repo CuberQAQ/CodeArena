@@ -27,6 +27,12 @@ DEFAULT_CONFIG: dict = {
         "performance_factor_wa_penalty": 0.03,
         "performance_factor_time_penalty": 0.01,
         "performance_factor_time_min": 0.6,
+        "overkill_threshold": 150,
+        "overkill_tiers": [
+            {"min_gap": 150, "max_gap": 249, "multiplier": 1.2},
+            {"min_gap": 250, "max_gap": 349, "multiplier": 1.5},
+            {"min_gap": 350, "max_gap": 9999, "multiplier": 2.0},
+        ],
     },
     "challenge": {
         "weight_within_100": 0.50,

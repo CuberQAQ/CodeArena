@@ -27,12 +27,14 @@ from app.schemas.contest import (
     ContestProblemInfo,
     ContestResult,
     ContestSessionInfo,
+    LeaderboardResponse,
     SubmitContestResponse,
     TierInfo,
 )
 from app.services import economy_service as economy_svc
 from app.services.cf_api_service import CFApiService
 from app.services.config_service import ConfigService
+from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
 from app.services.pp_service import PPService
 
@@ -202,6 +204,13 @@ class ContestService:
         )
         db.add(session)
         await db.flush()
+
+        # Generate AI bots for the contest
+        await ContestSimulationService.generate_bots(
+            db=db,
+            contest_id=session.id,
+            user_elo=user.elo,
+        )
 
         return ContestSessionInfo(
             id=session.id,
@@ -395,6 +404,7 @@ class ContestService:
                 problem_rating=problem_rating,
                 wa_count=wa_count,
                 time_spent=time_spent_minutes,
+                user_elo=user.elo,
             )
 
             # Award AC tokens via economy_service (enforces daily cap)
@@ -455,6 +465,9 @@ class ContestService:
 
         if session.status != "active":
             raise BadRequestException(message="Contest session is not active")
+
+        # Stop the background simulation if running
+        await ContestSimulationService.stop_simulation(contest_id)
 
         now = datetime.now(UTC)
         session.ended_at = now
@@ -604,6 +617,22 @@ class ContestService:
         )
 
     # ------------------------------------------------------------------
+    # 9. Get leaderboard (human + bots)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def get_leaderboard(
+        db: AsyncSession,
+        user: User,
+        contest_id: uuid.UUID,
+    ) -> LeaderboardResponse:
+        """Get the combined human+bot leaderboard for a contest."""
+        session = await ContestService._get_and_validate_session(
+            db, user, contest_id
+        )
+        return await ContestSimulationService.build_leaderboard(db, contest_id, user)
+
+    # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
@@ -648,6 +677,9 @@ class ContestService:
         user: User,
     ) -> None:
         """Auto-end an expired contest using M-Elo settlement."""
+        # Stop the background simulation if running
+        await ContestSimulationService.stop_simulation(session.id)
+
         now = datetime.now(UTC)
         session.ended_at = now
         session.status = "completed"

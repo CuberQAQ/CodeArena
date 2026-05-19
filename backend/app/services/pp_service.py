@@ -88,6 +88,60 @@ class PPService:
         return math.sqrt((problem_rating - config.base_formula_offset) / 100.0) * config.base_formula_coefficient
 
     # ------------------------------------------------------------------
+    # 1b. Overkill multiplier
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_overkill_multiplier(
+        user_elo: int,
+        problem_rating: int,
+        overkill_config: dict | None = None,
+    ) -> float:
+        """Return the PP multiplier for solving a problem well above user Elo.
+
+        The multiplier is determined by how much the problem rating exceeds the
+        user's Elo.  Only applies when the gap is strictly greater than the
+        configured threshold.
+
+        Parameters
+        ----------
+        user_elo :
+            The user's current Elo rating.
+        problem_rating :
+            The difficulty rating of the problem.
+        overkill_config :
+            Dict with keys ``overkill_threshold`` and ``overkill_tiers``.
+            If ``None``, built-in defaults are used.
+
+        Returns
+        -------
+        float
+            Multiplier (1.0 if no overkill, otherwise 1.2 / 1.5 / 2.0).
+        """
+        if overkill_config is None:
+            overkill_config = {
+                "overkill_threshold": 150,
+                "overkill_tiers": [
+                    {"min_gap": 150, "max_gap": 249, "multiplier": 1.2},
+                    {"min_gap": 250, "max_gap": 349, "multiplier": 1.5},
+                    {"min_gap": 350, "max_gap": 9999, "multiplier": 2.0},
+                ],
+            }
+
+        gap = problem_rating - user_elo
+        threshold = overkill_config.get("overkill_threshold", 150)
+
+        if gap <= threshold:
+            return 1.0
+
+        tiers = overkill_config.get("overkill_tiers", [])
+        for tier in sorted(tiers, key=lambda t: t["min_gap"]):
+            if tier["min_gap"] <= gap <= tier["max_gap"]:
+                return tier["multiplier"]
+
+        return 1.0
+
+    # ------------------------------------------------------------------
     # 2. Performance factor
     # ------------------------------------------------------------------
 
@@ -183,6 +237,8 @@ class PPService:
         wa_count: int = 0,
         time_spent: float = 0.0,
         config: PPConfig | None = None,
+        user_elo: int | None = None,
+        overkill_config: dict | None = None,
     ) -> PPRecord:
         """Create or update a PP record for a user solving a problem.
 
@@ -191,6 +247,9 @@ class PPService:
           update the record (base_pp and problem_rating).
         - ``hints_used`` is always incremented on the existing record so that
           total hint usage is tracked, but hints do **not** affect PP value.
+        - If ``user_elo`` is provided and the problem rating exceeds the user's
+          Elo by more than the configured threshold, an overkill multiplier is
+          applied to the final PP value.
 
         After the record is created/updated the user's total PP is
         recalculated and written to ``users.pp``.
@@ -213,6 +272,12 @@ class PPService:
             Time from first attempt to AC, in minutes.
         config :
             Optional config override.
+        user_elo :
+            The user's current Elo rating.  When provided, the overkill
+            multiplier is computed and applied to final_pp.
+        overkill_config :
+            Optional dict with ``overkill_threshold`` and ``overkill_tiers``.
+            If ``None`` and ``user_elo`` is provided, defaults are used.
 
         Returns
         -------
@@ -224,7 +289,15 @@ class PPService:
 
         base_pp = PPService.calculate_base_pp(problem_rating, config)
         performance_factor = PPService.calculate_performance_factor(wa_count, time_spent, config)
-        final_pp = base_pp * performance_factor
+
+        # Calculate overkill multiplier if user_elo is provided
+        overkill_multiplier = 1.0
+        if user_elo is not None:
+            overkill_multiplier = PPService.calculate_overkill_multiplier(
+                user_elo, problem_rating, overkill_config
+            )
+
+        final_pp = base_pp * performance_factor * overkill_multiplier
 
         # Check for existing record
         stmt = select(PPRecord).where(
@@ -247,6 +320,7 @@ class PPService:
                 wa_count=wa_count,
                 time_spent_minutes=time_spent,
                 performance_factor=performance_factor,
+                overkill_multiplier=overkill_multiplier,
                 final_pp=final_pp,
             )
             db.add(record)
@@ -263,6 +337,7 @@ class PPService:
                 existing.wa_count = wa_count
                 existing.time_spent_minutes = time_spent
                 existing.performance_factor = performance_factor
+                existing.overkill_multiplier = overkill_multiplier
                 existing.final_pp = final_pp
 
             await db.flush()
