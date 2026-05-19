@@ -12,6 +12,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.database import async_session_factory
 from app.core.security import decode_token
+from app.models.contest_session import ContestSession
 from app.models.user import User
 from app.schemas.contest import LeaderboardResponse
 from app.services.contest_simulation_service import ContestSimulationService
@@ -69,6 +70,13 @@ async def contest_live_leaderboard(
     if user is None:
         await websocket.close(code=4001, reason="Authentication failed")
         return
+
+    # Verify contest ownership
+    async with async_session_factory() as check_db:
+        contest_session = await check_db.get(ContestSession, contest_id)
+        if contest_session is None or str(contest_session.user_id) != str(user.id):
+            await websocket.close(code=4003, reason="Contest access denied")
+            return
 
     # Accept connection
     await websocket.accept()

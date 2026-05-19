@@ -197,6 +197,7 @@ async def db(async_engine):
             # Patch ContestSimulationService to avoid DB operations on contest_bots table
             patch.object(ContestSimulationService, "generate_bots", AsyncMock(return_value=[])),
             patch.object(ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),
+            patch.object(ContestSimulationService, "start_simulation", AsyncMock(return_value=None)),
         ):
             yield session
 

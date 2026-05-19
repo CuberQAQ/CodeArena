@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import async_session_factory
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.models.contest_problem_record import ContestProblemRecord
 from app.models.contest_session import ContestSession
@@ -210,6 +211,12 @@ class ContestService:
             db=db,
             contest_id=session.id,
             user_elo=user.elo,
+        )
+
+        # Start background simulation so bots make progress over time
+        await ContestSimulationService.start_simulation(
+            contest_id=session.id,
+            db_factory=async_session_factory,
         )
 
         return ContestSessionInfo(
