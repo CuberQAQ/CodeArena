@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { DashboardCharts } from "@/components/charts/DashboardCharts";
 import { getRatingColor } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, TransactionItem } from "@/types";
@@ -230,6 +231,9 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Analytics Charts */}
+      <DashboardCharts />
     </div>
   );
 }

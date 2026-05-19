@@ -321,3 +321,42 @@ export interface DailyStatus {
   daily_remaining: number;
   breakdown: Record<string, number>;
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard / Visualization
+// ---------------------------------------------------------------------------
+
+export interface EloHistoryPoint {
+  date: string;
+  elo: number;
+  change: number;
+}
+
+export interface RadarDataPoint {
+  topic: string;
+  value: number;
+  fullMark: number;
+}
+
+export interface PPContributionItem {
+  problem_id: string;
+  problem_name: string;
+  rating: number;
+  pp: number;
+}
+
+export interface DifficultyDistribution {
+  difficulty: string;
+  count: number;
+  color: string;
+}
+
+export interface DashboardStats {
+  total_solved: number;
+  difficulty_distribution: DifficultyDistribution[];
+  challenge_win_rate: number;
+  challenge_total: number;
+  challenge_wins: number;
+  total_tokens_earned: number;
+  total_tokens_spent: number;
+}
