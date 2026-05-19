@@ -229,6 +229,6 @@ Explicit user requests:
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
 
-## other rules
+# other rules
 - 不同task要开新的feature engineer
 - 每个task完成后必须commit
