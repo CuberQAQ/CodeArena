@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.admin import router as admin_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.cf_handle import router as cf_handle_router
 from app.api.v1.challenge import router as challenge_router
 from app.api.v1.contest import router as contest_router
 from app.api.v1.economy import router as economy_router
@@ -11,6 +12,7 @@ from app.api.v1.training import router as training_router
 api_router = APIRouter()
 
 api_router.include_router(auth_router)
+api_router.include_router(cf_handle_router)
 api_router.include_router(challenge_router)
 api_router.include_router(training_router)
 api_router.include_router(contest_router)

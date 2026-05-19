@@ -14,6 +14,7 @@ class User(Base, UUIDPrimaryKeyMixin):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     cf_handle: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     cf_handle_verified: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+    cf_verification_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     elo: Mapped[int] = mapped_column(Integer, server_default="1200", nullable=False, index=True)
     pp: Mapped[float] = mapped_column(Float, server_default="0", nullable=False, index=True)
     tokens: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
