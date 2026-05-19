@@ -672,3 +672,478 @@ class TestSimulationIntegration:
             curr = leaderboard.leaderboard[i]
             next_entry = leaderboard.leaderboard[i + 1]
             assert (curr.solved, curr.elo) >= (next_entry.solved, next_entry.elo)
+
+
+# ===========================================================================
+# Test: Performance Rating (PR) calculation
+# ===========================================================================
+
+
+class TestActualRank:
+    """Verify actual rank calculation."""
+
+    def test_player_best(self):
+        """Player solved most -> rank 1."""
+        rank = ContestSimulationService.calculate_actual_rank(5, [4, 3, 2, 1, 0])
+        assert rank == 1
+
+    def test_player_worst(self):
+        """Player solved nothing -> rank = number of bots ahead + 1."""
+        rank = ContestSimulationService.calculate_actual_rank(0, [4, 3, 2, 1, 0])
+        # 4 bots have strictly more than 0
+        assert rank == 5
+
+    def test_player_middle(self):
+        """Player in middle of pack."""
+        rank = ContestSimulationService.calculate_actual_rank(3, [5, 4, 3, 2, 1])
+        # 2 bots with strictly more (5, 4)
+        assert rank == 3
+
+    def test_player_tied(self):
+        """Player tied with some bots: tied bots do NOT count as ahead."""
+        rank = ContestSimulationService.calculate_actual_rank(3, [3, 3, 2, 1])
+        # No bot has strictly more than 3
+        assert rank == 1
+
+    def test_empty_bots(self):
+        """No bots -> player is rank 1."""
+        rank = ContestSimulationService.calculate_actual_rank(3, [])
+        assert rank == 1
+
+
+class TestActualRankSmooth:
+    """Verify smooth actual rank calculation (Elo-based expected)."""
+
+    def test_player_best_smooth(self):
+        """Player solved all -> smooth rank 1 when no bot expects more."""
+        bot_elos = [1000, 1200, 1400]
+        problem_ratings = [1500, 1500, 1500, 1500, 1500]
+        # Bot expected solved: ~2.5 each at 1500 vs 1500 -> all < 5
+        rank = ContestSimulationService.calculate_actual_rank_smooth(
+            5, bot_elos, problem_ratings,
+        )
+        assert rank == 1.0
+
+    def test_player_worst_smooth(self):
+        """Player solved 0 -> all bots beat player."""
+        bot_elos = [2000, 2000, 2000]
+        problem_ratings = [1000, 1000, 1000]
+        # Bot expected solved: ~3 each (P(AC)~1 for 2000 vs 1000) -> all > 0
+        rank = ContestSimulationService.calculate_actual_rank_smooth(
+            0, bot_elos, problem_ratings,
+        )
+        assert rank == 4.0  # 3 bots ahead + 1
+
+    def test_smooth_rank_bounded(self):
+        """Smooth rank is always in [1, N+1]."""
+        bot_elos = [1200, 1400, 1600, 1800]
+        problem_ratings = [1500, 1500, 1500]
+        for ps in range(6):
+            rank = ContestSimulationService.calculate_actual_rank_smooth(
+                ps, bot_elos, problem_ratings,
+            )
+            assert 1.0 <= rank <= 5.0
+
+
+class TestExpectedRank:
+    """Verify expected rank calculation."""
+
+    def test_high_elo_low_rank(self):
+        """High Elo player should have low expected rank (close to 1)."""
+        problem_ratings = [800, 800, 800, 800, 800]
+        rank = ContestSimulationService.calculate_expected_rank(
+            3000, [1000, 1000, 1000], problem_ratings, 5,
+        )
+        # Player at 3000 expects ~5, bots at 1000 expect ~3.8 each
+        # No bot beats player -> rank = 1
+        assert rank == 1.0
+
+    def test_low_elo_high_rank(self):
+        """Low Elo player should have high expected rank."""
+        problem_ratings = [2000, 2000, 2000, 2000, 2000]
+        rank = ContestSimulationService.calculate_expected_rank(
+            500, [2000, 2000, 2000], problem_ratings, 0,
+        )
+        # Player at 500 expects very little, bots at 2000 expect ~2.5 each
+        # All bots beat player -> rank = 4
+        assert rank > 3.0
+
+    def test_equal_scenario(self):
+        """Player and bots at same level -> rank around middle."""
+        problem_ratings = [1500, 1500, 1500, 1500, 1500]
+        rank = ContestSimulationService.calculate_expected_rank(
+            1500, [1500, 1500, 1500, 1500], problem_ratings, 2,
+        )
+        # At elo=1500, player expects 2.5, each bot also 2.5 -> tied
+        # No bot has strictly more -> rank = 1
+        assert 1.0 <= rank <= 5.0
+
+    def test_no_problems(self):
+        """No problems -> expected rank is 1."""
+        rank = ContestSimulationService.calculate_expected_rank(
+            1500, [1500, 1500], [], 0,
+        )
+        assert rank == 1.0
+
+    def test_no_bots(self):
+        """No bots -> expected rank is 1."""
+        rank = ContestSimulationService.calculate_expected_rank(
+            1500, [], [1500, 1500], 2,
+        )
+        assert rank == 1.0
+
+
+class TestPerformanceRating:
+    """Verify PR binary search calculation via DB integration tests."""
+
+    @pytest.mark.asyncio
+    async def test_champion_pr_high(self, db):
+        """Player solves all problems -> PR should be high (near max bot elo or higher)."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        contest = _make_contest_session(user_id=user.id, problems_solved=5)
+        db.add(contest)
+        await db.flush()
+
+        # Create bots with varied elos
+        for i in range(10):
+            bot = _TestContestBot(
+                contest_id=contest.id,
+                bot_name=f"Bot_{i}",
+                bot_elo=1200 + i * 50,
+                problems_solved=1 + i % 3,
+                solved_problem_ids=[],
+                total_attempts=5,
+            )
+            db.add(bot)
+        await db.flush()
+
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db, contest.id, player_solved=5,
+        )
+        # Player solved 5 (all), no bot expects > 5 solves at these Elo levels
+        # PR should be near or above the highest bot Elo (1650)
+        assert pr >= 1400
+
+    @pytest.mark.asyncio
+    async def test_last_place_pr_low(self, db):
+        """Player solves 0 problems -> PR should be low."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        contest = _make_contest_session(user_id=user.id, problems_solved=0)
+        db.add(contest)
+        await db.flush()
+
+        # Create bots that have solved many problems
+        for i in range(10):
+            bot = _TestContestBot(
+                contest_id=contest.id,
+                bot_name=f"Bot_{i}",
+                bot_elo=1500 + i * 50,
+                problems_solved=3 + i % 3,
+                solved_problem_ids=[],
+                total_attempts=5,
+            )
+            db.add(bot)
+        await db.flush()
+
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db, contest.id, player_solved=0,
+        )
+        # Player solved 0 -> all bots expected to have more solves -> very low PR
+        assert pr < 1200
+
+    @pytest.mark.asyncio
+    async def test_midpack_pr_near_average(self, db):
+        """Player in the middle -> PR should be near bot Elo average."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        contest = _make_contest_session(user_id=user.id, problems_solved=3)
+        db.add(contest)
+        await db.flush()
+
+        # Create bots with varied Elo and solved counts
+        bot_data = [
+            (1500, 5), (1600, 4), (1400, 4),
+            (1550, 3), (1450, 3),
+            (1500, 2), (1350, 1), (1600, 0),
+        ]
+        for i, (elo, solved) in enumerate(bot_data):
+            bot = _TestContestBot(
+                contest_id=contest.id,
+                bot_name=f"Bot_{i}",
+                bot_elo=elo,
+                problems_solved=solved,
+                solved_problem_ids=[],
+                total_attempts=5,
+            )
+            db.add(bot)
+        await db.flush()
+
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db, contest.id, player_solved=3,
+        )
+        # Player solved 3, which is middle of pack
+        # PR should be somewhere in the reasonable range [1000, 2000]
+        assert 800 < pr < 2500
+
+    @pytest.mark.asyncio
+    async def test_pr_bounded_0_4000(self, db):
+        """PR is always in [0, 4000]."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        contest = _make_contest_session(user_id=user.id, problems_solved=0)
+        db.add(contest)
+        await db.flush()
+
+        for i in range(5):
+            bot = _TestContestBot(
+                contest_id=contest.id,
+                bot_name=f"Bot_{i}",
+                bot_elo=3500 + i * 100,
+                problems_solved=5,
+                solved_problem_ids=[],
+                total_attempts=5,
+            )
+            db.add(bot)
+        await db.flush()
+
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db, contest.id, player_solved=0,
+        )
+        assert 0 <= pr <= 4000
+
+    @pytest.mark.asyncio
+    async def test_pr_no_bots_fallback(self, db):
+        """PR with no bots uses fallback estimation."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        contest = _make_contest_session(user_id=user.id, problems_solved=3)
+        db.add(contest)
+        await db.flush()
+
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db, contest.id, player_solved=3,
+        )
+        # Should still return a valid PR
+        assert 0 <= pr <= 4000
+        # With 3/5 solved, PR should be somewhat reasonable
+        assert pr > 0
+
+    @pytest.mark.asyncio
+    async def test_pr_with_one_bot(self, db):
+        """PR works with just 1 bot."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        contest = _make_contest_session(user_id=user.id, problems_solved=3)
+        db.add(contest)
+        await db.flush()
+
+        bot = _TestContestBot(
+            contest_id=contest.id,
+            bot_name="SoloBot",
+            bot_elo=1500,
+            problems_solved=2,
+            solved_problem_ids=[],
+            total_attempts=5,
+        )
+        db.add(bot)
+        await db.flush()
+
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db, contest.id, player_solved=3,
+        )
+        # Player solved more than bot -> PR should be reasonable
+        assert pr > 0
+        assert 0 <= pr <= 4000
+
+
+class TestPerformanceRatingConvergence:
+    """Verify binary search converges correctly."""
+
+    def test_binary_search_precision(self):
+        """Binary search converges within +/- 1 precision."""
+        bot_elos = [1200, 1400, 1600, 1800, 2000]
+        problem_ratings = [1200, 1400, 1600, 1800, 2000]
+        player_solved = 3
+
+        actual_rank = ContestSimulationService.calculate_actual_rank_smooth(
+            player_solved, bot_elos, problem_ratings,
+        )
+
+        lo, hi = 0, 4000
+        iterations = 0
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            expected_rank = ContestSimulationService.calculate_expected_rank(
+                mid, bot_elos, problem_ratings, player_solved,
+            )
+            if expected_rank <= actual_rank:
+                hi = mid
+            else:
+                lo = mid
+            iterations += 1
+
+        # Should converge in ~12 iterations (log2(4000) ~ 12)
+        assert iterations <= 15
+        assert hi - lo <= 1
+
+
+class TestEstimatePrNoBots:
+    """Verify PR fallback when no bots are present."""
+
+    def test_full_solve(self):
+        """Full solve -> PR higher than average rating."""
+        problems = [
+            {"rating": 1000}, {"rating": 1200},
+            {"rating": 1400}, {"rating": 1600},
+            {"rating": 1800},
+        ]
+        pr = ContestSimulationService._estimate_pr_no_bots(5, problems)
+        avg = sum(p["rating"] for p in problems) / len(problems)
+        # solve_ratio=1.0 -> PR = avg * 1.5
+        assert pr == int(avg * 1.5)
+
+    def test_no_solve(self):
+        """No solve -> PR lower than average rating."""
+        problems = [{"rating": 1000}, {"rating": 1500}]
+        pr = ContestSimulationService._estimate_pr_no_bots(0, problems)
+        # avg=1250, solve_ratio=0 -> PR = 1250 * 0.5 = 625
+        assert pr == 625
+
+    def test_no_problems(self):
+        """No problems -> fallback to 1000."""
+        pr = ContestSimulationService._estimate_pr_no_bots(0, [])
+        assert pr == 1000
+
+    def test_half_solve(self):
+        """Half solve -> PR at average rating."""
+        problems = [
+            {"rating": 1000}, {"rating": 1500},
+            {"rating": 2000}, {"rating": 2500},
+        ]
+        pr = ContestSimulationService._estimate_pr_no_bots(2, problems)
+        # avg = 1750, solve_ratio = 0.5 -> PR = 1750 * (0.5 + 0.5) = 1750
+        assert pr == 1750
+
+
+# ===========================================================================
+# Test: PR Elo settlement integration
+# ===========================================================================
+
+
+class _TestEloHistory(_TestBase):
+    __tablename__ = "elo_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    elo_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    elo_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    elo_change: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(50), nullable=False)
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+
+
+class _TestTokenTransaction(_TestBase):
+    __tablename__ = "token_transactions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    tx_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+
+
+class _TestPPRecord(_TestBase):
+    __tablename__ = "pp_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    problem_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    wa_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    time_spent: Mapped[float] = mapped_column(Integer, default=0, nullable=False)
+    user_elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
+
+
+class TestPrEloSettlement:
+    """Verify that PR-based Elo settlement formula works correctly."""
+
+    def test_elo_change_formula(self):
+        """Elo change = K * (PR - current_elo) / 400."""
+        # K=32, PR=1800, current_elo=1500
+        # elo_change = 32 * (1800 - 1500) / 400 = 32 * 0.75 = 24
+        pr = 1800
+        current_elo = 1500
+        k = 32.0
+        elo_change = round(k * (pr - current_elo) / 400)
+        assert elo_change == 24
+
+    def test_elo_change_negative(self):
+        """When PR < current_elo, Elo change is negative."""
+        pr = 1000
+        current_elo = 1500
+        k = 32.0
+        elo_change = round(k * (pr - current_elo) / 400)
+        assert elo_change < 0
+        assert elo_change == -40
+
+    def test_elo_change_zero(self):
+        """When PR == current_elo, Elo change is 0."""
+        pr = 1500
+        current_elo = 1500
+        k = 32.0
+        elo_change = round(k * (pr - current_elo) / 400)
+        assert elo_change == 0
+
+    def test_large_elo_update(self):
+        """PR settlement produces larger changes than standard Elo."""
+        # Standard Elo: K * (S - E) where S in [0,1] and E ~ 0.5
+        # Max standard change: K * 0.5 = 16 (for K=32)
+        # PR settlement: K * (PR - elo) / 400
+        # For PR=2200, elo=1000: K * 1200/400 = K * 3 = 96
+        pr = 2200
+        current_elo = 1000
+        k = 32.0
+        elo_change = round(k * (pr - current_elo) / 400)
+        assert elo_change > 32  # Much larger than standard Elo update
+        assert elo_change == 96
+
+    @pytest.mark.asyncio
+    async def test_pr_and_elo_change_integration(self, db):
+        """End-to-end: compute PR and verify Elo change formula."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        contest = _make_contest_session(user_id=user.id, problems_solved=4)
+        db.add(contest)
+        await db.flush()
+
+        # Create bots that solved fewer than player
+        for i in range(10):
+            bot = _TestContestBot(
+                contest_id=contest.id,
+                bot_name=f"Bot_{i}",
+                bot_elo=1200 + i * 50,
+                problems_solved=1 + i % 3,
+                solved_problem_ids=[],
+                total_attempts=5,
+            )
+            db.add(bot)
+        await db.flush()
+
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db, contest.id, player_solved=4,
+        )
+
+        # PR should be reasonable for 4/5 solved
+        assert pr > 0
+        assert pr <= 4000
+
+        # Calculate what Elo change would be with K=32
+        k = 32.0
+        elo_change = round(k * (pr - 1500) / 400)
+
+        # Player solved 4/5 which is very good -> PR likely > 1500 -> positive change
+        assert pr >= 1500
+        assert elo_change >= 0

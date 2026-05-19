@@ -358,6 +358,224 @@ class ContestSimulationService:
         )
 
     # ------------------------------------------------------------------
+    # 6. Performance Rating (PR) calculation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def calculate_performance_rating(
+        db: AsyncSession,
+        contest_id: uuid.UUID,
+        player_solved: int,
+    ) -> int:
+        """Calculate the Performance Rating (PR) for a player via binary search.
+
+        Finds the PR value such that, when treated as the player's Elo, the
+        player's expected rank among all participants (bots + player) matches
+        their actual rank.
+
+        Parameters
+        ----------
+        db:
+            Async database session.
+        contest_id:
+            The contest session whose bots are used as the reference field.
+        player_solved:
+            Number of problems solved by the human player.
+
+        Returns
+        -------
+        int
+            The Performance Rating, clamped to [0, 4000].
+        """
+        # Fetch contest session to get problem ratings
+        session = await db.get(ContestSession, contest_id)
+        problems: list[dict] = session.problems or [] if session else []
+
+        # Fetch bots
+        bots_stmt = select(ContestBot).where(ContestBot.contest_id == contest_id)
+        bots_result = await db.execute(bots_stmt)
+        bots = bots_result.scalars().all()
+
+        bot_elos: list[int] = [b.bot_elo for b in bots]
+
+        # Edge case: no bots -> PR equals a simple estimate based on solved ratio
+        if not bot_elos:
+            return ContestSimulationService._estimate_pr_no_bots(player_solved, problems)
+
+        problem_ratings: list[int] = [p.get("rating", 1000) for p in problems]
+
+        # Calculate actual rank (smooth) of the player among all participants
+        # Uses the same sigmoid-based metric as calculate_expected_rank for consistency
+        actual_rank = ContestSimulationService.calculate_actual_rank_smooth(
+            player_solved, bot_elos, problem_ratings,
+        )
+
+        # Binary search for PR in [0, 4000]
+        lo, hi = 0, 4000
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            expected_rank = ContestSimulationService.calculate_expected_rank(
+                mid, bot_elos, problem_ratings, player_solved,
+            )
+            if expected_rank < actual_rank:
+                hi = mid
+            elif expected_rank > actual_rank:
+                lo = mid
+            else:
+                # Exact match
+                hi = mid
+                break
+
+        return hi
+
+    @staticmethod
+    def calculate_actual_rank(
+        player_solved: int,
+        bot_solved: list[int],
+    ) -> int:
+        """Calculate the player's actual rank (1-based, integer) among all participants.
+
+        Rank is based on how many participants have strictly more problems
+        solved, plus 1.
+
+        Parameters
+        ----------
+        player_solved:
+            Problems solved by the human player.
+        bot_solved:
+            List of problems solved by each bot.
+
+        Returns
+        -------
+        int
+            1-based rank.
+        """
+        # Count bots with strictly more solved than the player
+        ahead = sum(1 for s in bot_solved if s > player_solved)
+        return ahead + 1
+
+    @staticmethod
+    def calculate_actual_rank_smooth(
+        player_solved: int,
+        bot_elos: list[int],
+        problem_ratings: list[int],
+    ) -> float:
+        """Calculate the player's actual rank as a target for the binary search.
+
+        Computes each bot's expected solve count from their Elo, then counts
+        how many bots have a higher expected solve count than the player's
+        actual solve count, plus 1.
+
+        This produces an integer-compatible rank value that serves as the
+        target for the binary search.
+
+        Parameters
+        ----------
+        player_solved:
+            Problems solved by the human player.
+        bot_elos:
+            Elo values of all bots.
+        problem_ratings:
+            Ratings of all contest problems.
+
+        Returns
+        -------
+        float
+            Target rank for binary search (1-based).
+        """
+        player_solved_f = float(player_solved)
+        n_problems = len(problem_ratings)
+        if n_problems == 0:
+            return 1.0
+
+        # Each bot's expected solved count
+        ahead = 0
+        for elo in bot_elos:
+            bot_expected_solved = 0.0
+            for rating in problem_ratings:
+                p_ac = 1.0 / (1.0 + 10.0 ** ((rating - elo) / 400.0))
+                bot_expected_solved += p_ac
+            if bot_expected_solved > player_solved_f:
+                ahead += 1
+
+        return float(ahead + 1)
+
+    @staticmethod
+    def calculate_expected_rank(
+        player_elo: int,
+        bot_elos: list[int],
+        problem_ratings: list[int],
+        player_solved: int,
+    ) -> float:
+        """Calculate the expected rank of the player given a hypothetical Elo.
+
+        Computes each participant's expected solve count using P(AC) formula.
+        The rank is 1 + (number of bots with higher expected solve count).
+
+        This is directly comparable with ``calculate_actual_rank_smooth``.
+
+        Parameters
+        ----------
+        player_elo:
+            Hypothetical Elo (the PR candidate).
+        bot_elos:
+            Elo values of all bots.
+        problem_ratings:
+            Ratings of all contest problems.
+        player_solved:
+            Actual problems solved by the player (unused, kept for API compat).
+
+        Returns
+        -------
+        float
+            Expected rank (1-based).
+        """
+        n_problems = len(problem_ratings)
+        if n_problems == 0:
+            return 1.0
+
+        # Player's expected solved count at this hypothetical Elo
+        player_expected_solved = 0.0
+        for rating in problem_ratings:
+            p_ac = 1.0 / (1.0 + 10.0 ** ((rating - player_elo) / 400.0))
+            player_expected_solved += p_ac
+
+        # Count bots with higher expected solve count
+        ahead = 0
+        for elo in bot_elos:
+            bot_expected_solved = 0.0
+            for rating in problem_ratings:
+                p_ac = 1.0 / (1.0 + 10.0 ** ((rating - elo) / 400.0))
+                bot_expected_solved += p_ac
+            if bot_expected_solved > player_expected_solved:
+                ahead += 1
+
+        return float(ahead + 1)
+
+    @staticmethod
+    def _estimate_pr_no_bots(
+        player_solved: int,
+        problems: list[dict],
+    ) -> int:
+        """Estimate PR when there are no bots (fallback).
+
+        Uses the average problem rating as a baseline, adjusted by solve
+        ratio.
+
+        Returns
+        -------
+        int
+            Estimated PR clamped to [0, 4000].
+        """
+        if not problems:
+            return 1000  # default fallback
+        avg_rating = sum(p.get("rating", 1000) for p in problems) / len(problems)
+        solve_ratio = player_solved / len(problems) if problems else 0
+        # Scale: full solve -> avg_rating * 1.5, no solve -> avg_rating * 0.5
+        pr = int(avg_rating * (0.5 + solve_ratio))
+        return max(0, min(4000, pr))
+
+    # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 

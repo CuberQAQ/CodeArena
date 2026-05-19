@@ -198,6 +198,13 @@ async def db(async_engine):
             patch.object(ContestSimulationService, "generate_bots", AsyncMock(return_value=[])),
             patch.object(ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),
             patch.object(ContestSimulationService, "start_simulation", AsyncMock(return_value=None)),
+            # Patch calculate_performance_rating: returns PR scaled by solve ratio
+            # PR = 800 + player_solved * 400 (0 solved -> 800, all solved -> 2800)
+            patch.object(
+                ContestSimulationService,
+                "calculate_performance_rating",
+                AsyncMock(side_effect=lambda db, contest_id, player_solved: 800 + player_solved * 400),
+            ),
         ):
             yield session
 

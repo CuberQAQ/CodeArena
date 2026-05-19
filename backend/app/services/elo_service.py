@@ -21,6 +21,7 @@ class EloReason(StrEnum):
     CHALLENGE_DRAW = "challenge_draw"
     QUIT_PENALTY = "quit_penalty"
     CONTEST = "contest"
+    CONTEST_PR = "contest_pr"
 
 
 @dataclass(frozen=True)

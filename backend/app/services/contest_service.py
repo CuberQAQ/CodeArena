@@ -480,14 +480,6 @@ class ContestService:
         session.ended_at = now
         session.status = "completed"
 
-        # Calculate time used
-        time_used = 0.0
-        if session.started_at is not None:
-            delta = now - ContestService._ensure_utc(session.started_at)
-            time_used = delta.total_seconds()
-
-        time_limit_seconds = session.time_limit * 60
-
         # Determine Elo change based on submission count
         if session.submissions == 0:
             # 0 submissions: Elo unchanged
@@ -510,33 +502,13 @@ class ContestService:
             )
             db.add(history)
         else:
-            # 3+ submissions: M-Elo formula with K-factor segmentation and S-value grading
-            elo_config = await ConfigService.get_config(db, "elo")
-            k_factor_config = {
-                "k_newbie": elo_config.get("k_newbie", 40),
-                "k_veteran": elo_config.get("k_veteran", 20),
-                "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
-                "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
-            }
-            user_sub_count = await EloService.get_submission_count(db, user.id)
-
-            # Calculate S-values from problem records
-            s_values = await ContestService._calculate_contest_s_values(db, contest_id)
-
-            new_rating, elo_change = await EloService.process_contest_result(
+            # 3+ submissions: PR (Performance Rating) based settlement
+            elo_change = await ContestService._settle_with_pr(
                 db=db,
-                user_id=user.id,
-                current_rating=user.elo,
-                solved_problems=session.problems_solved,
-                total_problems=session.total_problems,
-                time_used_seconds=time_used,
-                time_limit_seconds=time_limit_seconds,
-                contest_session_id=contest_id,
-                user_submission_count=user_sub_count,
-                k_factor_config=k_factor_config,
-                s_values=s_values,
+                user=user,
+                session=session,
+                contest_id=contest_id,
             )
-            user.elo = new_rating
             session.elo_change = elo_change
 
         await db.flush()
@@ -634,9 +606,7 @@ class ContestService:
         contest_id: uuid.UUID,
     ) -> LeaderboardResponse:
         """Get the combined human+bot leaderboard for a contest."""
-        session = await ContestService._get_and_validate_session(
-            db, user, contest_id
-        )
+        await ContestService._get_and_validate_session(db, user, contest_id)
         return await ContestSimulationService.build_leaderboard(db, contest_id, user)
 
     # ------------------------------------------------------------------
@@ -683,7 +653,7 @@ class ContestService:
         session: ContestSession,
         user: User,
     ) -> None:
-        """Auto-end an expired contest using M-Elo settlement."""
+        """Auto-end an expired contest using PR settlement."""
         # Stop the background simulation if running
         await ContestSimulationService.stop_simulation(session.id)
 
@@ -691,43 +661,16 @@ class ContestService:
         session.ended_at = now
         session.status = "completed"
 
-        time_used = 0.0
-        if session.started_at is not None:
-            delta = now - ContestService._ensure_utc(session.started_at)
-            time_used = delta.total_seconds()
-
-        time_limit_seconds = session.time_limit * 60
-
-        # Use M-Elo for auto-ended contests (time ran out, treat as normal completion)
+        # Use PR settlement for auto-ended contests (time ran out, treat as normal completion)
         if session.submissions == 0:
             session.elo_change = 0
         else:
-            elo_config = await ConfigService.get_config(db, "elo")
-            k_factor_config = {
-                "k_newbie": elo_config.get("k_newbie", 40),
-                "k_veteran": elo_config.get("k_veteran", 20),
-                "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
-                "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
-            }
-            user_sub_count = await EloService.get_submission_count(db, user.id)
-
-            # Calculate S-values from problem records
-            s_values = await ContestService._calculate_contest_s_values(db, session.id)
-
-            new_rating, elo_change = await EloService.process_contest_result(
+            elo_change = await ContestService._settle_with_pr(
                 db=db,
-                user_id=user.id,
-                current_rating=user.elo,
-                solved_problems=session.problems_solved,
-                total_problems=session.total_problems,
-                time_used_seconds=time_used,
-                time_limit_seconds=time_limit_seconds,
-                contest_session_id=session.id,
-                user_submission_count=user_sub_count,
-                k_factor_config=k_factor_config,
-                s_values=s_values,
+                user=user,
+                session=session,
+                contest_id=session.id,
             )
-            user.elo = new_rating
             session.elo_change = elo_change
 
         await db.flush()
@@ -938,3 +881,61 @@ class ContestService:
             s_values.append(s_val)
 
         return s_values
+
+    @staticmethod
+    async def _settle_with_pr(
+        db: AsyncSession,
+        user: User,
+        session: ContestSession,
+        contest_id: uuid.UUID,
+    ) -> int:
+        """Settle contest Elo using PR (Performance Rating) calculation.
+
+        Uses binary search to find the PR that matches the player's actual
+        rank, then applies: elo_change = K * (PR - current_elo) / 400.
+
+        Returns
+        -------
+        int
+            The Elo change applied.
+        """
+        # Calculate PR via binary search against bot field
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db=db,
+            contest_id=contest_id,
+            player_solved=session.problems_solved,
+        )
+
+        # Determine K-factor from config
+        elo_config = await ConfigService.get_config(db, "elo")
+        k_newbie = float(elo_config.get("k_newbie", 40))
+        k_veteran = float(elo_config.get("k_veteran", 20))
+        newbie_threshold = int(elo_config.get("k_newbie_threshold", 20))
+        veteran_threshold = int(elo_config.get("k_veteran_threshold", 100))
+
+        user_sub_count = await EloService.get_submission_count(db, user.id)
+        k_factor_config = {
+            "k_newbie": k_newbie,
+            "k_veteran": k_veteran,
+            "k_newbie_threshold": newbie_threshold,
+            "k_veteran_threshold": veteran_threshold,
+        }
+        k = EloService.calculate_k_factor(user_sub_count, k_factor_config)
+
+        # Elo change = K * (PR - current_elo) / 400
+        elo_before = user.elo
+        elo_change = round(k * (pr - elo_before) / 400)
+        user.elo = elo_before + elo_change
+
+        # Record Elo history with reason "contest_pr"
+        history = EloHistory(
+            user_id=user.id,
+            elo_before=elo_before,
+            elo_after=user.elo,
+            elo_change=elo_change,
+            reason="contest_pr",
+            reference_id=contest_id,
+        )
+        db.add(history)
+
+        return elo_change
