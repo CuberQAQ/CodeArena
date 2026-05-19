@@ -1,0 +1,975 @@
+"""Tests for the challenge system: matchmaking, challenge lifecycle, and settlement.
+
+Uses lightweight SQLite-compatible test models and mocks for external services
+(CF API). The key technique is patching the production model references in
+challenge_service with test-compatible models so SQLAlchemy queries target the
+SQLite tables with the correct column set.
+"""
+
+import uuid
+from datetime import datetime
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, event
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.services import challenge_service as challenge_svc_module
+from app.services.challenge_service import (
+    ChallengeService,
+    _build_problem_info,
+    _get_pending,
+    _remove_pending,
+    _set_pending,
+    _tokens_for_rating,
+)
+from app.services.match_service import MatchResult, MatchService, QueueEntry
+
+# ---------------------------------------------------------------------------
+# Lightweight SQLite-compatible test models
+# ---------------------------------------------------------------------------
+
+
+class _TestBase(DeclarativeBase):
+    pass
+
+
+class _TestUser(_TestBase):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    username: Mapped[str] = mapped_column(String(50), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    cf_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
+    pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class _TestChallengeSession(_TestBase):
+    __tablename__ = "challenge_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    challenger_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    opponent_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    problem_id: Mapped[str] = mapped_column(String(50), default="", nullable=False)
+    problem_rating: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    challenger_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    opponent_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    challenger_solved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    opponent_solved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    challenger_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    opponent_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    result: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class _TestTokenTransaction(_TestBase):
+    __tablename__ = "token_transactions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
+    reference_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def async_engine():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    async with engine.begin() as conn:
+        await conn.run_sync(_TestBase.metadata.create_all)
+
+    yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(_TestBase.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest.fixture
+async def db(async_engine):
+    """Provide an async session with patched model references.
+
+    Patches User, ChallengeSession, and TokenTransaction in the
+    challenge_service module so that db.get() and select() calls
+    resolve to the SQLite-compatible test models.
+    """
+    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        with (
+            patch.object(challenge_svc_module, "User", _TestUser),
+            patch.object(challenge_svc_module, "ChallengeSession", _TestChallengeSession),
+            patch.object(challenge_svc_module, "TokenTransaction", _TestTokenTransaction),
+        ):
+            yield session
+
+
+@pytest.fixture
+def match_service():
+    """Provide a fresh MatchService for each test."""
+    return MatchService()
+
+
+def _make_test_user(
+    db: AsyncSession,
+    user_id: uuid.UUID | None = None,
+    username: str = "testuser",
+    elo: int = 1200,
+    tokens: int = 0,
+    cf_handle: str | None = None,
+) -> _TestUser:
+    """Create a test user instance (not yet added to session)."""
+    return _TestUser(
+        id=user_id or uuid.uuid4(),
+        username=username,
+        email=f"{username}@test.com",
+        password_hash="$2b$12$fakehash",
+        elo=elo,
+        tokens=tokens,
+        cf_handle=cf_handle,
+    )
+
+
+def _make_test_session(
+    challenger_id: uuid.UUID,
+    opponent_id: uuid.UUID,
+    status: str = "active",
+    problem_id: str = "800A",
+    problem_rating: int = 1200,
+) -> _TestChallengeSession:
+    """Create a test challenge session instance."""
+    return _TestChallengeSession(
+        challenger_id=challenger_id,
+        opponent_id=opponent_id,
+        problem_id=problem_id,
+        problem_rating=problem_rating,
+        status=status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 1. MatchService tests
+# ---------------------------------------------------------------------------
+
+
+class TestMatchServiceQueue:
+    async def test_join_queue_success(self, match_service):
+        uid = uuid.uuid4()
+        result = await match_service.join_queue(uid, 1200, "player1")
+        assert result is True
+        assert await match_service.get_queue_size() == 1
+
+    async def test_join_queue_duplicate_rejected(self, match_service):
+        uid = uuid.uuid4()
+        await match_service.join_queue(uid, 1200, "player1")
+        result = await match_service.join_queue(uid, 1200, "player1")
+        assert result is False
+        assert await match_service.get_queue_size() == 1
+
+    async def test_leave_queue_success(self, match_service):
+        uid = uuid.uuid4()
+        await match_service.join_queue(uid, 1200, "player1")
+        result = await match_service.leave_queue(uid)
+        assert result is True
+        assert await match_service.get_queue_size() == 0
+
+    async def test_leave_queue_not_present(self, match_service):
+        uid = uuid.uuid4()
+        result = await match_service.leave_queue(uid)
+        assert result is False
+
+    async def test_is_in_queue(self, match_service):
+        uid = uuid.uuid4()
+        assert await match_service.is_in_queue(uid) is False
+        await match_service.join_queue(uid, 1200, "player1")
+        assert await match_service.is_in_queue(uid) is True
+        await match_service.leave_queue(uid)
+        assert await match_service.is_in_queue(uid) is False
+
+
+class TestMatchServiceMatching:
+    async def test_try_match_no_candidates(self, match_service):
+        uid = uuid.uuid4()
+        await match_service.join_queue(uid, 1200, "player1")
+        result = await match_service.try_match(uid)
+        assert result is None
+
+    async def test_try_match_not_in_queue(self, match_service):
+        uid = uuid.uuid4()
+        result = await match_service.try_match(uid)
+        assert result is None
+
+    async def test_try_match_success(self, match_service):
+        uid_a = uuid.uuid4()
+        uid_b = uuid.uuid4()
+        await match_service.join_queue(uid_a, 1200, "player_a")
+        await match_service.join_queue(uid_b, 1250, "player_b")
+
+        result = await match_service.try_match(uid_a)
+        assert result is not None
+        assert isinstance(result, MatchResult)
+        assert result.player_a.user_id == uid_a
+        assert result.player_b.user_id == uid_b
+        assert result.avg_elo == 1225.0
+
+        # Both should be removed from queue
+        assert await match_service.get_queue_size() == 0
+
+    async def test_match_removes_both_players(self, match_service):
+        uid_a = uuid.uuid4()
+        uid_b = uuid.uuid4()
+        uid_c = uuid.uuid4()
+        await match_service.join_queue(uid_a, 1200, "a")
+        await match_service.join_queue(uid_b, 1200, "b")
+        await match_service.join_queue(uid_c, 1300, "c")
+
+        result = await match_service.try_match(uid_a)
+        assert result is not None
+        # One player matched, one remains
+        assert await match_service.get_queue_size() == 1
+
+    async def test_try_match_any(self, match_service):
+        uid_a = uuid.uuid4()
+        uid_b = uuid.uuid4()
+        uid_c = uuid.uuid4()
+        uid_d = uuid.uuid4()
+        await match_service.join_queue(uid_a, 1200, "a")
+        await match_service.join_queue(uid_b, 1200, "b")
+        await match_service.join_queue(uid_c, 1300, "c")
+        await match_service.join_queue(uid_d, 1300, "d")
+
+        results = await match_service.try_match_any()
+        assert len(results) == 2
+        assert await match_service.get_queue_size() == 0
+
+
+class TestMatchServiceWeights:
+    """Test the probability-weighted matching algorithm."""
+
+    def test_weight_close(self, match_service):
+        assert match_service._calculate_weight(0) == 0.50
+        assert match_service._calculate_weight(50) == 0.50
+        assert match_service._calculate_weight(100) == 0.50
+        assert match_service._calculate_weight(-100) == 0.50
+
+    def test_weight_challenge_zone(self, match_service):
+        # Opponent stronger (positive gap) -> challenge
+        assert match_service._calculate_weight(200) == 0.25
+        assert match_service._calculate_weight(300) == 0.25
+
+    def test_weight_consolidate_zone(self, match_service):
+        # Opponent weaker (negative gap) -> consolidate
+        assert match_service._calculate_weight(-200) == 0.15
+        assert match_service._calculate_weight(-300) == 0.15
+
+    def test_weight_far(self, match_service):
+        assert match_service._calculate_weight(500) == 0.10
+        assert match_service._calculate_weight(-500) == 0.10
+        assert match_service._calculate_weight(1000) == 0.10
+
+    async def test_select_opponent_prefers_close_elo(self, match_service):
+        """Run many trials to verify probability weighting is roughly correct."""
+        player = QueueEntry(user_id=uuid.uuid4(), elo=1200, username="player")
+
+        close = QueueEntry(user_id=uuid.uuid4(), elo=1250, username="close")
+        challenge = QueueEntry(user_id=uuid.uuid4(), elo=1450, username="challenge")
+        consolidate = QueueEntry(user_id=uuid.uuid4(), elo=950, username="consolidate")
+        far = QueueEntry(user_id=uuid.uuid4(), elo=1800, username="far")
+
+        candidates = [close, challenge, consolidate, far]
+
+        counts = {c.username: 0 for c in candidates}
+        trials = 10000
+        for _ in range(trials):
+            selected = match_service._select_opponent(player, candidates)
+            assert selected is not None
+            counts[selected.username] += 1
+
+        # Close should be selected most often (~50%)
+        close_ratio = counts["close"] / trials
+        assert 0.40 < close_ratio < 0.60, f"Close ratio {close_ratio} outside expected range"
+
+        # Far should be selected least often (~10%)
+        far_ratio = counts["far"] / trials
+        assert 0.05 < far_ratio < 0.15, f"Far ratio {far_ratio} outside expected range"
+
+    async def test_select_opponent_no_candidates(self, match_service):
+        player = QueueEntry(user_id=uuid.uuid4(), elo=1200, username="player")
+        result = match_service._select_opponent(player, [])
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# 2. ChallengeService - join/leave queue
+# ---------------------------------------------------------------------------
+
+
+class TestChallengeQueue:
+    async def test_join_queue_no_match(self, db, match_service):
+        user = _make_test_user(db, username="user1", elo=1200)
+        db.add(user)
+        await db.flush()
+
+        result = await ChallengeService.join_queue(db, user, match_service)
+        assert result["matched"] is False
+        assert "Added to queue" in result["message"] or "Waiting" in result["message"]
+
+    async def test_join_queue_already_in_queue(self, db, match_service):
+        user = _make_test_user(db, username="user1", elo=1200)
+        db.add(user)
+        await db.flush()
+
+        await ChallengeService.join_queue(db, user, match_service)
+        with pytest.raises(BadRequestException, match="Already in match queue"):
+            await ChallengeService.join_queue(db, user, match_service)
+
+    async def test_join_queue_with_match(self, db, match_service):
+        user_a = _make_test_user(db, username="user_a", elo=1200)
+        user_b = _make_test_user(db, username="user_b", elo=1250)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        # User A joins first (no match)
+        await ChallengeService.join_queue(db, user_a, match_service)
+
+        # User B joins and should match with A
+        result = await ChallengeService.join_queue(db, user_b, match_service)
+        assert result["matched"] is True
+        assert result["session_id"] is not None
+        assert result["opponent"] is not None
+
+    async def test_leave_queue(self, db, match_service):
+        user = _make_test_user(db, username="user1", elo=1200)
+        db.add(user)
+        await db.flush()
+
+        await ChallengeService.join_queue(db, user, match_service)
+        removed = await ChallengeService.leave_queue(user, match_service)
+        assert removed is True
+
+    async def test_leave_queue_not_present(self, db, match_service):
+        user = _make_test_user(db, username="user1", elo=1200)
+        db.add(user)
+        await db.flush()
+
+        removed = await ChallengeService.leave_queue(user, match_service)
+        assert removed is False
+
+
+# ---------------------------------------------------------------------------
+# 3. ChallengeService - start challenge
+# ---------------------------------------------------------------------------
+
+
+class TestStartChallenge:
+    async def test_start_challenge_not_found(self, db):
+        user = _make_test_user(db, username="user1")
+        db.add(user)
+        await db.flush()
+
+        cf_mock = AsyncMock()
+        with pytest.raises(NotFoundException, match="Challenge session not found"):
+            await ChallengeService.start_challenge(db, user, uuid.uuid4(), cf_mock)
+
+    async def test_start_challenge_not_participant(self, db):
+        user_a = _make_test_user(db, username="user_a")
+        user_b = _make_test_user(db, username="user_b")
+        outsider = _make_test_user(db, username="outsider")
+        db.add_all([user_a, user_b, outsider])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, status="pending")
+        db.add(session)
+        await db.flush()
+
+        cf_mock = AsyncMock()
+        with pytest.raises(ForbiddenException, match="Not a participant"):
+            await ChallengeService.start_challenge(db, outsider, session.id, cf_mock)
+
+    async def test_start_challenge_waiting_opponent(self, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200)
+        user_b = _make_test_user(db, username="user_b", elo=1200)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, status="pending")
+        db.add(session)
+        await db.flush()
+
+        # Set up pending state
+        _set_pending(session.id, {
+            "player_a_id": user_a.id,
+            "player_b_id": user_b.id,
+            "avg_elo": 1200.0,
+            "confirmed": set(),
+        })
+
+        cf_mock = AsyncMock()
+        result = await ChallengeService.start_challenge(db, user_a, session.id, cf_mock)
+        assert result.status == "waiting_opponent"
+
+        _remove_pending(session.id)
+
+    async def test_start_challenge_both_confirm_reveals_problem(self, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200)
+        user_b = _make_test_user(db, username="user_b", elo=1200)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, status="pending")
+        db.add(session)
+        await db.flush()
+
+        # Set up pending state with A already confirmed
+        _set_pending(session.id, {
+            "player_a_id": user_a.id,
+            "player_b_id": user_b.id,
+            "avg_elo": 1200.0,
+            "confirmed": {user_a.id},
+        })
+
+        cf_mock = AsyncMock()
+        cf_mock.get_problemset_problems.return_value = {
+            "problems": [
+                {"contestId": 800, "index": "A", "name": "Test Problem", "rating": 1200, "tags": ["math"]},
+            ],
+        }
+
+        # B confirms -> both confirmed -> problem revealed
+        result = await ChallengeService.start_challenge(db, user_b, session.id, cf_mock)
+        assert result.status == "problem_revealed"
+        assert result.problem is not None
+        assert result.problem.rating == 1200
+        assert cf_mock.get_problemset_problems.called
+
+        _remove_pending(session.id)
+
+
+# ---------------------------------------------------------------------------
+# 4. ChallengeService - submit result
+# ---------------------------------------------------------------------------
+
+
+class TestSubmitResult:
+    async def test_submit_result_not_found(self, db):
+        user = _make_test_user(db, username="user1")
+        db.add(user)
+        await db.flush()
+
+        with pytest.raises(NotFoundException):
+            await ChallengeService.submit_result(db, user, uuid.uuid4(), True, 60.0, 1)
+
+    async def test_submit_result_not_active(self, db):
+        user_a = _make_test_user(db, username="user_a")
+        user_b = _make_test_user(db, username="user_b")
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, status="completed")
+        db.add(session)
+        await db.flush()
+
+        with pytest.raises(BadRequestException, match="not active"):
+            await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+    async def test_submit_first_result_waits_for_second(self, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        result = await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 2)
+        assert result.settled is False
+        assert result.status == "result_submitted"
+
+        # Verify challenger data saved
+        await db.refresh(session)
+        assert session.challenger_solved is True
+        assert session.challenger_time == 60.0
+        assert session.challenger_submissions == 2
+
+    async def test_submit_duplicate_rejected(self, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200)
+        user_b = _make_test_user(db, username="user_b", elo=1200)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+        with pytest.raises(BadRequestException, match="Already submitted"):
+            await ChallengeService.submit_result(db, user_a, session.id, False, 120.0, 2)
+
+
+# ---------------------------------------------------------------------------
+# 5. ChallengeService - settlement (both submitted)
+# ---------------------------------------------------------------------------
+
+
+class TestSettlement:
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_challenger_wins(self, mock_elo_cls, mock_pp_cls, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        # Challenger submits first (solved)
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        # Mock EloService for settlement
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        # Opponent submits (not solved) -> triggers settlement
+        result = await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+        assert result.settled is True
+        assert result.result == "challenger_win"
+
+        await db.refresh(session)
+        assert session.status == "completed"
+        assert session.result == "challenger_win"
+        assert session.elo_change == 30
+
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_opponent_wins(self, mock_elo_cls, mock_pp_cls, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        # Challenger submits (not solved)
+        await ChallengeService.submit_result(db, user_a, session.id, False, 120.0, 3)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1170, 1230, -30, 30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        # Opponent submits (solved) -> settlement
+        result = await ChallengeService.submit_result(db, user_b, session.id, True, 60.0, 1)
+        assert result.settled is True
+        assert result.result == "opponent_win"
+
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_both_solved_faster_wins(self, mock_elo_cls, mock_pp_cls, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        # Challenger solved in 60s
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        # Opponent solved in 90s -> challenger wins (faster)
+        result = await ChallengeService.submit_result(db, user_b, session.id, True, 90.0, 1)
+        assert result.settled is True
+        assert result.result == "challenger_win"
+
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_neither_solved_draw(self, mock_elo_cls, mock_pp_cls, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.submit_result(db, user_a, session.id, False, 120.0, 3)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1200, 1200, 0, 0))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        result = await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+        assert result.settled is True
+        assert result.result == "draw"
+
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_awards_tokens(self, mock_elo_cls, mock_pp_cls, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        result = await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+        assert result.settled is True
+
+        # Winner should get tokens
+        await db.refresh(user_a)
+        assert user_a.tokens > 0
+
+
+# ---------------------------------------------------------------------------
+# 6. ChallengeService - quit challenge
+# ---------------------------------------------------------------------------
+
+
+class TestQuitChallenge:
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_quit_zero_submissions(self, mock_elo_cls, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200)
+        user_b = _make_test_user(db, username="user_b", elo=1200)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1200, 0))
+
+        result = await ChallengeService.quit_challenge(db, user_a, session.id, submissions=0)
+        assert result["status"] == "quit"
+        assert result["penalty"] == 0
+
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_quit_with_penalty(self, mock_elo_cls, db):
+        user_a = _make_test_user(db, username="user_a", elo=1200)
+        user_b = _make_test_user(db, username="user_b", elo=1200)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1192, -8))
+
+        result = await ChallengeService.quit_challenge(db, user_a, session.id, submissions=2)
+        assert result["status"] == "quit"
+        assert result["elo_change"] == -8
+        assert result["penalty"] == 8
+
+    async def test_quit_not_participant(self, db):
+        user_a = _make_test_user(db, username="user_a")
+        user_b = _make_test_user(db, username="user_b")
+        outsider = _make_test_user(db, username="outsider")
+        db.add_all([user_a, user_b, outsider])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        with pytest.raises(ForbiddenException, match="Not a participant"):
+            await ChallengeService.quit_challenge(db, outsider, session.id, submissions=0)
+
+    async def test_quit_completed_session_rejected(self, db):
+        user_a = _make_test_user(db, username="user_a")
+        user_b = _make_test_user(db, username="user_b")
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, status="completed")
+        db.add(session)
+        await db.flush()
+
+        with pytest.raises(BadRequestException, match="not active"):
+            await ChallengeService.quit_challenge(db, user_a, session.id, submissions=0)
+
+
+# ---------------------------------------------------------------------------
+# 7. ChallengeService - get challenge detail
+# ---------------------------------------------------------------------------
+
+
+class TestGetChallengeDetail:
+    async def test_get_detail_success(self, db):
+        user_a = _make_test_user(db, username="user_a")
+        user_b = _make_test_user(db, username="user_b")
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        result = await ChallengeService.get_challenge_detail(db, user_a, session.id)
+        assert result.id == session.id
+        assert result.problem_id == "800A"
+        assert result.problem_rating == 1200
+
+    async def test_get_detail_not_participant(self, db):
+        user_a = _make_test_user(db, username="user_a")
+        user_b = _make_test_user(db, username="user_b")
+        outsider = _make_test_user(db, username="outsider")
+        db.add_all([user_a, user_b, outsider])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        db.add(session)
+        await db.flush()
+
+        with pytest.raises(ForbiddenException, match="Not a participant"):
+            await ChallengeService.get_challenge_detail(db, outsider, session.id)
+
+    async def test_get_detail_not_found(self, db):
+        user = _make_test_user(db, username="user1")
+        db.add(user)
+        await db.flush()
+
+        with pytest.raises(NotFoundException):
+            await ChallengeService.get_challenge_detail(db, user, uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# 8. Token reward tiers
+# ---------------------------------------------------------------------------
+
+
+class TestTokenTiers:
+    def test_tokens_for_gray_rating(self):
+        # 灰 (800-1099)
+        assert _tokens_for_rating(500) == 10
+        assert _tokens_for_rating(800) == 10
+        assert _tokens_for_rating(1099) == 10
+
+    def test_tokens_for_green_rating(self):
+        # 绿 (1100-1399)
+        assert _tokens_for_rating(1100) == 20
+        assert _tokens_for_rating(1200) == 20
+        assert _tokens_for_rating(1399) == 20
+
+    def test_tokens_for_blue_rating(self):
+        # 蓝 (1400-1699)
+        assert _tokens_for_rating(1400) == 30
+        assert _tokens_for_rating(1500) == 30
+        assert _tokens_for_rating(1699) == 30
+
+    def test_tokens_for_purple_rating(self):
+        # 紫 (1700-1999)
+        assert _tokens_for_rating(1700) == 40
+        assert _tokens_for_rating(1900) == 40
+        assert _tokens_for_rating(1999) == 40
+
+    def test_tokens_for_yellow_red_rating(self):
+        # 黄/红 (2000+)
+        assert _tokens_for_rating(2000) == 50
+        assert _tokens_for_rating(2100) == 50
+        assert _tokens_for_rating(3000) == 50
+        assert _tokens_for_rating(3500) == 50
+
+
+# ---------------------------------------------------------------------------
+# 9. Problem info builder
+# ---------------------------------------------------------------------------
+
+
+class TestBuildProblemInfo:
+    def test_standard_problem_id(self):
+        info = _build_problem_info("1234A", 1200)
+        assert info.contest_id == 1234
+        assert info.index == "A"
+        assert info.rating == 1200
+        assert "1234" in info.url and "A" in info.url
+
+    def test_multi_letter_index(self):
+        info = _build_problem_info("5678AB", 1500)
+        assert info.contest_id == 5678
+        assert info.index == "AB"
+        assert info.rating == 1500
+
+    def test_no_numeric_prefix(self):
+        info = _build_problem_info("ABC", 800)
+        assert info.contest_id == 0
+        assert info.index == "ABC"
+
+
+# ---------------------------------------------------------------------------
+# 10. Full challenge flow integration test
+# ---------------------------------------------------------------------------
+
+
+class TestFullChallengeFlow:
+    """Integration test for the complete challenge lifecycle."""
+
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_complete_flow(self, mock_elo_cls, mock_pp_cls, db):
+        # Create two users
+        user_a = _make_test_user(db, username="player_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="player_b", elo=1250, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        match_service = MatchService()
+
+        # Step 1: User A joins queue (no match)
+        result_a = await ChallengeService.join_queue(db, user_a, match_service)
+        assert result_a["matched"] is False
+
+        # Step 2: User B joins queue (match found)
+        result_b = await ChallengeService.join_queue(db, user_b, match_service)
+        assert result_b["matched"] is True
+        session_id = uuid.UUID(result_b["session_id"])
+
+        # Step 3: Confirm start with CF mock
+        cf_mock = AsyncMock()
+        cf_mock.get_problemset_problems.return_value = {
+            "problems": [
+                {"contestId": 1500, "index": "C", "name": "Flow Test Problem", "rating": 1200, "tags": ["dp"]},
+            ],
+        }
+
+        # Set up pending state (normally done by join_queue)
+        _set_pending(session_id, {
+            "player_a_id": user_a.id,
+            "player_b_id": user_b.id,
+            "avg_elo": 1225.0,
+            "confirmed": set(),
+        })
+
+        # Player A confirms first -> waiting
+        start_a = await ChallengeService.start_challenge(db, user_a, session_id, cf_mock)
+        assert start_a.status == "waiting_opponent"
+
+        # Player B confirms -> problem revealed
+        start_b = await ChallengeService.start_challenge(db, user_b, session_id, cf_mock)
+        assert start_b.status == "problem_revealed"
+        assert start_b.problem.rating == 1200
+
+        # Step 4: Submit results
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1232, 1218, 32, -32))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        # Player A submits (solved, 60s)
+        submit_a = await ChallengeService.submit_result(db, user_a, session_id, True, 60.0, 1)
+        assert submit_a.settled is False
+
+        # Player B submits (not solved) -> triggers settlement
+        # Note: user_b is the challenger (joined second and triggered match),
+        # user_a is the opponent. Since user_a solved and user_b didn't,
+        # the result is "opponent_win" from the challenger's perspective.
+        submit_b = await ChallengeService.submit_result(db, user_b, session_id, False, 120.0, 3)
+        assert submit_b.settled is True
+        assert submit_b.result == "opponent_win"
+
+        # Verify session completed
+        test_session = await db.get(_TestChallengeSession, session_id)
+        assert test_session is not None
+        assert test_session.status == "completed"
+        assert test_session.result == "opponent_win"
+
+        # Verify user tokens updated (opponent = user_a wins)
+        await db.refresh(user_a)
+        assert user_a.tokens > 0
+
+
+# ---------------------------------------------------------------------------
+# 11. Queue status tests
+# ---------------------------------------------------------------------------
+
+
+class TestQueueStatus:
+    async def test_status_not_in_queue(self, db, match_service):
+        user = _make_test_user(db, username="user1")
+        db.add(user)
+        await db.flush()
+
+        result = await ChallengeService.get_queue_status(db, user, match_service)
+        assert result["in_queue"] is False
+        assert result["matched"] is False
+
+    async def test_status_in_queue(self, db, match_service):
+        user = _make_test_user(db, username="user1")
+        db.add(user)
+        await db.flush()
+
+        await ChallengeService.join_queue(db, user, match_service)
+        result = await ChallengeService.get_queue_status(db, user, match_service)
+        assert result["in_queue"] is True
+        assert result["matched"] is False
+
+    async def test_status_matched_pending(self, db, match_service):
+        user_a = _make_test_user(db, username="user_a", elo=1200)
+        user_b = _make_test_user(db, username="user_b", elo=1200)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        await ChallengeService.join_queue(db, user_a, match_service)
+        result_b = await ChallengeService.join_queue(db, user_b, match_service)
+        assert result_b["matched"] is True
+
+        status = await ChallengeService.get_queue_status(db, user_a, match_service)
+        assert status["matched"] is True
+        assert status["session_id"] == result_b["session_id"]
+
+
+# ---------------------------------------------------------------------------
+# 12. Pending match state cleanup
+# ---------------------------------------------------------------------------
+
+
+class TestPendingState:
+    def test_set_and_get_pending(self):
+        sid = uuid.uuid4()
+        data = {"confirmed": set(), "avg_elo": 1200.0}
+        _set_pending(sid, data)
+        assert _get_pending(sid) is data
+
+    def test_remove_pending(self):
+        sid = uuid.uuid4()
+        _set_pending(sid, {"confirmed": set()})
+        _remove_pending(sid)
+        assert _get_pending(sid) is None
+
+    def test_remove_nonexistent_pending(self):
+        _remove_pending(uuid.uuid4())  # Should not raise
