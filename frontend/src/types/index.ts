@@ -417,6 +417,23 @@ export interface RadarDataPoint {
   fullMark: number;
 }
 
+// ---------------------------------------------------------------------------
+// M-Elo (per-tag Elo)
+// ---------------------------------------------------------------------------
+
+export interface UserTagEloInfo {
+  tag: string;
+  elo: number;
+  total_submissions: number;
+  first_ac_at: string | null;
+  shield_active: boolean;
+}
+
+export interface MEloListResponse {
+  melos: UserTagEloInfo[];
+  global_elo: number;
+}
+
 export interface PPContributionItem {
   problem_id: string;
   problem_name: string;

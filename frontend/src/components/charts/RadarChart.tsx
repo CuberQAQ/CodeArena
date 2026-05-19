@@ -26,7 +26,7 @@ function CustomTooltip({
     <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
       <p className="text-sm font-semibold text-foreground">{point.topic}</p>
       <p className="text-xs text-muted-foreground">
-        Completion: {point.value.toFixed(1)}%
+        M-Elo: {Math.round(point.value)}
       </p>
     </div>
   );
@@ -38,7 +38,7 @@ export function RadarChart({ data }: RadarChartProps) {
       <div className="rounded-xl border border-border bg-card p-5">
         <h3 className="mb-4 text-sm font-semibold text-foreground">Skill Radar</h3>
         <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
-          No training data yet. Start training to see your skill profile!
+          No M-Elo data yet. Start training to build your skill profile!
         </div>
       </div>
     );
@@ -65,7 +65,7 @@ export function RadarChart({ data }: RadarChartProps) {
           />
           <Tooltip content={<CustomTooltip />} />
           <Radar
-            name="Completion"
+            name="M-Elo"
             dataKey="value"
             stroke="#6366f1"
             fill="#6366f1"

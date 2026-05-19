@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import api from "@/services/api";
+import { getMElo } from "@/services/trainingApi";
 import { useAuthStore } from "@/stores/auth";
 import type {
   ApiResponse,
-  TrainingProgress,
   TransactionItem,
   EloHistoryPoint,
   RadarDataPoint,
@@ -23,12 +23,23 @@ import { StatsPanel } from "./StatsPanel";
 // Data transformation helpers
 // ---------------------------------------------------------------------------
 
-function buildRadarData(progress: TrainingProgress): RadarDataPoint[] {
-  const raw = progress.topics.map((t) => ({
-    topic: t.topic_name.length > 8 ? t.topic_name.slice(0, 7) + "." : t.topic_name,
-    value: Math.round(t.completion_rate * 100) / 100,
-    fullMark: 100,
+/** Build radar data from M-Elo API response.
+ *
+ * Each tag becomes a radar dimension with its elo value.
+ * Tags with shield_active (no first AC yet) show the inherited global_elo.
+ */
+function buildRadarDataFromMElo(
+  melos: { tag: string; elo: number; shield_active: boolean }[],
+  globalElo: number,
+): RadarDataPoint[] {
+  if (melos.length === 0) return [];
+
+  const raw = melos.map((m) => ({
+    topic: m.tag.length > 8 ? m.tag.slice(0, 7) + "." : m.tag,
+    value: m.shield_active ? globalElo : m.elo,
+    fullMark: 0, // placeholder, computed below
   }));
+
   const maxVal = Math.max(...raw.map((r) => r.value), 0.1);
   const fullMark = Math.max(maxVal * 1.3, maxVal + 0.1);
   return raw.map((r) => ({ ...r, fullMark }));
@@ -98,11 +109,8 @@ export function DashboardCharts() {
     setLoading(true);
 
     try {
-      // Fetch training progress (for radar chart and solved count)
-      const progressPromise = api
-        .get<ApiResponse<TrainingProgress>>("/training/progress")
-        .then((res) => res.data.data)
-        .catch(() => null);
+      // Fetch M-Elo data (for radar chart)
+      const meloPromise = getMElo().catch(() => null);
 
       // Fetch transaction history (for token stats)
       const txPromise = api
@@ -110,20 +118,22 @@ export function DashboardCharts() {
         .then((res) => res.data.data)
         .catch(() => null);
 
-      const [progressResult, txResult] = await Promise.all([progressPromise, txPromise]);
+      const [meloResult, txResult] = await Promise.all([meloPromise, txPromise]);
 
-      // --- Radar data ---
-      if (progressResult) {
-        const radar = buildRadarData(progressResult);
+      // --- Radar data (M-Elo) ---
+      if (meloResult && meloResult.melos.length > 0) {
+        const radar = buildRadarDataFromMElo(meloResult.melos, meloResult.global_elo);
         setRadarData(radar);
 
         // --- Stats ---
         const transactions = txResult?.items ?? [];
-        const totalSolved = progressResult.total_solved;
+        // Estimate total solved from M-Elo submissions
+        const totalSolved = meloResult.melos.reduce((sum, m) => sum + m.total_submissions, 0);
         setStats(buildStatsFromTransactions(transactions, totalSolved, radar));
       } else {
-        // No progress data - use transactions-only stats
+        // No M-Elo data - use transactions-only stats
         const transactions = txResult?.items ?? [];
+        setRadarData([]);
         setStats(buildStatsFromTransactions(transactions, 0, []));
       }
 
