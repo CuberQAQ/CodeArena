@@ -81,6 +81,7 @@ class PvESubmitResultResponse(BaseModel):
     pp_change: float | None = None
     s_value: float | None = None
     tokens_earned: int = 0
+    overkill_multiplier: float = 1.0
 
 
 class PvEQuitResponse(BaseModel):

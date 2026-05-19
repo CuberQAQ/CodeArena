@@ -172,6 +172,7 @@ class PvEChallengeService:
 
         # PP calculation and recording (only on solve)
         pp_change = None
+        overkill_multiplier = 1.0
         if solved and session.problem_rating > 0:
             wa_count = max(0, attempts - 1)
             time_minutes = time_spent / 60.0
@@ -183,8 +184,12 @@ class PvEChallengeService:
                 problem_rating=session.problem_rating,
                 wa_count=wa_count,
                 time_spent=time_minutes,
+                user_elo=user.elo,
             )
             pp_change = round(user.pp - pp_before, 2)
+            overkill_multiplier = PPService.calculate_overkill_multiplier(
+                user.elo, session.problem_rating,
+            )
 
         # Token rewards (only on solve)
         tokens_earned = 0
@@ -241,6 +246,7 @@ class PvEChallengeService:
             pp_change=pp_change,
             s_value=s_value,
             tokens_earned=tokens_earned,
+            overkill_multiplier=overkill_multiplier,
         )
 
     # ------------------------------------------------------------------

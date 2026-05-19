@@ -18,6 +18,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.services import economy_service as economy_svc_module
 from app.services import pve_challenge_service as pve_svc_module
+from app.services.pp_service import PPService as _RealPPService
 from app.services.pve_challenge_service import PvEChallengeService
 
 
@@ -191,6 +192,9 @@ async def db(async_engine):
             mock_elo_cls.calculate_k_factor = staticmethod(lambda *args, **kwargs: 32.0)
             mock_elo_cls.record_elo_history = _mock_record_elo_history
             mock_pp_cls.record_pp = _mock_record_pp
+            mock_pp_cls.calculate_overkill_multiplier = staticmethod(
+                _RealPPService.calculate_overkill_multiplier
+            )
 
             yield session
 
@@ -1219,3 +1223,189 @@ class TestFullPvEFlow:
         # Step 4: Verify history has 2 sessions
         history = await PvEChallengeService.get_history(db, user, page=1, page_size=20)
         assert history.total == 2
+
+
+# ---------------------------------------------------------------------------
+# 11. Overkill bonus tests (BUG-001 / BUG-002 regression)
+# ---------------------------------------------------------------------------
+
+
+class TestOverkillBonusInPvE:
+    """Verify that PvE challenge passes user_elo to record_pp (BUG-001)
+    and that the response includes overkill_multiplier (BUG-002)."""
+
+    async def test_record_pp_receives_user_elo(self, db):
+        """PPService.record_pp must receive user_elo=user.elo on solve."""
+        user = _make_test_user(db, elo=1000, tokens=0)
+        db.add(user)
+        await db.flush()
+
+        session = _TestPvESession(
+            user_id=user.id,
+            problem_id="800A",
+            problem_rating=1500,
+            status="active",
+        )
+        db.add(session)
+        await db.flush()
+
+        captured_kwargs = {}
+
+        original_record_pp = pve_svc_module.PPService.record_pp
+
+        async def _capturing_record_pp(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            # Call original mock (no-op)
+
+        with patch.object(pve_svc_module.PPService, "record_pp", _capturing_record_pp):
+            result = await PvEChallengeService.submit_result(
+                db=db,
+                user=user,
+                session_id=session.id,
+                solved=True,
+                time_spent=300.0,
+                attempts=1,
+                error_count=0,
+            )
+
+        assert "user_elo" in captured_kwargs
+        assert captured_kwargs["user_elo"] == 1000
+
+    async def test_overkill_multiplier_in_response_on_overkill(self, db):
+        """Response should include overkill_multiplier > 1.0 for large gap."""
+        user = _make_test_user(db, elo=1000, tokens=0)
+        db.add(user)
+        await db.flush()
+
+        session = _TestPvESession(
+            user_id=user.id,
+            problem_id="800A",
+            problem_rating=1500,
+            status="active",
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await PvEChallengeService.submit_result(
+            db=db,
+            user=user,
+            session_id=session.id,
+            solved=True,
+            time_spent=300.0,
+            attempts=1,
+            error_count=0,
+        )
+
+        # gap = 1500 - 1000 = 500 -> x2.0
+        assert result.overkill_multiplier == pytest.approx(2.0, abs=1e-6)
+
+    async def test_overkill_multiplier_default_no_overkill(self, db):
+        """Response overkill_multiplier should be 1.0 when gap is small."""
+        user = _make_test_user(db, elo=1200, tokens=0)
+        db.add(user)
+        await db.flush()
+
+        session = _TestPvESession(
+            user_id=user.id,
+            problem_id="800A",
+            problem_rating=1300,
+            status="active",
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await PvEChallengeService.submit_result(
+            db=db,
+            user=user,
+            session_id=session.id,
+            solved=True,
+            time_spent=300.0,
+            attempts=1,
+            error_count=0,
+        )
+
+        # gap = 100 -> no overkill
+        assert result.overkill_multiplier == pytest.approx(1.0, abs=1e-6)
+
+    async def test_overkill_multiplier_default_on_failure(self, db):
+        """Response overkill_multiplier should be 1.0 on failure."""
+        user = _make_test_user(db, elo=1000, tokens=0)
+        db.add(user)
+        await db.flush()
+
+        session = _TestPvESession(
+            user_id=user.id,
+            problem_id="800A",
+            problem_rating=1500,
+            status="active",
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await PvEChallengeService.submit_result(
+            db=db,
+            user=user,
+            session_id=session.id,
+            solved=False,
+            time_spent=600.0,
+            attempts=3,
+            error_count=2,
+        )
+
+        assert result.overkill_multiplier == pytest.approx(1.0, abs=1e-6)
+
+    async def test_overkill_tier1_multiplier(self, db):
+        """gap=200 should give x1.2 multiplier."""
+        user = _make_test_user(db, elo=1200, tokens=0)
+        db.add(user)
+        await db.flush()
+
+        session = _TestPvESession(
+            user_id=user.id,
+            problem_id="800A",
+            problem_rating=1400,
+            status="active",
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await PvEChallengeService.submit_result(
+            db=db,
+            user=user,
+            session_id=session.id,
+            solved=True,
+            time_spent=300.0,
+            attempts=1,
+            error_count=0,
+        )
+
+        # gap = 200 -> x1.2
+        assert result.overkill_multiplier == pytest.approx(1.2, abs=1e-6)
+
+    async def test_overkill_tier2_multiplier(self, db):
+        """gap=300 should give x1.5 multiplier."""
+        user = _make_test_user(db, elo=1100, tokens=0)
+        db.add(user)
+        await db.flush()
+
+        session = _TestPvESession(
+            user_id=user.id,
+            problem_id="800A",
+            problem_rating=1400,
+            status="active",
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await PvEChallengeService.submit_result(
+            db=db,
+            user=user,
+            session_id=session.id,
+            solved=True,
+            time_spent=300.0,
+            attempts=1,
+            error_count=0,
+        )
+
+        # gap = 300 -> x1.5
+        assert result.overkill_multiplier == pytest.approx(1.5, abs=1e-6)
