@@ -1,1883 +1,824 @@
 # Code Arena - 项目任务清单
 
 > 需求文档详见 [requirements.md](requirements.md)
+> 阶段 1-14 全部 🟢 已完成（2025-05-19 ~ 2026-05-20），归档至 [docs/archive/task_v1.0.md](docs/archive/task_v1.0.md)
+> 以下为 V1.1 需求更新任务（基于审计节点 B 审计报告，2026-05-20）。
 
 ---
 
-## 阶段 1: 项目基础设施
+## 阶段 15: 核心算法升级
 
-### Task 1.1: 项目目录结构搭建
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 15.1: K 因子分段函数
+**状态**: 🔴 待开始
 **优先级**: P0
 **依赖**: 无
 
 #### 任务描述
-创建完整的项目目录结构，包含前端和后端的基础框架。
+将 Elo 计算中的固定 K=32 重构为基于用户历史提交总数的分段函数。
 
-**需要创建的目录和文件**:
+**需求公式** (requirements.md Section 3.2):
 ```
-code-arena/
-  frontend/
-    src/
-      components/     # UI组件
-      pages/          # 页面
-      hooks/          # 自定义hooks
-      services/       # API调用
-      stores/         # 状态管理
-      utils/          # 工具函数
-      types/          # TypeScript类型定义
-      styles/         # 全局样式
-    public/
-    package.json
-    tsconfig.json
-    vite.config.ts
-    tailwind.config.ts
-    index.html
-  backend/
-    app/
-      api/            # API路由
-        v1/
-      core/           # 核心配置
-      models/         # 数据模型
-      schemas/        # Pydantic schemas
-      services/       # 业务逻辑
-      utils/          # 工具函数
-      middleware/     # 中间件
-    tests/
-    requirements.txt
-    pyproject.toml
-    alembic.ini
-    migrations/       # 数据库迁移
-  docker-compose.yml
-  Dockerfile.frontend
-  Dockerfile.backend
-  .env.example
-  .gitignore
+if N_sub ≤ 20:   K = 40
+if N_sub ≥ 100:  K = 20
+if 20 < N_sub < 100: K = 40 - (N_sub - 20) × 0.25  [线性插值]
 ```
 
-**具体要求**:
-- 前端使用 Vite + React + TypeScript，配置 Tailwind CSS 和 shadcn/ui
-- 后端使用 FastAPI，配置 uvicorn，结构化为多层架构
-- 创建 .env.example 包含所有需要的环境变量模板
-- 创建 .gitignore 覆盖 Python 和 Node.js 的忽略规则
+**需要修改的文件**:
+- `backend/app/services/elo_service.py` — `calculate_new_rating` 方法签名需接受 `submission_count` 参数，内部调用分段函数计算 K
+- `backend/app/core/default_config.py` — `elo` 配置新增 `k_newbie: 40`, `k_veteran: 20`, `k_newbie_threshold: 20`, `k_veteran_threshold: 100`
+- 所有调用 `calculate_new_rating` / `calculate_challenge_elo` 的调用方，需传入用户提交总数
+
+**关键实现细节**:
+1. 新增 `calculate_k_factor(submission_count: int, config: dict) -> float` 方法
+2. `submission_count` 的计算：查询 `training_problem_records` + `challenge_sessions` + `contest_problem_records` 中该用户的所有提交记录总数（或使用 pp_records 的数量作为近似）
+3. 配置项通过 `system_config` 表读取，保留 fallback 默认值
+4. 管理员后台配置页面需展示新增的 K 因子参数
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **结构完整性**: 所有上述目录和文件都存在
-- [ ] **前端可启动**: `npm install && npm run dev` 能正常启动（显示默认页面）
-- [ ] **后端可启动**: `pip install -r requirements.txt && uvicorn app.main:app` 能正常启动
-- [ ] **Tailwind 配置正确**: 前端页面能正确应用 Tailwind 类名
-- [ ] **TypeScript 配置正确**: 无 TS 编译错误
-- [ ] **环境变量模板完整**: .env.example 包含数据库连接、CF API、JWT_SECRET 等所有必要变量
+- [ ] **K 分段 - ≤20次**: 提交 10 次的用户 K=40
+- [ ] **K 分段 - ≥100次**: 提交 150 次的用户 K=20
+- [ ] **K 分段 - 线性插值**: 提交 60 次的用户 K=30（精确验证）
+- [ ] **K 分段 - 边界值 20**: 提交 20 次 K=40
+- [ ] **K 分段 - 边界值 100**: 提交 100 次 K=20
+- [ ] **配置可热更新**: 管理员修改 K 参数后新结算立即使用新值
+- [ ] **默认 fallback**: system_config 无对应配置时使用默认值
+- [ ] **现有结算不破坏**: 挑战/训练/比赛结算仍正确工作，只是 K 值变为动态
+- [ ] **Elo 历史记录**: K 值变化后 elo_history 仍正确记录
 
 #### 验收标准
-1. 目录结构与上述规格完全一致
-2. 前端 npm install 后 npm run dev 可启动，localhost 可访问
-3. 后端 pip install 后 uvicorn 可启动，localhost:8000/docs 可访问 Swagger UI
-4. .env.example 列出所有环境变量
-
-#### 技术备注
-- 前端端口默认 5173，后端端口默认 8000
-- shadcn/ui 使用 `npx shadcn@latest init` 初始化
+1. K 因子根据提交数动态计算，公式精确匹配需求
+2. 所有调用方正确传入 submission_count
+3. 配置可通过管理员后台热更新
+4. 现有功能无回归
 
 ---
 
-### Task 1.2: Docker 配置
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P0
-**依赖**: Task 1.1
+### Task 15.2: S 值分级（完美 AC / 失误 AC）
+**状态**: 🔴 待开始
+**优先级**: P1
+**依赖**: Task 15.1
 
 #### 任务描述
-创建完整的 Docker 开发和部署配置，包括前端、后端和 PostgreSQL 的容器化。
+在 Elo 结算中区分"完美 AC（首次提交通过）"和"失误 AC（含错误记录）"，实现需求中的 S 值分级。
 
-**需要创建/修改的文件**:
-- `Dockerfile.frontend` - 前端多阶段构建（build + nginx 服务）
-- `Dockerfile.backend` - 后端 Python 镜像
-- `docker-compose.yml` - 编排三个服务: frontend, backend, db(postgres)
-- `nginx.conf`（如需要）- 前端 SPA 路由和 API 代理
+**需求公式** (requirements.md Section 3.3):
+```
+完美 AC (首次提交通过): S = 1.0
+失误 AC (含错误记录): S = max(0.7, 1.0 - 0.05 × N_errors)
+放弃/未通过: S = 0.0
+```
+N_errors 包含 WA、TLE、RE、MLE 等所有非通过状态，等权计算。
 
-**具体要求**:
-- PostgreSQL 容器: 使用官方 postgres:16 镜像，配置持久化卷
-- 后端容器: 基于 python:3.12-slim，安装依赖，暴露 8000 端口
-- 前端容器: 多阶段构建，第一阶段 npm build，第二阶段 nginx 服务静态文件
-- docker-compose 中配置服务依赖关系（backend depends_on db）
-- 配置健康检查
-- 环境变量通过 .env 文件注入
-- 开发模式下前端支持热重载（volume mount）
+**需要修改的文件**:
+- `backend/app/services/elo_service.py` — 新增 `calculate_s_value(is_first_ac: bool, error_count: int) -> float` 方法
+- `backend/app/services/challenge_service.py` — `_settle_challenge` 需计算 N_errors 并传入 S 值计算，不再硬编码 0/0.5/1.0
+- `backend/app/services/training_service.py` — 训练结算同理
+- `backend/app/services/contest_service.py` — 比赛结算同理
+
+**关键实现细节**:
+1. S 值取代现有的 `actual_score`（二元 0/1），变为连续值
+2. 挑战模式中，两人各自有独立的 S 值（根据各自的错误次数）
+3. PvP 挑战的胜负判定不变（AC 方胜），但 Elo 变化幅度受 S 值影响
+4. 失误 AC 的最低 S=0.7（最多扣 30%）
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **完整构建**: `docker-compose build` 无错误完成
-- [ ] **全部启动**: `docker-compose up -d` 三个服务全部 running
-- [ ] **数据库连接**: 后端容器能成功连接 PostgreSQL
-- [ ] **前端访问**: 浏览器可访问前端页面
-- [ ] **后端 API**: 可访问后端 /docs Swagger 页面
-- [ ] **数据持久化**: 停止并重启容器后数据不丢失
-- [ ] **健康检查**: docker ps 显示 healthy 状态
-- [ ] **开发热重载**: 修改前端代码后自动更新（开发模式）
+- [ ] **完美 AC**: 首次提交通过 S=1.0，Elo 变化 = K × (1.0 - P(AC))
+- [ ] **失误 AC 1 次 WA**: S = max(0.7, 0.95) = 0.95
+- [ ] **失误 AC 6 次 WA**: S = max(0.7, 0.70) = 0.70
+- [ ] **失误 AC 10 次 WA**: S = max(0.7, 0.50) = 0.70（下限保护）
+- [ ] **未通过**: S = 0.0
+- [ ] **TLE/RE/MLE 计入**: 3次TLE+2次WA = N_errors=5, S = max(0.7, 0.75) = 0.75
+- [ ] **挑战模式双端**: 两玩家各自根据错误次数独立计算 S
+- [ ] **训练模式**: 训练提交同样应用 S 值
+- [ ] **比赛模式**: 比赛提交同样应用 S 值
 
 #### 验收标准
-1. `docker-compose up -d` 后所有服务正常启动
-2. 前端、后端、数据库三者可互相通信
-3. 数据库数据持久化正常
-4. 停止再启动后数据不丢失
-
-#### 技术备注
-- 使用 docker-compose 的 healthcheck 确保 backend 在 db 就绪后才连接
-- 开发环境使用 volume mount 实现热重载
+1. S 值公式精确匹配需求（max(0.7, 1.0 - 0.05 × N_errors)）
+2. 所有模式（挑战/训练/比赛）正确应用 S 值
+3. 完美 AC 和失误 AC 有明确的 Elo 差异
+4. 提示衰减仍正常叠加（在 S 值之后应用）
 
 ---
 
-### Task 1.3: 数据库 Schema 设计与迁移
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 15.3: PP 表现因子
+**状态**: 🔴 待开始
 **优先级**: P0
-**依赖**: Task 1.2
+**依赖**: 无
 
 #### 任务描述
-设计并实现完整的 PostgreSQL 数据库 Schema，使用 SQLAlchemy ORM + Alembic 迁移。
+在 PP 基础分计算中融入表现因子 `f(wa, t)`，使 PP 同时反映题目难度和做题质量。
 
-**数据表设计**:
+**需求公式** (requirements.md Section 3.4.1):
+```
+base(rating) = 10 × √((problem_rating - 800) / 100)    [rating < 800 时为 0]
+f(wa, t) = (1 - 0.03 × wa_count) × max(0.6, 1 - 0.01 × t_minutes)
+P_i = base(rating) × f(wa, t)
+```
 
-1. **users** - 用户表
-   - id (UUID, PK)
-   - username (VARCHAR(50), UNIQUE, NOT NULL)
-   - email (VARCHAR(255), UNIQUE, NOT NULL)
-   - password_hash (VARCHAR(255), NOT NULL)
-   - cf_handle (VARCHAR(100), UNIQUE) -- CF 绑定 handle
-   - cf_handle_verified (BOOLEAN, DEFAULT FALSE)
-   - elo (INTEGER, DEFAULT 1200)
-   - pp (FLOAT, DEFAULT 0)
-   - tokens (INTEGER, DEFAULT 0) -- 代币余额
-   - daily_tokens_earned (INTEGER, DEFAULT 0) -- 今日已获取代币
-   - daily_tokens_reset_at (TIMESTAMP) -- 代币重置时间
-   - created_at (TIMESTAMP)
-   - updated_at (TIMESTAMP)
-   - last_login_at (TIMESTAMP)
-   - is_active (BOOLEAN, DEFAULT TRUE)
-   - is_admin (BOOLEAN, DEFAULT FALSE)
+**需要修改的文件**:
+- `backend/app/models/pp_record.py` — 新增字段：`wa_count: int`, `time_spent_minutes: float`, `performance_factor: float`, `final_pp: float`（重命名 `base_pp` 或新增 `final_pp`）
+- `backend/app/services/pp_service.py`:
+  - `calculate_base_pp` → 新增 `calculate_performance_pp` 方法，接受 `wa_count` 和 `time_spent_minutes`
+  - `record_pp` 方法签名需接受 `wa_count` 和 `time_spent` 参数
+  - `aggregate_total_pp` 使用 `final_pp`（而非 `base_pp`）进行聚合
+- 新增 Alembic 迁移
+- 所有调用 `record_pp` 的地方需传入 wa_count 和 time_spent
 
-2. **elo_history** - Elo 变动历史
-   - id (UUID, PK)
-   - user_id (UUID, FK -> users.id)
-   - elo_before (INTEGER)
-   - elo_after (INTEGER)
-   - elo_change (INTEGER)
-   - reason (VARCHAR(50)) -- 'challenge_win', 'challenge_lose', 'training', 'contest', 'quit_early'
-   - reference_id (UUID) -- 关联的挑战/训练/比赛ID
-   - created_at (TIMESTAMP)
-
-3. **pp_records** - PP 记录（用户每道题的 PP）
-   - id (UUID, PK)
-   - user_id (UUID, FK -> users.id)
-   - cf_problem_id (VARCHAR(50)) -- 格式: "contestId_problemIndex" 如 "1234_A"
-   - problem_rating (INTEGER)
-   - base_pp (FLOAT)
-   - solved_at (TIMESTAMP)
-   - hints_used (INTEGER, DEFAULT 0)
-
-4. **challenge_sessions** - 随机挑战会话
-   - id (UUID, PK)
-   - challenger_id (UUID, FK -> users.id)
-   - opponent_id (UUID, FK -> users.id)
-   - problem_id (VARCHAR(50))
-   - problem_rating (INTEGER)
-   - challenger_submissions (INTEGER, DEFAULT 0)
-   - opponent_submissions (INTEGER, DEFAULT 0)
-   - challenger_solved (BOOLEAN)
-   - opponent_solved (BOOLEAN)
-   - challenger_time (FLOAT) -- 解决用时(秒)
-   - opponent_time (FLOAT)
-   - status (VARCHAR(20)) -- 'active', 'completed', 'quit'
-   - result (VARCHAR(20)) -- 'win', 'lose', 'draw', 'challenger_quit', 'opponent_quit'
-   - elo_change (INTEGER)
-   - hints_used_challenger (INTEGER, DEFAULT 0)
-   - hints_used_opponent (INTEGER, DEFAULT 0)
-   - created_at (TIMESTAMP)
-   - completed_at (TIMESTAMP)
-
-5. **topic_categories** - 专题分类
-   - id (UUID, PK)
-   - name (VARCHAR(100), UNIQUE)
-   - slug (VARCHAR(100), UNIQUE)
-   - description (TEXT)
-   - cf_tags (JSONB) -- 关联的 CF tags 列表
-   - display_order (INTEGER)
-
-6. **training_sessions** - 专题训练会话
-   - id (UUID, PK)
-   - user_id (UUID, FK -> users.id)
-   - topic_id (UUID, FK -> topic_categories.id)
-   - problems_solved (INTEGER, DEFAULT 0)
-   - total_problems (INTEGER)
-   - streak_count (INTEGER, DEFAULT 0) -- 连击数
-   - status (VARCHAR(20)) -- 'active', 'completed', 'abandoned'
-   - created_at (TIMESTAMP)
-   - completed_at (TIMESTAMP)
-
-7. **training_problem_records** - 训练题目完成记录
-   - id (UUID, PK)
-   - session_id (UUID, FK -> training_sessions.id)
-   - user_id (UUID, FK -> users.id)
-   - topic_id (UUID, FK -> topic_categories.id)
-   - problem_id (VARCHAR(50))
-   - problem_rating (INTEGER)
-   - solved (BOOLEAN)
-   - attempts (INTEGER, DEFAULT 0)
-   - time_spent (FLOAT) -- 秒
-   - hints_used (INTEGER, DEFAULT 0)
-   - solved_at (TIMESTAMP)
-
-8. **contest_sessions** - 虚拟比赛会话
-   - id (UUID, PK)
-   - user_id (UUID, FK -> users.id)
-   - contest_tier (VARCHAR(20)) -- 'beginner', 'advanced', 'master'
-   - problems (JSONB) -- 题目列表
-   - total_problems (INTEGER)
-   - problems_solved (INTEGER, DEFAULT 0)
-   - submissions (INTEGER, DEFAULT 0)
-   - time_limit (INTEGER) -- 分钟
-   - started_at (TIMESTAMP)
-   - ended_at (TIMESTAMP)
-   - status (VARCHAR(20)) -- 'active', 'completed', 'quit'
-   - elo_change (INTEGER)
-
-9. **contest_problem_records** - 比赛题目记录
-   - id (UUID, PK)
-   - contest_id (UUID, FK -> contest_sessions.id)
-   - problem_id (VARCHAR(50))
-   - problem_rating (INTEGER)
-   - solved (BOOLEAN)
-   - attempts (INTEGER, DEFAULT 0)
-   - time_spent (FLOAT)
-   - solved_at (TIMESTAMP)
-
-10. **token_transactions** - 代币交易记录
-    - id (UUID, PK)
-    - user_id (UUID, FK -> users.id)
-    - amount (INTEGER) -- 正为获得，负为消费
-    - type (VARCHAR(30)) -- 'reward_ac', 'reward_attempt', 'reward_time_bonus', 'hint_purchase', 'streak_bonus', 'daily_reset'
-    - reference_type (VARCHAR(30)) -- 'challenge', 'training', 'contest', 'hint'
-    - reference_id (UUID)
-    - balance_after (INTEGER)
-    - created_at (TIMESTAMP)
-
-11. **hint_purchases** - 提示购买记录
-    - id (UUID, PK)
-    - user_id (UUID, FK -> users.id)
-    - problem_id (VARCHAR(50))
-    - problem_rating (INTEGER)
-    - hint_level (INTEGER) -- 1, 2, 3
-    - tokens_cost (INTEGER)
-    - created_at (TIMESTAMP)
-
-12. **system_config** - 系统配置表（支持热更新）
-    - id (UUID, PK)
-    - config_key (VARCHAR(100), UNIQUE)
-    - config_value (JSONB)
-    - description (TEXT)
-    - updated_at (TIMESTAMP)
-    - updated_by (UUID, FK -> users.id)
-
-**具体要求**:
-- 所有 UUID 主键使用 PostgreSQL 的 uuid-ossp 扩展自动生成
-- 所有时间字段使用 UTC，TIMESTAMP WITH TIME ZONE
-- 外键设置 ON DELETE CASCADE（适用于子记录）或 ON DELETE SET NULL（适用于引用）
-- 在 cf_handle, elo, pp 字段上创建索引
-- 在 pp_records 上创建复合索引 (user_id, base_pp DESC) 用于快速计算总 PP
-- 在 elo_history 上创建索引 (user_id, created_at DESC)
-- 在 challenge_sessions 上创建索引 (challenger_id, created_at DESC) 和 (opponent_id, created_at DESC)
-- 配置 Alembic 迁移，创建初始迁移文件
+**关键实现细节**:
+1. `base_pp` 保留（纯难度部分），新增 `final_pp` = `base_pp × performance_factor`
+2. `performance_factor` = `(1 - 0.03 × wa_count) × max(0.6, 1 - 0.01 × t_minutes)`
+3. 聚合时按 `final_pp` 降序排列（而非 `base_pp`）
+4. 已有记录不受影响（`performance_factor` 默认 1.0，`final_pp` 默认等于 `base_pp`）
+5. 配置参数（0.03, 0.01, 0.6）通过 system_config 管理
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **迁移执行**: `alembic upgrade head` 无错误
-- [ ] **所有表存在**: 查询 information_schema 确认 12 张表全部创建
-- [ ] **所有字段正确**: 每张表的字段名、类型、约束与设计一致
-- [ ] **外键约束**: 尝试插入无效外键数据应失败
-- [ ] **唯一约束**: username, email, cf_handle 的唯一约束生效
-- [ ] **默认值**: 新用户 elo 默认 1200, tokens 默认 0, pp 默认 0
-- [ ] **索引存在**: 检查所有指定索引是否创建
-- [ ] **UUID 自动生成**: 插入数据不指定 id 时自动生成 UUID
-- [ ] **CASCADE 删除**: 删除用户时关联记录正确处理
-- [ ] **迁移可回滚**: `alembic downgrade -1` 可正常回滚
+- [ ] **表现因子 - 完美表现**: wa=0, t=0min → f=1.0, P_i=base(rating)
+- [ ] **表现因子 - 多次错误**: wa=10, t=0min → f=(1-0.3)×1.0=0.7
+- [ ] **表现因子 - 长时间**: wa=0, t=40min → f=1.0×max(0.6, 0.6)=0.6
+- [ ] **表现因子 - 下限保护**: wa=20, t=60min → f=(1-0.6)×0.6=0.24 → 实际应触发 max(0.6) → 重新计算：(0.4)×max(0.6, 0.4)=0.4×0.6=0.24 — 等等，下限 0.6 是对时间因子而言
+- [ ] **精确计算**: wa=5, t=30min → f=(1-0.15)×max(0.6, 1-0.30)=0.85×0.70=0.595
+- [ ] **rating=1200, wa=0, t=0**: P_i = 20 × 1.0 = 20.0
+- [ ] **rating=2000, wa=3, t=15**: P_i = 34.64 × (0.91 × 0.85) = 34.64 × 0.7735 ≈ 26.79
+- [ ] **聚合使用 final_pp**: Total_PP 排序和加权使用 final_pp 而非 base_pp
+- [ ] **旧记录兼容**: 无 wa_count/time_spent 的旧记录 performance_factor=1.0
+- [ ] **DB 迁移成功**: 新字段有默认值，迁移不破坏现有数据
+- [ ] **提示不影响 PP**: 使用提示后 PP 计算仍不考虑提示
 
 #### 验收标准
-1. Alembic 迁移成功执行，12 张表全部创建
-2. 所有字段类型、约束、索引与设计一致
-3. 外键关系正确
-4. 默认值正确
-5. 迁移可回滚
-
-#### 技术备注
-- 使用 SQLAlchemy 2.0 声明式风格
-- 使用 AsyncSession 支持异步数据库操作
-- Alembic 配置 async 模式
+1. PP 表现因子公式精确匹配需求
+2. 聚合使用 final_pp（含表现因子的值）
+3. 旧数据兼容（默认 performance_factor=1.0）
+4. 配置参数可热更新
 
 ---
 
-### Task 1.4: 基础 API 框架搭建
-**状态**: 🟢 已完成 (2025-05-19)
+## 阶段 16: M-Elo 系统
+
+### Task 16.1: M-Elo 数据模型与服务层
+**状态**: 🔴 待开始
 **优先级**: P0
-**依赖**: Task 1.3
+**依赖**: 无
 
 #### 任务描述
-搭建后端 FastAPI 基础框架，包括中间件、异常处理、配置管理、数据库连接和基础路由结构。
+实现 M-Elo（Multi-Elo）子系统：为每个用户-标签组合维护独立的子域等级分。
 
-**需要创建的模块**:
+**需要新增的文件/修改**:
 
-1. **app/core/config.py** - 配置管理
-   - 使用 pydantic-settings 的 BaseSettings
-   - 从环境变量读取配置（数据库URL、JWT密钥、CF API URL等）
-   - 支持 .env 文件
+1. **数据模型** — 新增 `user_tag_elo` 表：
+   ```
+   user_tag_elo:
+     id (UUID, PK)
+     user_id (UUID, FK -> users.id, NOT NULL)
+     tag (VARCHAR(100), NOT NULL)  -- CF tag 名称，如 "dp", "graphs"
+     elo (INTEGER, DEFAULT 1200)   -- 该标签的 M-Elo
+     total_submissions (INTEGER, DEFAULT 0)
+     first_ac_at (TIMESTAMP, NULLABLE)  -- 首次 AC 时间，NULL 表示护盾激活中
+     created_at (TIMESTAMP)
+     updated_at (TIMESTAMP)
+     UNIQUE(user_id, tag)
+   ```
 
-2. **app/core/database.py** - 数据库连接
-   - SQLAlchemy async engine 和 sessionmaker
-   - get_db 依赖注入函数
-   - 数据库连接池配置
+2. **Alembic 迁移** — 新建迁移文件
 
-3. **app/core/security.py** - 安全工具
-   - JWT token 生成和验证
-   - 密码哈希（bcrypt）
-   - get_current_user 依赖
+3. **服务层** — 新增 `backend/app/services/melo_service.py`:
+   - `get_or_create_melo(db, user_id, tag) -> UserTagElo` — 获取或创建（初始继承 Global Elo）
+   - `get_all_melos(db, user_id) -> list[UserTagElo]` — 获取用户所有标签 M-Elo
+   - `update_melo(db, user_id, tag, elo_change)` — 更新 M-Elo
+   - `is_shield_active(db, user_id, tag) -> bool` — 检查护盾状态（first_ac_at is NULL）
+   - `deactivate_shield(db, user_id, tag)` — 首次 AC 后解除护盾
 
-4. **app/middleware/** - 中间件
-   - CORS 中间件配置
-   - 请求日志中间件
-   - 速率限制中间件基础
+4. **API 端点** — 新增/修改 `backend/app/api/v1/training.py`:
+   - `GET /training/melo` — 获取用户所有标签 M-Elo（用于雷达图）
 
-5. **app/core/exceptions.py** - 全局异常处理
-   - 自定义异常类（AppException, NotFoundException, UnauthorizedException 等）
-   - 全局异常处理器，统一错误响应格式
-
-6. **app/api/v1/__init__.py** - API 路由注册
-   - 创建 APIRouter 挂载各模块路由
-   - 统一 API 前缀 /api/v1
-
-7. **app/main.py** - 应用入口
-   - FastAPI 实例创建
-   - 中间件注册
-   - 路由挂载
-   - lifespan 事件处理（数据库连接初始化/关闭）
-
-8. **统一响应格式**:
+5. **配置** — `default_config.py` 新增 M-Elo 相关配置：
    ```python
-   # 成功响应
-   {"success": true, "data": {...}, "message": "..."}
-   # 错误响应
-   {"success": false, "error": {"code": "...", "message": "..."}, "detail": "..."}
-   ```
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **服务启动**: uvicorn 启动无错误
-- [ ] **Swagger 可访问**: /docs 页面正常显示
-- [ ] **CORS 配置**: 前端域名在允许列表中
-- [ ] **异常处理**: 触发各种异常时返回统一格式
-- [ ] **配置加载**: 环境变量正确读取到 Settings 对象
-- [ ] **数据库连接**: get_db 能正常获取数据库会话
-- [ ] **JWT 工具**: token 生成和验证正常工作
-- [ ] **密码哈希**: bcrypt 哈希和验证正常工作
-- [ ] **路由前缀**: 所有 API 路径以 /api/v1 开头
-- [ ] **健康检查**: /api/v1/health 返回 200
-
-#### 验收标准
-1. FastAPI 应用正常启动
-2. Swagger UI 可访问且显示所有已注册路由
-3. 全局异常处理返回统一格式
-4. CORS 配置允许前端域名
-5. 健康检查端点正常
-
-#### 技术备注
-- 使用 async/await 全异步架构
-- 使用 httpx 作为异步 HTTP 客户端（用于 CF API 调用）
-
----
-
-## 阶段 2: 核心算法模块
-
-### Task 2.1: Elo 计算引擎
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P0
-**依赖**: Task 1.4
-
-#### 任务描述
-实现完整的 Elo 评级计算引擎，支持所有业务场景的 Elo 变动计算。
-
-**需要创建的文件**:
-- `app/services/elo_service.py` - Elo 计算核心逻辑
-
-**功能要求**:
-
-1. **标准 Elo 对战计算**（随机挑战场景）:
-   ```
-   Expected_A = 1 / (1 + 10^((Rating_B - Rating_A) / 400))
-   New_Rating_A = Rating_A + K * (Actual_A - Expected_A)
-   ```
-   - K 值可配置（默认 32）
-   - 胜利 Actual=1, 失败 Actual=0, 平局 Actual=0.5
-
-2. **退出惩罚计算**:
-   - 提交 0 次: Elo 不变
-   - 提交 1-2 次: 随机 -5 到 -10
-   - 提交 3 次以上: 正常失败处理
-
-3. **提示惩罚 Elo 衰减**:
-   - 一级提示: Elo 增益 * 0.75
-   - 二级提示: Elo 增益 * 0.50
-   - 三级提示: Elo 增益 * 0.25
-   - 注意: 衰减只应用于增益（正值），失败惩罚不减少
-
-4. **Elo 变动记录**:
-   - 每次变动写入 elo_history 表
-   - 包含变动原因和关联的会话 ID
-
-5. **M-Elo 计算**（比赛 Elo）:
-   - 虚拟组赛中使用，基于解题数和用时综合计算
-   - 具体公式: 参考标准 Elo，但使用解题比例作为得分
-   - 解题比例 = solved_problems / total_problems
-   - 额外奖励: 用时少奖励更高（具体系数可配置）
-
-6. **所有参数可配置**:
-   - K 值、衰减系数、退出惩罚范围等通过 system_config 表读取
-   - 提供默认值作为 fallback
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **标准对战 - 同分**: 双方 1200 vs 1200，胜方应得约 16 分
-- [ ] **标准对战 - 差距大**: 1200 vs 1800，低分胜应得更多（约 25+），高分胜应得很少（约 3-5）
-- [ ] **退出 0 提交**: Elo 完全不变
-- [ ] **退出 1 提交**: Elo 下降 5-10 之间
-- [ ] **退出 2 提交**: Elo 下降 5-10 之间
-- [ ] **退出 3+ 提交**: 按正常失败处理（非固定 -5~-10）
-- [ ] **提示衰减 - 一级**: 增益 20 变为 15
-- [ ] **提示衰减 - 二级**: 增益 20 变为 10
-- [ ] **提示衰减 - 三级**: 增益 20 变为 5
-- [ ] **提示衰减不减少失败惩罚**: 失败 -16 使用提示后仍为 -16
-- [ ] **M-Elo 计算**: 正确使用解题比例和用时因素
-- [ ] **配置读取**: 从 system_config 读取参数而非硬编码
-- [ ] **历史记录**: 每次变动都正确写入 elo_history
-- [ ] **并发安全**: 多次并发计算不会导致数据不一致
-
-#### 验收标准
-1. 标准 Elo 计算结果与数学公式精确匹配（误差 < 0.01）
-2. 所有退出惩罚场景正确
-3. 提示衰减只应用于增益
-4. M-Elo 计算逻辑正确
-5. 所有参数通过配置系统读取
-6. 历史记录完整
-
-#### 技术备注
-- 所有计算使用精确浮点运算，存储时取整
-- 提供单元测试覆盖所有计算场景
-- 配置缓存避免每次计算都查询数据库
-
----
-
-### Task 2.2: PP 计算引擎
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P0
-**依赖**: Task 1.4
-
-#### 任务描述
-实现 PP (Performance Points) 计算引擎，包括单题基础 PP 计算和总 PP 聚合。
-
-**需要创建的文件**:
-- `app/services/pp_service.py` - PP 计算核心逻辑
-
-**功能要求**:
-
-1. **单题基础 PP 计算**:
-   ```python
-   def calculate_base_pp(problem_rating: int) -> float:
-       if problem_rating < 800:
-           return 0.0
-       return math.sqrt((problem_rating - 800) / 100) * 10
-   ```
-   - rating < 800: 0 PP
-   - rating = 800: 0 PP
-   - rating = 1200: 20 PP
-   - rating = 1500: 26.46 PP
-   - rating = 2000: 34.64 PP
-   - rating = 3500: 51.96 PP
-
-2. **总 PP 聚合计算**:
-   - 获取用户所有已解题目的最高 PP（同一题取最高 rating 版本）
-   - 按基础 PP 降序排列
-   - 取前 100 题
-   - 第 n 题权重 0.95^(n-1)
-   - 总 PP = SUM(P_i * 0.95^(i-1))
-   - 结果保留 2 位小数
-
-3. **PP 记录管理**:
-   - 用户首次解决某题时创建 pp_record
-   - 如果同一题后来以更高 rating 解决（如 rating 变化），更新记录
-   - 提示使用不影响 PP 值（但需记录提示使用次数）
-   - 总 PP 变动时更新 users.pp 字段
-
-4. **PP 排名计算**:
-   - 提供按 PP 排名的查询方法
-   - 支持分页
-   - 缓存排名结果（5 分钟刷新）
-
-**验证点 - 预期结果**:
-- 全部解 100 题 rating=1200 的题: Total PP = 20 * SUM(0.95^(i-1), i=1..100) = 20 * (1-0.95^100)/(1-0.95) = 20 * 19.87 = 397.40
-- 全部解 100 题 rating=2000 的题: Total PP = 34.64 * 19.87 = 688.33
-- 混合难度: 前 50 题 rating=2000, 后 50 题 rating=1200 = 34.64 * (1-0.95^50)/0.05 + 20 * 0.95^50 * (1-0.95^50)/0.05 = 626.38 + 7.21 = 633.59
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **基础 PP - 边界值 800**: calculate_base_pp(800) == 0.0
-- [ ] **基础 PP - 边界值 799**: calculate_base_pp(799) == 0.0
-- [ ] **基础 PP - 标准值 1200**: calculate_base_pp(1200) 约等于 20.0
-- [ ] **基础 PP - 高值 3500**: calculate_base_pp(3500) 约等于 51.96
-- [ ] **总 PP - 单题**: 解 1 题 rating=2000 => 34.64
-- [ ] **总 PP - 100题同难度**: 与上述公式计算结果匹配
-- [ ] **总 PP - 不足100题**: 取实际题目数计算
-- [ ] **总 PP - 超过100题**: 只取前 100 题
-- [ ] **总 PP - 排序验证**: 确认按 PP 降序排列后加权
-- [ ] **重复题目**: 同一题多次解决不重复计数
-- [ ] **题目更新**: 同一题以更高 rating 解决时 PP 更新
-- [ ] **提示不影响 PP**: 使用提示后 PP 值不变
-- [ ] **用户 PP 字段同步**: users.pp 与实际计算一致
-- [ ] **排名查询**: 返回正确的排名顺序
-
-#### 验收标准
-1. 基础 PP 计算与公式精确匹配
-2. 总 PP 计算与手动计算结果一致（误差 < 0.01）
-3. 重复题目处理正确
-4. 提示使用不影响 PP
-5. 排名功能正常
-
-#### 技术备注
-- 使用 PostgreSQL 的窗口函数优化排名查询
-- PP 聚合计算可能较耗时，考虑缓存策略
-
----
-
-### Task 2.3: 配置管理系统
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P0
-**依赖**: Task 1.4
-
-#### 任务描述
-实现基于数据库的系统配置管理，支持管理员热更新所有可配置参数。
-
-**需要创建的文件**:
-- `app/services/config_service.py` - 配置管理服务
-- `app/core/default_config.py` - 默认配置值定义
-
-**功能要求**:
-
-1. **配置项定义** (default_config.py):
-   ```python
-   DEFAULT_CONFIG = {
-       "elo": {
-           "initial_elo": 1200,
-           "k_factor": 32,
-           "divisor": 400,
-           "quit_penalty_min": 5,
-           "quit_penalty_max": 10,
-           "hint_decay": [0.75, 0.50, 0.25],
-       },
-       "pp": {
-           "base_formula_coefficient": 10,
-           "base_formula_offset": 800,
-           "decay_factor": 0.95,
-           "max_problems": 100,
-       },
-       "challenge": {
-           "weight_within_100": 0.50,
-           "weight_challenge_zone": 0.25,  # +100~+300
-           "weight_consolidation_zone": 0.15,  # -100~-300
-           "weight_surprise_zone": 0.10,  # +/-300+
-       },
-       "economy": {
-           "daily_token_cap": 120,
-           "time_bonus_threshold_minutes": 20,
-           "difficulty_tiers": {
-               "gray": {"min": 800, "max": 1099, "ac_reward": 10, "attempt_reward": 2},
-               "green": {"min": 1100, "max": 1399, "ac_reward": 20, "attempt_reward": 3},
-               "blue": {"min": 1400, "max": 1699, "ac_reward": 30, "attempt_reward": 4},
-               "purple": {"min": 1700, "max": 1999, "ac_reward": 40, "attempt_reward": 5},
-               "yellow_red": {"min": 2000, "max": 9999, "ac_reward": 50, "attempt_reward": 6},
-           },
-           "hint_pricing": {
-               "gray": [3, 10, 20],
-               "green": [5, 15, 30],
-               "blue": [8, 20, 40],
-               "purple": [10, 25, 50],
-               "yellow_red": [15, 30, 60],
-           },
-       },
-       "contest": {
-           "tiers": {
-               "beginner": {"max_elo": 1400, "duration_minutes": 90, "problems": 4, "rating_range": [800, 1400]},
-               "advanced": {"min_elo": 1400, "max_elo": 1800, "duration_minutes": 120, "problems": 5, "rating_range": [1200, 2000]},
-               "master": {"min_elo": 1800, "duration_minutes": 150, "problems": 6, "rating_range": [1600, 2600]},
-           }
-       },
-       "cf_api": {
-           "base_url": "https://codeforces.com/api",
-           "request_interval_seconds": 2,
-           "max_retries": 3,
-           "cache_ttl_seconds": 300,
-       }
+   "melo": {
+       "initial_elo_inherit_global": true,
+       "training_global_coefficient": 0.5,
+       "training_melo_coefficient": 2.0,
    }
    ```
 
-2. **配置服务** (config_service.py):
-   - `get_config(key: str) -> Any`: 获取配置项，优先从数据库读取，fallback 到默认值
-   - `set_config(key: str, value: Any, admin_id: UUID)`: 更新配置项
-   - `get_all_config() -> dict`: 获取所有配置
-   - `reset_config(key: str, admin_id: UUID)`: 重置为默认值
-   - `initialize_defaults()`: 首次启动时将默认配置写入数据库
-
-3. **配置缓存**:
-   - 使用内存缓存，TTL 60 秒
-   - 配置更新时立即清除缓存
-   - 避免每次请求都查询数据库
-
-4. **配置验证**:
-   - 更新配置时验证值的合理性（范围检查、类型检查）
-   - 防止无效配置导致系统异常
+**关键实现细节**:
+- M-Elo 初始值 = 用户当前 Global Elo（不是固定 1200）
+- 护盾状态：`first_ac_at IS NULL` 表示护盾激活
+- `total_submissions` 字段用于 K 因子分段计算（与 Global 的提交数分开还是合并？合并更简单——统一使用 Global 提交总数）
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **默认配置加载**: 首次启动时数据库写入所有默认配置
-- [ ] **配置读取**: get_config 返回正确值
-- [ ] **配置更新**: set_config 后 get_config 返回新值
-- [ ] **配置持久化**: 重启服务后配置仍然保留更新值
-- [ ] **缓存生效**: 连续读取不走数据库（验证查询次数）
-- [ ] **缓存失效**: 更新后立即读取到新值
-- [ ] **Fallback**: 数据库无配置时返回默认值
-- [ ] **重置**: reset_config 后返回默认值
-- [ ] **验证 - 无效值**: 设置超出范围的值应被拒绝
-- [ ] **验证 - 类型错误**: 设置错误类型应被拒绝
-- [ ] **嵌套 key**: get_config("elo.k_factor") 正确返回嵌套值
-- [ ] **审计记录**: 更新配置时记录 updated_by 和 updated_at
+- [ ] **创建 M-Elo**: 新用户-标签组合创建时 elo = 用户当前 Global Elo
+- [ ] **唯一约束**: 同一用户同一标签只有一条记录
+- [ ] **获取全部**: `get_all_melos` 返回用户所有标签记录
+- [ ] **更新 Elo**: `update_melo` 正确增减 M-Elo
+- [ ] **护盾 - 未 AC**: 新标签 `first_ac_at` 为 NULL，`is_shield_active` 返回 True
+- [ ] **护盾 - 已 AC**: 首次 AC 后 `first_ac_at` 非空，`is_shield_active` 返回 False
+- [ ] **护盾解除**: `deactivate_shield` 设置 `first_ac_at` 为当前时间
+- [ ] **API 端点**: GET /training/melo 返回正确数据格式
+- [ ] **DB 迁移成功**: 新表创建、索引正确
+- [ ] **配置读取**: M-Elo 参数从 system_config 读取
 
 #### 验收标准
-1. 默认配置完整加载到数据库
-2. 配置 CRUD 操作正常
-3. 缓存机制正确（命中/失效）
-4. 配置验证防止无效值
-5. 嵌套 key 支持正常
-
-#### 技术备注
-- 配置 key 使用点号分隔的路径（如 "elo.k_factor"）
-- JSONB 字段存储灵活结构
-- 缓存使用简单的 dict + TTL，无需 Redis
+1. M-Elo 数据模型完整（表 + 迁移）
+2. CRUD 服务正确实现
+3. 护盾状态判断准确
+4. API 端点可访问
 
 ---
 
-## 阶段 3: 用户系统
-
-### Task 3.1: 用户注册与认证
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P0
-**依赖**: Task 1.4
-
-#### 任务描述
-实现完整的用户注册、登录、JWT 认证系统。
-
-**需要创建的文件**:
-- `app/api/v1/auth.py` - 认证路由
-- `app/schemas/auth.py` - 请求/响应 Schema
-- `app/services/auth_service.py` - 认证业务逻辑
-
-**API 端点**:
-
-1. **POST /api/v1/auth/register**
-   - 请求: `{ username, email, password }`
-   - 验证: username 3-50字符, email 格式, password 8+字符含大小写和数字
-   - 返回: 用户信息 + JWT token
-
-2. **POST /api/v1/auth/login**
-   - 请求: `{ email, password }`
-   - 返回: JWT token (access_token + refresh_token)
-   - access_token 过期时间 24h, refresh_token 过期时间 7d
-
-3. **POST /api/v1/auth/refresh**
-   - 请求: `{ refresh_token }`
-   - 返回: 新的 access_token
-
-4. **GET /api/v1/auth/me**
-   - 需要 JWT 认证
-   - 返回: 当前用户完整信息
-
-5. **PUT /api/v1/auth/profile**
-   - 需要 JWT 认证
-   - 请求: `{ username?, email? }`
-   - 返回: 更新后的用户信息
-
-**功能要求**:
-- 密码使用 bcrypt 哈希，salt rounds >= 12
-- JWT 使用 RS256 或 HS256 算法
-- refresh_token 存储在数据库中（支持撤销）
-- 登录时记录 last_login_at
-- 注册时自动创建默认配置
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **注册 - 正常**: 合法输入成功注册
-- [ ] **注册 - 重复用户名**: 返回 409 错误
-- [ ] **注册 - 重复邮箱**: 返回 409 错误
-- [ ] **注册 - 弱密码**: 返回验证错误
-- [ ] **注册 - 短用户名**: 返回验证错误
-- [ ] **注册 - 默认值**: elo=1200, pp=0, tokens=0
-- [ ] **登录 - 正确凭证**: 返回 token
-- [ ] **登录 - 错误密码**: 返回 401
-- [ ] **登录 - 不存在用户**: 返回 401（不透露用户是否存在）
-- [ ] **Token 刷新**: refresh_token 能获取新 access_token
-- [ ] **过期 Token**: 过期 token 被拒绝
-- [ ] **获取个人信息**: /me 返回完整用户数据
-- [ ] **更新用户名**: 成功更新
-- [ ] **密码哈希**: 数据库中不存储明文密码
-
-#### 验收标准
-1. 注册、登录、token 刷新流程完整
-2. 输入验证严格
-3. JWT 认证中间件正常工作
-4. 密码安全存储
-
----
-
-### Task 3.2: CF Handle 绑定与验证
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 16.2: 学习护盾机制
+**状态**: 🔴 待开始
 **优先级**: P1
-**依赖**: Task 3.1
+**依赖**: Task 16.1, Task 15.1
 
 #### 任务描述
-实现 Codeforces Handle 绑定功能，通过 CF API 验证 Handle 的有效性。
+实现专题训练中的学习护盾：新标签首次 AC 前不扣 Elo。
 
-**需要创建的文件**:
-- `app/api/v1/cf_handle.py` - CF Handle 路由
-- `app/services/cf_handle_service.py` - CF Handle 业务逻辑
+**需求规则** (requirements.md FR-3.3):
+- 用户首次接触的标签（`first_ac_at` IS NULL），开启护盾
+- 护盾状态下，提交失败或主动放弃**不扣除** M-Elo 和 Global Elo
+- 护盾在该标签首次 AC 后自动解除
 
-**API 端点**:
+**需要修改的文件**:
+- `backend/app/services/training_service.py`:
+  - `_calculate_training_elo` — 结算前检查护盾状态
+  - `submit_problem` — AC 时调用 `deactivate_shield`
+- `backend/app/services/melo_service.py` — 护盾相关方法已在 Task 16.1 中实现
 
-1. **POST /api/v1/cf-handle/bind**
-   - 请求: `{ cf_handle }`
-   - 验证: 调用 CF API `user.info` 确认 handle 存在
-   - 返回: CF 用户基本信息（rating, maxRating, avatar 等）
-
-2. **POST /api/v1/cf-handle/verify**
-   - 请求: `{ cf_handle, verification_code }`
-   - 验证方式: 用户在 CF 个人 bio 中写入验证码，系统检查是否匹配
-   - 返回: 验证结果
-
-3. **GET /api/v1/cf-handle/info/{handle}**
-   - 公开端点，查询 CF 用户信息
-   - 返回: rating, maxRating, avatar, rank 等
-
-4. **DELETE /api/v1/cf-handle/unbind**
-   - 需要认证
-   - 解绑当前用户的 CF Handle
-
-**功能要求**:
-- 绑定前检查 handle 是否已被其他用户绑定
-- CF API 调用需要错误处理（网络超时、handle 不存在等）
-- 验证码为 8 位随机字符串
-- CF Handle 验证状态: unbound -> pending_verification -> verified
+**关键逻辑**:
+1. 用户在训练中提交 → 检查该标签护盾状态
+2. 如果护盾激活且 AC → 正常加 Elo + 解除护盾
+3. 如果护盾激活且失败/放弃 → Elo 不变（跳过扣分）
+4. 如果护盾已解除 → 正常结算
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **绑定 - 正常 Handle**: 调用真实 CF API 验证存在
-- [ ] **绑定 - 不存在 Handle**: 返回错误
-- [ ] **绑定 - 重复绑定**: 同一 handle 不能绑定两个用户
-- [ ] **绑定 - 已绑定用户**: 已绑定的用户可以更新 handle
-- [ ] **验证 - 正确验证码**: bio 中包含验证码时验证通过
-- [ ] **验证 - 错误验证码**: 验证失败
-- [ ] **查询 - 公开信息**: 不登录也能查询 CF 用户信息
-- [ ] **解绑**: 解绑后 cf_handle 和 cf_handle_verified 重置
-- [ ] **API 超时处理**: CF API 超时时返回友好错误
-- [ ] **CF API 限流处理**: 收到 429 时适当重试
+- [ ] **护盾 - 失败不扣分**: 新标签提交失败，Global Elo 和 M-Elo 不变
+- [ ] **护盾 - 放弃不扣分**: 新标签放弃，Elo 不变
+- [ ] **护盾 - AC 正常加分**: 新标签首次 AC，Elo 正常增加
+- [ ] **护盾 - AC 后解除**: 首次 AC 后护盾消失
+- [ ] **护盾解除后失败扣分**: 第二次提交失败，正常扣分
+- [ ] **多标签独立护盾**: 标签 A 护盾解除不影响标签 B
+- [ ] **Elo 历史记录**: 护盾跳过的结算不产生 elo_history 记录（或记录 reason="shield_skipped"）
 
 #### 验收标准
-1. CF Handle 绑定和验证流程完整
-2. CF API 调用正确处理成功和失败情况
-3. 验证码机制安全可靠
-4. 并发绑定同一 handle 时不会数据不一致
+1. 护盾逻辑精确匹配需求
+2. 各标签护盾独立
+3. 护盾跳过结算时无 Elo 变化
+4. 首次 AC 后护盾正确解除
 
 ---
 
-## 阶段 4: CF API 集成
-
-### Task 4.1: CF API 客户端与防限流
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P0
-**依赖**: Task 1.4
-
-#### 任务描述
-实现 CF API 的 HTTP 客户端封装，包含请求限流、缓存、重试和错误处理机制。
-
-**需要创建的文件**:
-- `app/services/cf_api_service.py` - CF API 客户端
-- `app/utils/rate_limiter.py` - 限流器
-
-**功能要求**:
-
-1. **CF API 方法封装**:
-   - `get_user_info(handles: list[str])` - 批量获取用户信息
-   - `get_user_status(handle: str, count: int)` - 获取用户提交记录
-   - `get_problemset_problems(tags: list[str])` - 按标签获取题目
-   - `get_contest_standings(contest_id: int)` - 获取比赛排名
-   - `get_user_rating(handle: str)` - 获取用户 rating 变化
-
-2. **防限流机制**:
-   - 请求间隔最小 2 秒（可配置）
-   - 使用令牌桶限流器
-   - 收到 429 响应时指数退避重试
-   - 最大重试 3 次（可配置）
-   - 请求间隔使用 asyncio.sleep 非阻塞
-
-3. **缓存策略**:
-   - 使用内存缓存（TTL 5 分钟，可配置）
-   - 题目列表缓存 TTL 较长（30 分钟）
-   - 用户提交记录缓存 TTL 较短（1 分钟）
-   - 缓存 key 包含完整请求参数
-
-4. **错误处理**:
-   - 网络超时: 30 秒超时，返回友好错误
-   - CF API 返回 "FAILED" 或错误: 解析错误信息
-   - Handle 不存在: 返回明确的错误类型
-   - 限流: 自动重试
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **用户信息获取**: 调用 get_user_info 返回正确数据
-- [ ] **提交记录获取**: 调用 get_user_status 返回提交列表
-- [ ] **题目列表获取**: 调用 get_problemset_problems 返回题目
-- [ ] **限流 - 间隔**: 连续两次请求间隔 >= 2 秒
-- [ ] **限流 - 令牌桶**: 短时间多次请求不超出限制
-- [ ] **重试 - 429**: 收到限流响应后自动重试
-- [ ] **重试 - 超时**: 超时后重试
-- [ ] **重试 - 最大次数**: 超过最大重试次数后放弃
-- [ ] **缓存命中**: 相同请求第二次走缓存
-- [ ] **缓存过期**: TTL 过期后重新请求
-- [ ] **错误处理 - 不存在 handle**: 返回明确错误
-- [ ] **错误处理 - 网络故障**: 返回友好错误
-
-#### 验收标准
-1. 所有 CF API 方法正确封装
-2. 限流机制有效
-3. 缓存减少不必要的 API 调用
-4. 错误处理完善
-
-#### 技术备注
-- CF API 文档: https://codeforces.com/apiHelp
-- 使用 httpx.AsyncClient 作为 HTTP 客户端
-- 限流器使用 asyncio.Lock 保证线程安全
-
----
-
-## 阶段 5: 核心玩法 A - 随机挑战
-
-### Task 5.1: 随机挑战匹配与出题
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P0
-**依赖**: Task 2.1, Task 4.1
-
-#### 任务描述
-实现随机挑战的完整流程：匹配对手、选择题目、开始挑战。
-
-**需要创建的文件**:
-- `app/api/v1/challenge.py` - 挑战路由
-- `app/schemas/challenge.py` - Schema
-- `app/services/challenge_service.py` - 挑战业务逻辑
-- `app/services/match_service.py` - 匹配服务
-
-**API 端点**:
-
-1. **POST /api/v1/challenge/queue** - 加入匹配队列
-2. **DELETE /api/v1/challenge/queue** - 离开匹配队列
-3. **GET /api/v1/challenge/status** - 查询匹配状态
-4. **POST /api/v1/challenge/start** - 确认开始（匹配成功后）
-5. **GET /api/v1/challenge/{id}** - 获取挑战详情
-6. **POST /api/v1/challenge/{id}/submit** - 提交结果
-7. **POST /api/v1/challenge/{id}/quit** - 退出挑战
-
-**匹配算法 - 概率加权**:
-1. 从匹配队列中收集所有等待玩家
-2. 对每个候选对手，按 Elo 差距分配权重:
-   - 差距 <= 100: 权重 0.50
-   - 差距 100~300（挑战区）: 权重 0.25
-   - 差距 100~300（巩固区）: 权重 0.15
-   - 差距 > 300: 权重 0.10
-3. 按权重随机选择一个对手
-4. 根据两人 Elo 平均值，从 CF API 获取合适难度的题目
-5. 题目难度 = 双方 Elo 平均值 +/- 随机偏移（偏移范围可配置）
-
-**挑战流程**:
-1. 用户加入队列 -> 等待匹配
-2. 匹配成功 -> 双方收到通知（WebSocket 或轮询）
-3. 双方确认 -> 题目揭示
-4. 双方各自在 CF 上提交
-5. 系统通过 CF API 轮询检测提交结果
-6. 先解决者获胜，或超时判定
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **匹配 - 同分匹配**: 两个 1200 Elo 的玩家能匹配到一起
-- [ ] **匹配 - 概率分布**: 100 次匹配中，+/-100 内的匹配占比约 50%
-- [ ] **匹配 - 无对手**: 队列无其他人时保持等待
-- [ ] **匹配 - 多人队列**: 多人等待时正确加权选择
-- [ ] **出题 - 难度合适**: 题目难度在双方 Elo 平均值附近
-- [ ] **出题 - 题目未重复**: 不出双方最近解决过的题
-- [ ] **提交结果检测**: CF API 检测到 AC 时正确更新状态
-- [ ] **退出 - 0 提交**: Elo 不变
-- [ ] **退出 - 1 提交**: Elo 降 5-10
-- [ ] **退出 - 3+ 提交**: 正常失败处理
-- [ ] **Elo 更新**: 挑战结束后双方 Elo 正确更新
-- [ ] **PP 更新**: 解决题目后 PP 正确更新
-- [ ] **代币发放**: 正确发放挑战代币
-- [ ] **离开队列**: 成功离开后不再被匹配
-- [ ] **挑战历史**: 完整记录挑战过程
-
-#### 验收标准
-1. 匹配算法按概率权重正确工作
-2. 出题难度合适
-3. 挑战全流程完整（匹配->出题->提交->结算）
-4. Elo/PP/代币正确更新
-5. 退出惩罚正确执行
-
----
-
-## 阶段 6: 核心玩法 B - 专题训练
-
-### Task 6.1: 专题训练系统
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 16.3: 专题训练权重极化结算
+**状态**: 🔴 待开始
 **优先级**: P1
-**依赖**: Task 2.1, Task 2.2, Task 4.1
+**依赖**: Task 16.1, Task 15.1
 
 #### 任务描述
-实现专题训练系统，包括专题分类、题目展示、连击奖励和星级评价。
+修改专题训练的 Elo 结算：Global Elo 增长系数 0.5，M-Elo 增长系数 2.0。
 
-**需要创建的文件**:
-- `app/api/v1/training.py` - 训练路由
-- `app/schemas/training.py` - Schema
-- `app/services/training_service.py` - 训练业务逻辑
+**需求规则** (requirements.md FR-3.4):
+- 专题训练 AC 题目时，Global Elo 变化量 × 0.5
+- 专题训练 AC 题目时，对应标签 M-Elo 变化量 × 2.0
 
-**API 端点**:
+**需要修改的文件**:
+- `backend/app/services/training_service.py`:
+  - `_calculate_training_elo` — 分别计算 Global Elo 变化（×0.5）和 M-Elo 变化（×2.0）
+  - `submit_problem` — 同时更新 Global Elo 和 M-Elo
 
-1. **GET /api/v1/training/topics** - 获取所有专题列表
-2. **GET /api/v1/training/topics/{id}** - 获取专题详情（含题目列表）
-3. **POST /api/v1/training/start** - 开始训练会话
-   - 请求: `{ topic_id }`
-4. **GET /api/v1/training/session/{id}** - 获取训练会话状态
-5. **POST /api/v1/training/session/{id}/submit** - 提交某题完成
-   - 请求: `{ problem_id, solved, attempts, time_spent }`
-6. **POST /api/v1/training/session/{id}/abandon** - 放弃训练
-7. **GET /api/v1/training/progress** - 获取用户在所有专题的进度
-8. **GET /api/v1/training/progress/{topic_id}** - 获取某专题详细进度
-
-**功能要求**:
-
-1. **专题分类**:
-   - 预定义专题（对应 CF tags）: dp, greedy, math, graphs, strings, data_structures, binary_search, sorting, constructive, number_theory, trees, geometry 等
-   - 每个专题包含该 tag 下的所有题目（从 CF API 获取）
-   - 题目按难度排序展示
-
-2. **自由选择**:
-   - 用户可在专题内自由选择任意题目
-   - 不需要按顺序完成
-
-3. **连击奖励**:
-   - 用户连续从低难度到高难度完成题目时触发连击
-   - 连击条件: 下一题 rating > 上一题 rating
-   - 连击奖励: 连击数 * 5 代币（上限 50 代币/次训练）
-   - 连击中断条件: 跳过、放弃、或下一题 rating 不高于上一题
-
-4. **星级评价**:
-   - 0 星: 0% 完成
-   - 1 星: > 0% 且 <= 20%
-   - 2 星: > 20% 且 <= 40%
-   - 3 星: > 40% 且 <= 60%
-   - 4 星: > 60% 且 <= 80%
-   - 5 星: > 80%
-
-5. **进度追踪**:
-   - 记录每道题的解决状态、尝试次数、用时
-   - 专题完成率 = 已解决 / 总题目数
-   - 跨会话保留进度
+**关键逻辑**:
+1. 计算基础 Elo 变化 Δ = K × (S - P(AC))
+2. Global Elo 变化 = Δ × 0.5
+3. M-Elo 变化 = Δ × 2.0（P(AC) 使用 M-Elo 计算）
+4. 两者的 P(AC) 分别使用对应的 Rating 值
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **专题列表**: 返回所有预定义专题
-- [ ] **题目获取**: 专题下的题目从 CF API 正确获取
-- [ ] **自由选择**: 可以选择专题内任意题目
-- [ ] **连击 - 触发**: 连续完成递增难度的题目触发连击
-- [ ] **连击 - 奖励**: 连击代币 = 连击数 * 5
-- [ ] **连击 - 中断**: 选择低难度题目后连击中断
-- [ ] **连击 - 上限**: 单次训练连击奖励不超过 50
-- [ ] **星级 - 0 星**: 完成率 0%
-- [ ] **星级 - 5 星**: 完成率 > 80%
-- [ ] **星级 - 边界**: 完成率恰好 20% 时为 1 星（不是 2 星）
-- [ ] **进度 - 跨会话**: 新会话能看到之前已解决的题目
-- [ ] **进度 - 记录**: 每道题的 attempts 和 time_spent 正确记录
-- [ ] **PP 更新**: 解决题目后 PP 正确计算
-- [ ] **Elo 更新**: 训练解决题目后 Elo 小幅增加（可配置）
-- [ ] **代币发放**: AC 奖励和尝试奖励正确发放
+- [ ] **Global Elo 衰减**: 训练 AC 后 Global Elo 增长为正常值的 50%
+- [ ] **M-Elo 增强**: 训练 AC 后 M-Elo 增长为正常值的 200%
+- [ ] **Global Elo 扣分也衰减**: 训练失败时 Global Elo 扣分也为 50%
+- [ ] **M-Elo P(AC)**: M-Elo 的 P(AC) 使用 M-Elo 值而非 Global Elo
+- [ ] **系数可配置**: 0.5 和 2.0 通过 system_config 管理
+- [ ] **Elo 历史记录**: 分别记录 Global 和 M-Elo 的变化
 
 #### 验收标准
-1. 专题和题目正确展示
-2. 自由选择和连击机制正确
-3. 星级评价准确
-4. 进度跨会话保留
-5. 奖励（代币、PP、Elo）正确发放
+1. 权重极化系数精确匹配需求（Global ×0.5, M-Elo ×2.0）
+2. Global Elo 和 M-Elo 分别使用各自的 Rating 值
+3. 系数可配置
 
 ---
 
-## 阶段 7: 核心玩法 C - 虚拟组赛
-
-### Task 7.1: 虚拟组赛系统
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 16.4: 标签分流抽取
+**状态**: 🔴 待开始
 **优先级**: P1
-**依赖**: Task 2.1, Task 4.1
+**依赖**: Task 16.1
 
 #### 任务描述
-实现虚拟组赛系统，包括分级赛制、计时、结算。
+修改专题训练的题目抽取逻辑：基于用户在该特定标签的 M-Elo，而非 Global Elo。
 
-**需要创建的文件**:
-- `app/api/v1/contest.py` - 比赛路由
-- `app/schemas/contest.py` - Schema
-- `app/services/contest_service.py` - 比赛业务逻辑
+**需求规则** (requirements.md FR-3.2):
+- 题目抽取基于用户在该特定标签的 M-Elo
+- 区间规则与 PvE 随机挑战一致：[M-Elo - 100, M-Elo + 200]
 
-**API 端点**:
+**需要修改的文件**:
+- `backend/app/services/training_service.py`:
+  - `get_topic_detail` 或新增 `get_adaptive_problem` 方法
+  - 题目抽取使用 M-Elo 而非 Global Elo
 
-1. **GET /api/v1/contest/tiers** - 获取可参加的赛制（根据用户 Elo）
-2. **POST /api/v1/contest/start** - 开始比赛
-   - 请求: `{ tier }` (beginner/advanced/master)
-3. **GET /api/v1/contest/{id}** - 获取比赛状态
-4. **POST /api/v1/contest/{id}/submit** - 提交题目结果
-   - 请求: `{ problem_id, solved, attempts, time_spent }`
-5. **POST /api/v1/contest/{id}/end** - 主动结束比赛
-6. **GET /api/v1/contest/history** - 获取比赛历史
-7. **GET /api/v1/contest/{id}/result** - 获取比赛结果详情
-
-**赛制配置**:
-
-| 赛制 | Elo 范围 | 时长 | 题目数 | 题目难度 |
-|------|----------|------|--------|----------|
-| 新手赛 | < 1400 | 90min | 4 | 800-1400 |
-| 进阶赛 | 1400-1800 | 120min | 5 | 1200-2000 |
-| 大师赛 | > 1800 | 150min | 6 | 1600-2600 |
-
-**功能要求**:
-
-1. **赛制准入**:
-   - 检查用户 Elo 是否符合赛制要求
-   - 可以参加低于自己级别的赛制（如 1600 参加新手赛），但不能参加高于级别的
-
-2. **题目选择**:
-   - 从 CF API 获取指定难度范围的题目
-   - 题目难度在范围内均匀分布（如新手赛: 800, 1000, 1200, 1400 各一题）
-   - 避免用户已解决的题目
-
-3. **计时系统**:
-   - 开始时间精确记录
-   - 每次获取状态时计算剩余时间
-   - 超时自动结束
-
-4. **结算系统**:
-   - 解题数作为主要得分
-   - 用时作为次要排名因素
-   - Elo 变动使用 M-Elo 公式（Task 2.1 中定义）
-   - 退出惩罚:
-     - 0 提交: Elo 不变
-     - 1-2 提交: -5~-10
-     - 3+ 提交: 按解题比例计算
+**关键逻辑**:
+1. 获取用户在该标签的 M-Elo
+2. 在 [M-Elo - 100, M-Elo + 200] 范围内随机抽取未解题
+3. 兜底策略与 PvE 模式一致（最多 3 轮扩大）
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **赛制准入 - 新手**: Elo 1300 可参加新手赛
-- [ ] **赛制准入 - 降级**: Elo 1600 可参加新手赛
-- [ ] **赛制准入 - 越级**: Elo 1300 不能参加进阶赛
-- [ ] **题目 - 难度分布**: 新手赛 4 题难度大致均匀分布在 800-1400
-- [ ] **题目 - 不重复**: 不出现已解决的题目
-- [ ] **计时 - 精确**: 剩余时间精确到秒
-- [ ] **计时 - 超时**: 超时自动结束比赛
-- [ ] **结算 - 全部解决**: Elo 大幅增加
-- [ ] **结算 - 部分解决**: Elo 按比例变化
-- [ ] **结算 - 0 解题**: Elo 下降
-- [ ] **退出 - 0 提交**: Elo 不变
-- [ ] **退出 - 1 提交**: Elo 降 5-10
-- [ ] **退出 - 3+ 提交**: 正常失败处理
-- [ ] **PP 更新**: 比赛中解决的题目 PP 正确计算
-- [ ] **代币发放**: 每道 AC 的题目代币正确发放
-- [ ] **比赛历史**: 可查看所有历史比赛和结果
-- [ ] **进行中比赛**: 同时只能有一场进行中的比赛
+- [ ] **使用 M-Elo**: 抽取区间基于 M-Elo 值
+- [ ] **区间正确**: [M-Elo - 100, M-Elo + 200]
+- [ ] **兜底策略**: 范围内无题时逐步扩大
+- [ ] **未解题过滤**: 不抽取已解决的题目
+- [ ] **M-Elo 动态**: 随着训练 M-Elo 变化，后续题目难度跟随变化
 
 #### 验收标准
-1. 三个赛制正确配置
-2. 准入控制正确
-3. 计时准确
-4. 结算和 Elo 变动正确
-5. 奖励正确发放
+1. 题目抽取基于 M-Elo
+2. 区间和兜底策略正确
+3. 随 M-Elo 动态调整
 
 ---
 
-## 阶段 8: 经济与提示系统
+## 阶段 17: PvE 随机挑战与越级奖励
 
-### Task 8.1: 代币经济系统
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 17.1: PvE 单人随机挑战后端
+**状态**: 🔴 待开始
 **优先级**: P1
-**依赖**: Task 5.1, Task 6.1, Task 7.1
+**依赖**: Task 15.1, Task 15.3
 
 #### 任务描述
-实现完整的代币经济系统，包括产出、消费、每日上限和交易记录。
+新增 PvE 单人随机挑战模式：用户无对手，系统基于 Global Elo 随机分配未解题。
 
-**需要创建的文件**:
-- `app/services/economy_service.py` - 代币经济服务
-- `app/api/v1/economy.py` - 代币 API 路由
+**需求规则** (requirements.md FR-2.1):
+- 题目抽取区间：[Elo - 100, Elo + 200]
+- 兜底：逐步扩大范围最多 3 轮
+- 无对手，单人解题
 
-**API 端点**:
+**需要新增/修改的文件**:
 
-1. **GET /api/v1/economy/balance** - 获取当前代币余额
-2. **GET /api/v1/economy/transactions** - 获取交易记录（分页）
-3. **GET /api/v1/economy/daily-status** - 获取今日代币获取状态
+1. **数据模型** — 新增 `pve_challenge_sessions` 表（或复用现有 challenge_sessions 并加 mode 字段）:
+   ```
+   pve_challenge_sessions:
+     id (UUID, PK)
+     user_id (UUID, FK -> users.id)
+     problem_id (VARCHAR(50))
+     problem_rating (INTEGER)
+     status (VARCHAR(20)) -- 'active', 'completed', 'quit'
+     error_count (INTEGER, DEFAULT 0)  -- WA/TLE/RE/MLE 次数
+     time_spent (FLOAT) -- 秒
+     hints_used (INTEGER, DEFAULT 0)
+     elo_change (INTEGER)
+     pp_change (FLOAT)
+     created_at (TIMESTAMP)
+     completed_at (TIMESTAMP)
+   ```
 
-**代币产出规则**:
+2. **服务层** — 新增 `backend/app/services/pve_challenge_service.py`:
+   - `start_challenge(db, user, cf_service)` — 随机抽题并创建会话
+   - `submit_result(db, session_id, result)` — 提交结算
+   - `quit_challenge(db, session_id)` — 放弃
+   - `_select_random_problem(user_elo, cf_service, solved_problems)` — 题目抽取（含 3 轮兜底）
 
-| 难度 | AC 奖励 | 尝试奖励 | 时间加成 |
-|------|---------|----------|----------|
-| 灰(800-1099) | 10 | 2 | >20min 额外 +5 |
-| 绿(1100-1399) | 20 | 3 | >20min 额外 +10 |
-| 蓝(1400-1699) | 30 | 4 | >20min 额外 +15 |
-| 紫(1700-1999) | 40 | 5 | >20min 额外 +20 |
-| 黄/红(2000+) | 50 | 6 | >20min 额外 +25 |
+3. **API 端点** — 新增 `backend/app/api/v1/pve_challenge.py`:
+   - `POST /pve-challenge/start` — 开始挑战
+   - `GET /pve-challenge/{id}` — 获取详情
+   - `POST /pve-challenge/{id}/submit` — 提交结果
+   - `POST /pve-challenge/{id}/quit` — 放弃
+   - `GET /pve-challenge/history` — 历史记录
 
-- **尝试奖励**: 未 AC 但有提交尝试时获得
-- **时间加成**: 用时超过 20 分钟并最终 AC 时额外获得
-- **每日上限**: 120 代币
-- **每日重置**: UTC 0:00 重置 daily_tokens_earned
-
-**代币消费场景**:
-- 购买提示（按提示定价表）
-- 后续可扩展其他消费场景
+4. **Alembic 迁移**
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **AC 奖励 - 各难度**: 灰 10, 绿 20, 蓝 30, 紫 40, 黄/红 50
-- [ ] **尝试奖励 - 各难度**: 灰 2, 绿 3, 蓝 4, 紫 5, 黄/红 6
-- [ ] **时间加成 - >20min**: 各难度正确加成
-- [ ] **时间加成 - <=20min**: 不获得加成
-- [ ] **每日上限**: 达到 120 后不再获得
-- [ ] **每日重置**: UTC 0:00 后重置
-- [ ] **余额更新**: 每次交易后 balance 正确
-- [ ] **交易记录**: 每笔交易都有完整记录
-- [ ] **余额不足**: 消费超过余额时拒绝
-- [ ] **并发安全**: 同时多笔交易不会超限
-- [ ] **连击奖励**: 训练连击代币正确发放
-- [ ] **负数防护**: 余额不允许为负数
+- [ ] **题目区间**: 抽取的题目 rating 在 [Elo-100, Elo+200] 范围内
+- [ ] **未解题过滤**: 不抽取已解决的题目
+- [ ] **兜底第1轮**: 无题时扩大到 [Elo-200, Elo+300]
+- [ ] **兜底第2轮**: 扩大到 [Elo-300, Elo+400]
+- [ ] **兜底第3轮**: 仍无题返回提示"暂无合适题目"
+- [ ] **结算 - AC**: 正确计算 Elo（使用 S 值）、PP（使用表现因子）、代币
+- [ ] **结算 - 放弃 0 提交**: Elo 完全不变
+- [ ] **结算 - 放弃 1-2 提交**: Elo 降 5~10（随机值）
+- [ ] **结算 - 放弃 3+ 提交**: 按正常失败处理（非固定 -5~-10）
+- [ ] **会话状态机**: active → completed / quit，不可逆
+- [ ] **同时仅一个活跃会话**: 有活跃会话时不允许开始新挑战
 
 #### 验收标准
-1. 所有代币产出规则正确实现
-2. 每日上限和重置机制正常
-3. 交易记录完整准确
-4. 并发安全
+1. PvE 挑战全流程完整（开始→解题→结算/放弃）
+2. 题目抽取区间和兜底策略正确
+3. Elo/PP/代币结算正确（使用新公式）
+4. API 端点完整可用
 
 ---
 
-### Task 8.2: 提示系统
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 17.2: PvE 挑战前端页面
+**状态**: 🔴 待开始
 **优先级**: P1
-**依赖**: Task 8.1
+**依赖**: Task 17.1
 
 #### 任务描述
-实现题目提示系统，包括提示内容管理、分级解锁、定价和 Elo 衰减。
+实现 PvE 随机挑战的前端页面和交互流程。
 
-**需要创建的文件**:
-- `app/api/v1/hints.py` - 提示路由
-- `app/services/hint_service.py` - 提示业务逻辑
-- `app/services/hint_content_service.py` - 提示内容生成/管理
+**需要新增/修改的文件**:
+- `frontend/src/pages/challenge/PvEChallengePage.tsx` — 新页面
+- `frontend/src/pages/ChallengePage.tsx` — 添加 PvE 入口（与 PvP 并列）
+- `frontend/src/services/pveChallengeApi.ts` — API 客户端
+- `frontend/src/stores/pveChallengeStore.ts` — 状态管理
 
-**API 端点**:
-
-1. **GET /api/v1/hints/{problem_id}/status** - 获取题目提示状态
-   - 返回: 已解锁提示级别、各级价格、Elo 衰减预览
-2. **POST /api/v1/hints/{problem_id}/unlock** - 解锁下一级提示
-   - 请求: `{ level }` (1/2/3)
-   - 验证: 不可跳级，必须按 1->2->3 顺序解锁
-3. **GET /api/v1/hints/{problem_id}/content/{level}** - 获取提示内容
-   - 验证: 只有已解锁的级别才能查看
-4. **GET /api/v1/hints/{problem_id}/history** - 获取该题提示使用历史
-
-**提示定价**:
-
-| 难度 | 一级 | 二级 | 三级 | 累计 |
-|------|------|------|------|------|
-| 灰 | 3 | 10 | 20 | 33 |
-| 绿 | 5 | 15 | 30 | 50 |
-| 蓝 | 8 | 20 | 40 | 68 |
-| 紫 | 10 | 25 | 50 | 85 |
-| 黄/红 | 15 | 30 | 60 | 105 |
-
-**提示内容策略**:
-- 一级提示: 思路方向/算法类别（如"考虑使用动态规划"）
-- 二级提示: 具体方法/关键状态定义
-- 三级提示: 接近完整的解题思路
-
-**Elo 衰减**（应用于当次挑战/训练/比赛的 Elo 增益）:
-- 一级提示: Elo 增益 * 0.75
-- 二级提示: Elo 增益 * 0.50
-- 三级提示: Elo 增益 * 0.25
-- PP 不受影响
+**UI 需求**:
+1. 挑战入口：在 ChallengePage 中新增 "Random Challenge (Solo)" 按钮，与 PvP 排位并列
+2. 盲盒效果：题目展示时隐藏 Rating 和 Tags（显示 "???"）
+3. 解题中：显示题目链接、计时器、提交按钮
+4. 结算页面：揭晓 Rating 和 Tags，显示 Elo/PP/代币变化
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **解锁 - 按顺序**: 一级 -> 二级 -> 三级
-- [ ] **解锁 - 跳级失败**: 直接解锁二级应被拒绝
-- [ ] **解锁 - 重复**: 重复解锁同一级应被拒绝（不扣费）
-- [ ] **定价 - 各难度**: 灰/绿/蓝/紫/黄红价格正确
-- [ ] **扣费**: 解锁后代币余额正确减少
-- [ ] **余额不足**: 代币不足时拒绝解锁
-- [ ] **Elo 衰减 - 一级**: 增益 * 0.75
-- [ ] **Elo 衰减 - 二级**: 增益 * 0.50
-- [ ] **Elo 衰减 - 三级**: 增益 * 0.25
-- [ ] **Elo 衰减 - 不影响 PP**: PP 计算不因使用提示而改变
-- [ ] **Elo 衰减 - 不减少失败惩罚**: 负 Elo 变动不因提示而减少
-- [ ] **提示内容**: 正确返回对应级别的提示
-- [ ] **未解锁拒绝**: 未解锁的提示内容不可查看
-- [ ] **交易记录**: 提示购买记入 token_transactions
-- [ ] **购买记录**: hint_purchases 表正确记录
+- [ ] **PvE 入口**: ChallengePage 显示两个模式入口（PvE + PvP）
+- [ ] **盲盒 - Rating 隐藏**: 解题过程中 Rating 显示为 "???"
+- [ ] **盲盒 - Tags 隐藏**: 解题过程中 Tags 不显示
+- [ ] **盲盒 - 结算揭晓**: AC 或放弃后显示真实 Rating 和 Tags
+- [ ] **结算动画**: Elo/PP/代币变化有动画效果
+- [ ] **越级提示**: 触发越级奖励时有特殊动效
 
 #### 验收标准
-1. 提示分级解锁机制正确
-2. 定价准确
-3. Elo 衰减只影响增益
-4. PP 不受影响
-5. 代币扣除正确
+1. PvE 挑战前端流程完整
+2. 盲盒效果正确隐藏/揭晓
+3. 与 PvP 模式并列展示
+4. 动画效果流畅
 
 ---
 
-## 阶段 9: 前端 UI 基础框架与组件库
-
-### Task 9.1: 前端基础框架与路由
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 17.3: 越级奖励系统
+**状态**: 🔴 待开始
 **优先级**: P1
-**依赖**: Task 1.1
+**依赖**: Task 15.3, Task 17.1
 
 #### 任务描述
-搭建前端 React 应用基础框架，包括路由、布局、全局状态和通用组件。
+实现越级奖励：当用户 AC 了难度高于 Elo + 150 的题目时，给予 PP 乘数奖励。
 
-**需要创建/修改的文件**:
-- `frontend/src/App.tsx` - 路由配置
-- `frontend/src/layouts/` - 布局组件
-- `frontend/src/stores/auth.ts` - 认证状态管理
-- `frontend/src/services/api.ts` - API 客户端封装
-- `frontend/src/components/ui/` - shadcn/ui 组件
+**需求规则** (requirements.md Section 3.5):
+| 难度超出范围 | PP 乘数 |
+|-------------|---------|
+| +150 ~ +249 | ×1.2 |
+| +250 ~ +349 | ×1.5 |
+| +350 以上 | ×2.0 |
 
-**页面路由**:
-```
-/                    - 首页/登录
-/register           - 注册
-/dashboard          - 仪表盘
-/challenge          - 随机挑战
-/training           - 专题训练
-/training/:id       - 专题详情
-/contest            - 虚拟组赛
-/contest/:id        - 比赛进行中
-/profile            - 个人资料
-/profile/cf-bind    - CF Handle 绑定
-/leaderboard        - 排行榜
-/admin              - 管理后台
-/admin/config       - 配置管理
-```
+**需要修改的文件**:
+- `backend/app/services/pp_service.py` — `record_pp` 方法需接受 `user_elo` 参数，计算越级乘数
+- `backend/app/services/pve_challenge_service.py` — 结算时传入 user_elo
+- `backend/app/services/challenge_service.py` — PvP 结算也传入 user_elo
+- `backend/app/services/training_service.py` — 训练结算也传入 user_elo
+- `backend/app/models/pp_record.py` — 可选新增 `overkill_multiplier` 字段
 
-**布局组件**:
-- AuthLayout: 登录/注册页布局
-- MainLayout: 主布局（侧边栏 + 顶部导航 + 内容区）
-- AdminLayout: 管理后台布局
-
-**通用组件**:
-- LoadingSpinner: 加载状态
-- ErrorBoundary: 错误边界
-- ProtectedRoute: 路由守卫（需登录）
-- AdminRoute: 管理员路由守卫
-
-**API 客户端**:
-- axios 实例，自动附加 JWT token
-- 401 自动跳转登录
-- 统一错误处理
+**关键逻辑**:
+1. 获取用户当前 Elo
+2. 计算 `gap = problem_rating - user_elo`
+3. 如果 gap > 150，应用对应乘数到 PP 获取量
+4. 乘数仅影响 PP，不影响 Elo
+5. 触发成就事件（前端动画）
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **路由 - 所有页面**: 每个路由都能正确渲染对应页面
-- [ ] **路由守卫**: 未登录访问 /dashboard 跳转到 /
-- [ ] **管理员守卫**: 非管理员访问 /admin 被拒绝
-- [ ] **布局**: 各布局正确渲染
-- [ ] **API 客户端**: JWT token 自动附加
-- [ ] **401 处理**: token 过期自动跳转登录
-- [ ] **错误边界**: 组件崩溃时显示错误页面而非白屏
-- [ ] **响应式**: 基础响应式布局正常
+- [ ] **越级 +160**: PP ×1.2
+- [ ] **越级 +300**: PP ×1.5
+- [ ] **越级 +400**: PP ×2.0
+- [ ] **越级 +150 边界**: gap=150 不触发（需 >150）
+- [ ] **越级 +250**: PP ×1.5（不是 1.2）
+- [ ] **不越级 +100**: PP ×1.0（无加成）
+- [ ] **不影响 Elo**: 越级奖励不改变 Elo 结算
+- [ ] **各模式均生效**: PvE/PvP/训练/比赛都检查越级
+- [ ] **成就事件**: 触发越级时产生事件（用于前端动画）
 
 #### 验收标准
-1. 所有路由可访问
-2. 路由守卫正常工作
-3. 布局组件正确渲染
-4. API 客户端正确封装
+1. 越级 PP 乘数阶梯正确
+2. 仅影响 PP 不影响 Elo
+3. 所有模式均支持
+4. 触发成就事件
 
 ---
 
-### Task 9.2: 核心页面实现
-**状态**: 🟢 已完成 (2025-05-19)
+## 阶段 18: 混合 AI 虚拟比赛
+
+### Task 18.1: Bot 生成与赛况模拟引擎
+**状态**: 🔴 待开始
 **优先级**: P1
-**依赖**: Task 9.1
+**依赖**: Task 15.1
 
 #### 任务描述
-实现所有核心页面的完整 UI，包括登录注册、仪表盘、挑战、训练、比赛、个人资料等。
+实现虚拟比赛中的 AI Bot 生成和赛况模拟：生成 N 个 Bot，按分钟级模拟过题，实时推送到前端。
 
-**需要创建的文件（按页面）**:
+**需求规则** (requirements.md FR-4.1, FR-4.2):
+- 生成 N 个 Bot（如 50），Elo 围绕用户 Global Elo 呈正态分布
+- 按分钟级根据 P(AC) 公式模拟各 Bot 过题
+- 人类与 Bot 在同一排行榜
 
-1. **登录/注册页面** (`frontend/src/pages/auth/`)
-   - 登录表单: 邮箱 + 密码
-   - 注册表单: 用户名 + 邮箱 + 密码 + 确认密码
-   - 表单验证和错误提示
+**需要新增的文件**:
 
-2. **仪表盘** (`frontend/src/pages/dashboard/`)
-   - 用户信息卡片（Elo, PP, 代币）
-   - 最近活动
-   - 快捷入口（挑战、训练、比赛）
-   - Elo 趋势小图
+1. **数据模型** — 新增 `contest_bots` 表（或 contest_sessions 中增加 bots JSONB 字段）:
+   ```
+   contest_bots:
+     id (UUID, PK)
+     contest_id (UUID, FK -> contest_sessions.id)
+     bot_name (VARCHAR(50))
+     bot_elo (INTEGER)
+     problems_solved (INTEGER, DEFAULT 0)
+     solved_problem_ids (JSONB) -- 已解决的题目 ID 列表
+     total_attempts (INTEGER, DEFAULT 0)
+   ```
 
-3. **随机挑战页面** (`frontend/src/pages/challenge/`)
-   - 匹配等待动画
-   - 挑战进行中界面（题目展示、计时器、提交状态）
-   - 结果展示
+2. **服务层** — 新增 `backend/app/services/contest_simulation_service.py`:
+   - `generate_bots(db, user_elo, count=50) -> list[ContestBot]` — 生成 Bot（正态分布 Elo）
+   - `start_simulation(contest_id)` — 启动模拟任务
+   - `tick_simulation(contest_id)` — 每分钟执行一次，模拟各 Bot 过题
+   - `_simulate_bot_tick(bot, problems, time_elapsed) -> list[str]` — 单 Bot 本轮过题
 
-4. **专题训练页面** (`frontend/src/pages/training/`)
-   - 专题列表（网格布局，每个专题卡片显示星级、进度）
-   - 专题详情（题目列表，难度标记，完成状态）
-   - 训练会话界面
+3. **实时推送** — 新增 WebSocket 端点:
+   - `backend/app/api/v1/contest_ws.py` — WebSocket 连接，推送排行榜更新
+   - 使用 FastAPI WebSocket + 后台 asyncio.Task 实现定时 tick
 
-5. **虚拟组赛页面** (`frontend/src/pages/contest/`)
-   - 赛制选择卡片
-   - 比赛进行中界面（题目列表、计时器、解题进度）
-   - 结果展示
+4. **修改** `backend/app/services/contest_service.py`:
+   - `start_contest` — 同时生成 Bot
+   - `get_contest_status` — 返回包含 Bot 的排行榜
+   - `end_contest` — 停止模拟
 
-6. **个人资料页面** (`frontend/src/pages/profile/`)
-   - 基本信息展示和编辑
-   - CF Handle 绑定
-   - Elo 历史
-   - PP 排名
-
-7. **排行榜页面** (`frontend/src/pages/leaderboard/`)
-   - Elo 排行
-   - PP 排行
-   - 搜索用户
-
-**UI 规范**:
-- 使用 shadcn/ui 组件库
-- Tailwind CSS 自定义主题（暗色主题为主，配合游戏化风格）
-- 所有颜色使用 CSS 变量，便于主题切换
-- 所有交互有 loading 状态
-- 错误状态有友好提示
+**Bot 模拟逻辑**:
+1. 每个 Bot 每分钟尝试一道题
+2. 使用 P(AC) = 1 / (1 + 10^((problem_rating - bot_elo) / 400)) 判断是否 AC
+3. Bot 按题目顺序尝试，已 AC 的题跳过
+4. 人类玩家与 Bot 的解题进度汇总为统一排行榜
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **登录表单**: 输入验证、提交、错误提示
-- [ ] **注册表单**: 完整验证、提交成功跳转
-- [ ] **仪表盘**: 所有数据正确展示
-- [ ] **挑战流程**: 完整的匹配->进行->结果 UI
-- [ ] **训练流程**: 专题列表->详情->训练完整流程
-- [ ] **比赛流程**: 选赛制->进行->结果完整流程
-- [ ] **个人资料**: 信息展示和编辑
-- [ ] **CF 绑定**: 绑定流程完整
-- [ ] **排行榜**: 排序正确、分页正常
-- [ ] **暗色主题**: 所有页面暗色主题正常
-- [ ] **响应式**: 移动端基本可用
-- [ ] **Loading 状态**: 所有异步操作有加载指示
-- [ ] **错误提示**: API 错误有友好提示
+- [ ] **Bot 生成数量**: 默认生成 50 个 Bot
+- [ ] **Bot Elo 正态分布**: 均值 ≈ 用户 Elo，标准差合理（如 σ=200）
+- [ ] **Bot 名称**: 生成有趣的虚拟名称
+- [ ] **模拟 tick**: 每分钟正确触发一次
+- [ ] **Bot 过题概率**: 高 Elo Bot 过难题概率更高，与 P(AC) 公式一致
+- [ ] **排行榜排序**: 人类和 Bot 混合排序，解题数优先
+- [ ] **WebSocket 推送**: 排行榜变化时前端实时收到更新
+- [ ] **比赛结束停止**: 比赛结束时模拟任务正确停止
+- [ ] **断线重连**: 用户 WebSocket 断开后可重新连接继续接收
 
 #### 验收标准
-1. 所有页面完整实现
-2. 所有表单验证正确
-3. 所有流程端到端可操作
-4. 暗色主题统一
-5. 响应式基本适配
+1. Bot 生成正确（数量、分布、名称）
+2. 模拟引擎按分钟运行
+3. WebSocket 实时推送排行榜
+4. 比赛结束后模拟正确停止
 
 ---
 
-## 阶段 10: 数据可视化
+### Task 18.2: 表现分 (PR) 反推计算
+**状态**: 🔴 待开始
+**优先级**: P1
+**依赖**: Task 18.1
 
-### Task 10.1: 数据可视化组件
-**状态**: 🟢 已完成 (2025-05-19)
+#### 任务描述
+实现赛后表现分 (Performance Rating) 的二分查找计算，并以此大幅更新 Global Elo。
+
+**需求规则** (requirements.md FR-4.3):
+- 结合玩家最终名次和所有参与 Bot 的初始 Elo 阵列
+- 通过二分查找计算 PR
+- 以 PR 为基准大幅更新 Global Elo
+
+**需要新增/修改的文件**:
+- `backend/app/services/contest_simulation_service.py` — 新增 `calculate_performance_rating` 方法
+- `backend/app/services/contest_service.py` — 修改 `end_contest` 使用 PR 结算
+
+**PR 计算逻辑**:
+1. 获取所有 Bot 的 Elo 列表 + 玩家的解题数
+2. 二分查找一个 PR 值，使得：在所有选手（Bot + 玩家）中，PR 作为玩家 Elo 时，玩家的期望排名 ≈ 实际排名
+3. 二分查找范围：[0, 4000]，精度 ±1
+4. 最终 Elo 变化 = K × (PR - current_elo) / 400（大幅更新）
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **PR 计算 - 冠军**: 玩家解题数最高时 PR 远高于所有 Bot Elo
+- [ ] **PR 计算 - 末位**: 玩家 0 解题时 PR 低于所有 Bot Elo
+- [ ] **PR 计算 - 中游**: 玩家中等表现时 PR 在 Bot Elo 均值附近
+- [ ] **二分收敛**: PR 值在合理范围内收敛（±1 精度）
+- [ ] **Elo 大幅更新**: PR 结算产生的 Elo 变化大于普通挑战
+- [ ] **边界情况**: 只有 1 个 Bot 或 0 个 Bot 时不崩溃
+- [ ] **Elo 历史记录**: reason="contest_pr"
+
+#### 验收标准
+1. PR 二分查找算法正确
+2. Elo 更新幅度合理
+3. 边界情况安全处理
+
+---
+
+### Task 18.3: AI 比赛前端集成
+**状态**: 🔴 待开始
+**优先级**: P1
+**依赖**: Task 18.1
+
+#### 任务描述
+修改比赛前端页面，集成 Bot 排行榜和 WebSocket 实时更新。
+
+**需要修改的文件**:
+- `frontend/src/pages/ContestPage.tsx` — 排行榜展示 Bot 和玩家
+- `frontend/src/services/contestApi.ts` — 新增 WebSocket 连接
+- `frontend/src/stores/contestStore.ts` — 新增排行榜实时状态
+
+**UI 需求**:
+1. 比赛进行中：实时排行榜（人类高亮 + Bot 按解题数排序）
+2. 排行榜每分钟自动更新
+3. 结算页面：显示 PR 值和最终 Elo 变化
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **WebSocket 连接**: 比赛开始后自动连接
+- [ ] **排行榜实时更新**: Bot 过题后排行榜即时变化
+- [ ] **玩家高亮**: 人类玩家在排行榜中视觉突出
+- [ ] **PR 显示**: 结算页面显示 PR 值
+- [ ] **断线重连**: WebSocket 断开后自动重连
+- [ ] **性能**: 50 个 Bot 排行榜渲染流畅
+
+#### 验收标准
+1. 实时排行榜正确渲染
+2. WebSocket 连接稳定
+3. 结算显示 PR 值
+4. 性能流畅
+
+---
+
+## 阶段 19: 补全与打磨
+
+### Task 19.1: Elo 衰减串联修复
+**状态**: 🔴 待开始
 **优先级**: P2
-**依赖**: Task 9.2
+**依赖**: 无
 
 #### 任务描述
-实现核心数据可视化组件，包括雷达图、趋势图和统计面板。
+修复提示 Elo 衰减未串联到实际结算的 bug。
 
-**需要创建的文件**:
-- `frontend/src/components/charts/EloChart.tsx` - Elo 趋势图
-- `frontend/src/components/charts/RadarChart.tsx` - 能力雷达图
-- `frontend/src/components/charts/PPChart.tsx` - PP 贡献图
-- `frontend/src/components/charts/StatsPanel.tsx` - 统计面板
-- `frontend/src/pages/dashboard/` - 集成到仪表盘
+**当前问题**:
+- `hint_attenuation` 配置存在（0.75, 0.50, 0.25）
+- `calculate_challenge_elo` 支持衰减参数
+- 但 `_settle_challenge` 调用时未传入 `hints_used_challenger` 参数
 
-**可视化组件**:
-
-1. **Elo 趋势图**:
-   - X 轴: 时间
-   - Y 轴: Elo 值
-   - 显示 Elo 变化曲线
-   - 标注关键事件（挑战、比赛等）
-   - 支持时间范围选择（7天/30天/全部）
-
-2. **能力雷达图**:
-   - 维度: DP, Greedy, Math, Graph, String, DS 等（按专题分）
-   - 值: 各专题的完成率或解题数
-   - 与 Elo 同级用户的平均值对比
-   - 使用 recharts 或 chart.js
-
-3. **PP 贡献图**:
-   - 显示前 20 题 PP 贡献的柱状图
-   - 每根柱子标注题目难度和基础 PP
-   - 颜色按难度等级区分
-
-4. **统计面板**:
-   - 总解题数
-   - 各难度解题数分布
-   - 挑战胜率
-   - 比赛参与次数和平均排名
-   - 代币获取/消费统计
+**需要修改的文件**:
+- `backend/app/services/challenge_service.py` — `_settle_challenge` 从 session 读取 `hints_used_challenger`/`hints_used_opponent` 并传入
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **Elo 趋势图 - 数据正确**: 坐标点与 Elo 历史数据匹配
-- [ ] **Elo 趋势图 - 时间范围**: 切换范围正确过滤数据
-- [ ] **Elo 趋势图 - 事件标注**: 关键事件正确显示
-- [ ] **雷达图 - 维度正确**: 各专题维度正确映射
-- [ ] **雷达图 - 数据正确**: 数值与实际完成率匹配
-- [ ] **雷达图 - 对比线**: 同级平均值正确展示
-- [ ] **PP 贡献图 - 顺序**: 按 PP 降序排列
-- [ ] **PP 贡献图 - 颜色**: 难度颜色区分正确
-- [ ] **统计面板 - 解题数**: 数字与实际数据匹配
-- [ ] **统计面板 - 分布**: 各难度分布正确
-- [ ] **空数据处理**: 无数据时显示友好提示而非空白
-- [ ] **响应式**: 图表在移动端可正常查看
+- [ ] **1 级提示衰减**: 使用 1 级提示 AC，Elo 增益 ×0.75
+- [ ] **2 级提示衰减**: 使用 2 级提示 AC，Elo 增益 ×0.50
+- [ ] **3 级提示衰减**: 使用 3 级提示 AC，Elo 增益 ×0.25
+- [ ] **PP 不受影响**: 使用提示后 PP 计算不变
+- [ ] **失败不衰减**: 负 Elo 变化不受提示衰减影响
 
 #### 验收标准
-1. 四种可视化组件正确渲染
-2. 数据与后端一致
-3. 交互（时间范围切换等）正常
-4. 空数据处理友好
-
-#### 技术备注
-- 推荐使用 recharts（与 React 生态契合度高）
-- 图表需要动态响应容器大小
+1. 提示 Elo 衰减在所有模式中正确串联
+2. PP 不受影响
+3. 负值不变
 
 ---
 
-## 阶段 11: 沉浸式动画与视觉反馈系统
-
-### Task 11.1: 动画与视觉反馈
-**状态**: 🟢 已完成 (2025-05-19)
+### Task 19.2: 挑战/比赛尝试奖励补全
+**状态**: 🔴 待开始
 **优先级**: P2
-**依赖**: Task 9.2
+**依赖**: 无
 
 #### 任务描述
-实现游戏化的视觉反馈系统，包括 Elo 变化动画、代币获取动画、连击效果等。
+在挑战和比赛模式中补全"尝试奖励"代币——未 AC 但有提交尝试时也应获得代币。
 
-**需要创建的文件**:
-- `frontend/src/components/animations/EloChange.tsx` - Elo 变化动画
-- `frontend/src/components/animations/CoinAnimation.tsx` - 代币动画
-- `frontend/src/components/animations/StreakEffect.tsx` - 连击效果
-- `frontend/src/components/animations/LevelUpEffect.tsx` - 升级/段位变化效果
-- `frontend/src/hooks/useAnimation.ts` - 动画 Hook
+**当前问题**:
+- 尝试奖励分级已定义（灰2/绿3/蓝4/紫5/黄红6）
+- 训练模式正确发放
+- 挑战和比赛模式未发放
 
-**动画效果**:
-
-1. **Elo 变化动画**:
-   - 数字滚动效果（+16, -8 等）
-   - 上升为绿色，下降为红色
-   - Elo 条/进度条动画
-   - 段位变化时全屏特效
-
-2. **代币获取动画**:
-   - 代币图标从题目飞向余额
-   - 数字跳动更新
-   - 连续获取时累积动画
-
-3. **连击效果**:
-   - 连击数递增动画（x2, x3, x4...）
-   - 屏幕边缘发光效果
-   - 连击数越高效果越强烈
-
-4. **题目难度颜色编码**:
-   - 灰: #999999
-   - 绿: #00AA00
-   - 蓝: #6666FF
-   - 紫: #CC00CC
-   - 黄: #FFBB00
-   - 红: #FF0000
-
-5. **匹配等待动画**:
-   - 脉冲动画
-   - 匹配成功时的"READY"效果
-
-6. **AC (Accepted) 庆祝效果**:
-   - 彩纸/粒子效果
-   - "Accepted!" 大字展示
-   - 配合代币获取动画
+**需要修改的文件**:
+- `backend/app/services/challenge_service.py` — 失败方也发放尝试奖励
+- `backend/app/services/contest_service.py` — 未 AC 的题目也发放尝试奖励
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **Elo 动画 - 上升**: 绿色数字滚动上升
-- [ ] **Elo 动画 - 下降**: 红色数字滚动下降
-- [ ] **Elo 动画 - 段位变化**: 触发全屏特效
-- [ ] **代币动画**: 飞行效果和数字跳动
-- [ ] **连击动画**: 连击数递增显示
-- [ ] **难度颜色**: 各难度颜色正确
-- [ ] **匹配等待**: 脉冲动画流畅
-- [ ] **AC 庆祝**: 粒子效果触发
-- [ ] **prefers-reduced-motion**: 尊重用户系统设置，减少动画
-- [ ] **性能**: 动画不导致页面卡顿
+- [ ] **挑战 - 失败方尝试奖励**: 挑战失败但有提交时获得对应难度尝试代币
+- [ ] **比赛 - 未 AC 题目尝试奖励**: 比赛中尝试但未 AC 的题目发放尝试代币
+- [ ] **AC 奖励分级精确值**: 灰10/绿20/蓝30/紫40/黄红50，各难度奖励值正确
+- [ ] **长时间加成(>20min)**: 用时超过 20 分钟并 AC 时额外获得时间加成代币（灰5/绿10/蓝15/紫20/黄红25）
+- [ ] **每日上限 120**: AC奖励+尝试奖励+时间加成合计不超过每日 120 上限
+- [ ] **交易记录**: 尝试奖励记入 token_transactions
 
 #### 验收标准
-1. 所有动画效果流畅
-2. 视觉反馈及时准确
-3. 尊重 prefers-reduced-motion
-4. 不影响页面性能
-
-#### 技术备注
-- 使用 CSS 动画和 framer-motion
-- 粒子效果可使用 canvas 或 css 粒子库
-- 所有动画需要 prefers-reduced-motion 适配
+1. 挑战和比赛模式正确发放尝试奖励
+2. 每日上限生效
+3. 交易记录完整
 
 ---
 
-## 阶段 12: 管理员后台与配置热更新
-
-### Task 12.1: 管理员后台
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P1
-**依赖**: Task 2.3, Task 9.2
+### Task 19.3: 雷达图 M-Elo 数据源
+**状态**: 🔴 待开始
+**优先级**: P2
+**依赖**: Task 16.1
 
 #### 任务描述
-实现管理员后台页面，支持系统配置热更新和用户管理。
+将雷达图数据源从"完成率"切换为 M-Elo 值。
 
-**需要创建的文件**:
-- `frontend/src/pages/admin/ConfigPage.tsx` - 配置管理页面
-- `frontend/src/pages/admin/UsersPage.tsx` - 用户管理页面
-- `frontend/src/pages/admin/DashboardPage.tsx` - 管理员仪表盘
-- `app/api/v1/admin.py` - 管理员 API 路由
-- `app/services/admin_service.py` - 管理员业务逻辑
-
-**API 端点**:
-
-1. **GET /api/v1/admin/config** - 获取所有配置
-2. **PUT /api/v1/admin/config/{key}** - 更新配置项
-3. **POST /api/v1/admin/config/{key}/reset** - 重置配置为默认值
-4. **GET /api/v1/admin/users** - 获取用户列表（分页、搜索）
-5. **PUT /api/v1/admin/users/{id}/toggle-active** - 启用/禁用用户
-6. **PUT /api/v1/admin/users/{id}/toggle-admin** - 设置/取消管理员
-7. **GET /api/v1/admin/stats** - 系统统计信息
-
-**配置管理页面功能**:
-- 分类展示所有配置项（Elo、PP、挑战、经济、比赛、CF API）
-- 每个配置项显示: 名称、当前值、默认值、描述
-- 支持在线编辑和保存
-- 保存后即时生效（清除后端缓存）
-- 一键重置为默认值
-- 修改历史记录
-
-**用户管理页面功能**:
-- 用户列表（分页、搜索）
-- 查看用户详情
-- 启用/禁用用户
-- 设置管理员权限
-
-**管理员仪表盘**:
-- 总用户数、活跃用户数
-- 挑战/训练/比赛统计
-- 系统运行状态
+**需要修改的文件**:
+- `frontend/src/components/charts/RadarChart.tsx` — 数据源切换
+- `frontend/src/pages/dashboard/DashboardPage.tsx` — 调用新 API
+- 对应后端 API 需返回 M-Elo 数据（Task 16.1 中已添加）
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **配置读取**: 页面正确展示所有配置项
-- [ ] **配置更新**: 修改后保存成功，返回新值
-- [ ] **配置即时生效**: 修改 Elo K 值后，新挑战使用新值
-- [ ] **配置重置**: 重置后返回默认值
-- [ ] **配置验证**: 无效值被前端和后端同时拒绝
-- [ ] **用户列表**: 分页、搜索正常
-- [ ] **用户禁用**: 禁用用户无法登录
-- [ ] **管理员设置**: 设置管理员后可访问后台
-- [ ] **权限控制**: 非管理员无法访问管理 API
-- [ ] **系统统计**: 数据准确
+- [ ] **数据源**: 雷达图各维度显示 M-Elo 值而非完成率
+- [ ] **新标签**: 未做题的标签显示初始 M-Elo（继承的 Global Elo）
+- [ ] **无数据**: 无任何 M-Elo 记录时显示友好空状态
+- [ ] **动态 fullMark**: fullMark 动态适配（已有实现）
 
 #### 验收标准
-1. 配置 CRUD 完整
-2. 配置热更新即时生效
-3. 用户管理功能完整
-4. 权限控制严格
+1. 雷达图展示 M-Elo 值
+2. 无数据时有友好提示
+3. 视觉效果与之前一致
 
 ---
 
-## 阶段 13: 集成测试与部署
-
-### Task 13.1: 端到端集成测试
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P0
-**依赖**: 所有前序任务
+### Task 19.4: 异步提交流追踪
+**状态**: 🔴 待开始
+**优先级**: P3
+**依赖**: 无
 
 #### 任务描述
-编写端到端集成测试，覆盖所有核心业务流程。
+实现后台异步轮询 CF API 追踪用户提交状态，替代当前的手动报告机制。
 
-**需要创建的文件**:
-- `backend/tests/integration/test_auth_flow.py`
-- `backend/tests/integration/test_challenge_flow.py`
-- `backend/tests/integration/test_training_flow.py`
-- `backend/tests/integration/test_contest_flow.py`
-- `backend/tests/integration/test_economy_flow.py`
-- `backend/tests/integration/test_hint_flow.py`
-- `backend/tests/integration/test_pp_elo_flow.py`
+**需要新增的文件**:
+- `backend/app/services/submission_tracker.py` — 提交状态追踪服务
+- `backend/app/core/task_scheduler.py` — 后台任务调度（使用 APScheduler 或 asyncio.create_task）
 
-**集成测试场景**:
+**功能要求**:
+1. 用户在系统内发起解题 → 记录预期提交
+2. 后台定时轮询 CF API `user.status` 获取最新提交
+3. 匹配提交记录 → 更新会话状态（Pending → AC/WA/TLE...）
+4. 最终状态确定后触发结算
 
-1. **注册-登录-绑定 CF 完整流程**
-2. **随机挑战完整流程**: 匹配 -> 出题 -> 提交 -> 结算 -> Elo/PP/代币更新
-3. **专题训练完整流程**: 选择专题 -> 开始训练 -> 解题 -> 连击奖励 -> PP 更新
-4. **虚拟组赛完整流程**: 选择赛制 -> 比赛 -> 提交 -> 结算 -> Elo 更新
-5. **经济系统完整流程**: AC 获取代币 -> 购买提示 -> 余额减少 -> 每日重置
-6. **PP 聚合完整测试**: 解多题 -> 验证 PP 排序和加权
-7. **配置热更新**: 修改配置 -> 新操作使用新配置
+**注意**: 此为独立增强功能，不影响现有手动提交流程。可作为可选升级。
 
 #### 测试要点（防Workaround验证清单）
-- [ ] **端到端 - 注册到挑战**: 完整用户旅程
-- [ ] **端到端 - 经济循环**: 赚取代币 -> 消费代币
-- [ ] **端到端 - PP 累积**: 解多题后 PP 正确累积
-- [ ] **并发 - 双人挑战**: 两个用户同时匹配
-- [ ] **并发 - 代币竞争**: 同时获取代币不超每日上限
-- [ ] **数据一致性**: 所有操作后数据库状态一致
-- [ ] **API 兼容性**: 前端所有 API 调用正确
+- [ ] **提交匹配**: 从 CF API 获取的提交能正确匹配到系统内的解题会话
+- [ ] **状态映射**: Pending → Pending, AC → AC, WA/TLE/RE → 失败
+- [ ] **轮询频率**: 不超过 CF API 限流要求（最小 2 秒间隔）
+- [ ] **幂等结算**: 同一提交不会重复结算
+- [ ] **超时处理**: 长时间无最终状态的提交有超时机制
 
 #### 验收标准
-1. 所有集成测试通过
-2. 端到端流程无阻塞
-3. 数据一致性保证
-4. 并发场景安全
-
----
-
-### Task 13.2: 部署配置与文档
-**状态**: 🟢 已完成 (2025-05-19)
-**优先级**: P1
-**依赖**: Task 13.1
-
-#### 任务描述
-完善部署配置，编写部署文档和运维指南。
-
-**需要创建/修改的文件**:
-- `docker-compose.prod.yml` - 生产环境 compose
-- `docker-compose.yml` - 更新为开发环境
-- `.env.example` - 更新所有环境变量
-- `docs/deployment.md` - 部署文档
-
-**部署要求**:
-- 生产环境使用非 root 用户运行
-- 数据库密码通过环境变量注入
-- 前端构建优化（代码分割、压缩）
-- 后端 Gunicorn + Uvicorn workers
-- Nginx 反向代理
-- 健康检查端点
-- 日志收集配置
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **生产构建**: docker-compose -f docker-compose.prod.yml build 成功
-- [ ] **生产启动**: 所有服务正常启动
-- [ ] **环境变量**: 所有必需变量都有默认值或文档说明
-- [ ] **非 root 用户**: 容器内进程非 root
-- [ ] **健康检查**: /api/v1/health 返回正常
-- [ ] **前端优化**: 检查 bundle size 合理
-- [ ] **日志**: 关键操作有日志输出
-
-#### 验收标准
-1. 生产环境一键部署
-2. 部署文档完整
-3. 安全配置到位
-4. 监控和日志完善
+1. 后台轮询正确运行
+2. 提交状态准确映射
+3. 不超 CF API 限流
+4. 幂等安全
 
 ---
 
 ## 任务依赖关系总览
 
 ```
-阶段 1 (基础设施):
-  1.1 项目结构 -> 1.2 Docker -> 1.3 数据库 -> 1.4 API 框架
+阶段 15 (核心算法升级):
+  15.1 K因子分段 ← 无依赖 (P0)
+  15.2 S值分级 ← 15.1
+  15.3 PP表现因子 ← 无依赖 (P0)
 
-阶段 2 (核心算法, 依赖 1.4):
-  2.1 Elo 引擎 (依赖 1.4)
-  2.2 PP 引擎 (依赖 1.4)
-  2.3 配置系统 (依赖 1.4)
+阶段 16 (M-Elo 系统):
+  16.1 M-Elo数据模型 ← 无依赖 (P0)
+  16.2 护盾机制 ← 16.1, 15.1
+  16.3 权重极化 ← 16.1, 15.1
+  16.4 标签分流抽取 ← 16.1
 
-阶段 3 (用户系统, 依赖 1.4):
-  3.1 认证系统 (依赖 1.4)
-  3.2 CF Handle (依赖 3.1)
+阶段 17 (PvE 挑战):
+  17.1 PvE后端 ← 15.1, 15.3
+  17.2 PvE前端 ← 17.1
+  17.3 越级奖励 ← 15.3, 17.1
 
-阶段 4 (CF API):
-  4.1 CF API 客户端 (依赖 1.4)
+阶段 18 (AI 比赛):
+  18.1 Bot+模拟引擎 ← 15.1
+  18.2 PR反推 ← 18.1
+  18.3 AI比赛前端 ← 18.1
 
-阶段 5-7 (核心玩法, 依赖 阶段2 + 阶段4):
-  5.1 随机挑战 (依赖 2.1, 4.1)
-  6.1 专题训练 (依赖 2.1, 2.2, 4.1)
-  7.1 虚拟组赛 (依赖 2.1, 4.1)
-
-阶段 8 (经济系统, 依赖 阶段5-7):
-  8.1 代币系统 (依赖 5.1, 6.1, 7.1)
-  8.2 提示系统 (依赖 8.1)
-
-阶段 9 (前端):
-  9.1 前端框架 (依赖 1.1)
-  9.2 核心页面 (依赖 9.1)
-
-阶段 10-12 (增强功能):
-  10.1 数据可视化 (依赖 9.2)
-  11.1 动画系统 (依赖 9.2)
-  12.1 管理后台 (依赖 2.3, 9.2)
-
-阶段 13 (测试部署):
-  13.1 集成测试 (依赖所有)
-  13.2 部署 (依赖 13.1)
+阶段 19 (补全):
+  19.1 Elo衰减串联 ← 无依赖
+  19.2 尝试奖励 ← 无依赖
+  19.3 雷达图M-Elo ← 16.1
+  19.4 异步追踪 ← 无依赖
 ```
 
 ---
 
 ## 执行优先级
 
-**P0 - 必须首先完成** (阶段 1-5):
-1.1 -> 1.2 -> 1.3 -> 1.4 -> 2.1 -> 2.2 -> 2.3 -> 3.1 -> 4.1 -> 5.1
+**第一波 (P0 - 基础, 可并行)**:
+- 15.1 K因子分段
+- 15.3 PP表现因子
+- 16.1 M-Elo数据模型
 
-**P1 - 核心功能** (阶段 6-9, 12):
-可并行开发: 6.1, 7.1, 8.1, 9.1
-顺序: 8.2 (依赖 8.1), 9.2 (依赖 9.1), 12.1 (依赖 2.3 + 9.2)
+**第二波 (P1 - 依赖第一波)**:
+- 15.2 S值分级 ← 15.1
+- 16.2 护盾 ← 16.1, 15.1
+- 16.3 极化结算 ← 16.1, 15.1
+- 16.4 标签抽取 ← 16.1
+- 17.1 PvE后端 ← 15.1, 15.3
+- 17.3 越级奖励 ← 15.3
+- 18.1 Bot+模拟 ← 15.1
 
-**P2 - 增强功能** (阶段 10-11):
-10.1, 11.1 可并行
+**第三波 (P1 - 前端, 依赖第二波)**:
+- 17.2 PvE前端 ← 17.1
+- 18.2 PR反推 ← 18.1
+- 18.3 AI比赛前端 ← 18.1
 
-**最终** (阶段 13):
-13.1 -> 13.2
+**第四波 (P2 - 打磨)**:
+- 19.1 Elo衰减串联
+- 19.2 尝试奖励
+- 19.3 雷达图M-Elo ← 16.1
 
----
-
-## 阶段 14: 生产部署 Bug 修复
-
-### Task 14.1: Dashboard Analytics 数据展示修复
-**状态**: 🟢 已完成 (2026-05-20)
-**优先级**: P1
-**依赖**: Task 10.1
-
-#### 任务描述
-Dashboard 页面的 Analytics 区域始终显示 "no data"，原因是：
-1. 后端缺少 `/auth/elo-history` 和 `/auth/pp-contributions` 两个 API 端点
-2. 前端 `DashboardCharts.tsx` 中的对应 fetch 调用被注释
-
-**已完成的代码变更**（需要验证并部署）：
-
-1. **后端** `backend/app/api/v1/auth.py` - 已添加两个端点：
-   - `GET /auth/elo-history` - 返回用户 Elo 历史记录，从 `elo_history` 表按 `created_at` 升序查询
-   - `GET /auth/pp-contributions?limit=20` - 返回用户 PP 贡献前 N 题，从 `pp_records` 表按 `base_pp` 降序查询
-
-2. **前端** `frontend/src/components/charts/DashboardCharts.tsx` - 已取消注释：
-   - `/auth/elo-history` 请求并设置 `eloData`
-   - `/auth/pp-contributions?limit=20` 请求并设置 `ppData`
-
-**需要完成的工作**：
-- 验证现有代码变更的正确性和完整性
-- 确保前端 TypeScript 编译通过
-- 构建 Docker 镜像并部署
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **后端端点 - elo-history**: GET /api/v1/auth/elo-history 返回正确的 Elo 历史数据
-- [ ] **后端端点 - pp-contributions**: GET /api/v1/auth/pp-contributions 返回正确的 PP 贡献数据
-- [ ] **端点认证**: 未认证请求返回 401
-- [ ] **前端 - EloChart**: 有数据时正确渲染趋势图，无数据时显示空状态
-- [ ] **前端 - PPChart**: 有数据时正确渲染贡献图，无数据时显示空状态
-- [ ] **前端 - 编译通过**: TypeScript 编译无错误
-- [ ] **Docker 构建**: `docker compose build` 成功
-
-#### 验收标准
-1. Analytics 区域正确显示 Elo 趋势图和 PP 贡献图
-2. 无数据时显示友好的空状态提示
-3. Docker 镜像构建成功
-
-#### 技术备注
-- 代码变更已存在但未构建部署，此任务主要是验证 + 构建 + 部署
-
----
-
-### Task 14.2: 活跃比赛会话导航
-**状态**: 🟢 已完成 (2026-05-20)
-**优先级**: P1
-**依赖**: Task 7.1, Task 9.2
-
-#### 任务描述
-当用户有一个活跃的虚拟比赛会话（contest session status === "active"）时，如果导航离开了比赛页面（如回到 Dashboard），没有任何方式返回到正在进行的比赛。需要在 ContestPage 和 DashboardPage 上检测并展示活跃比赛，提供一键返回功能。
-
-**需要修改的文件**：
-
-1. **后端** `backend/app/services/contest_service.py` - 添加获取活跃比赛会话的方法：
-   - `get_active_contest(db, user)` - 查询 `contest_sessions` 表中 `user_id` 匹配且 `status == "active"` 的记录
-   - 如果存在且超时，自动结束
-
-2. **后端** `backend/app/api/v1/contest.py` - 添加 API 端点：
-   - `GET /contest/active` - 返回当前活跃比赛会话的 ID 和基本信息，无活跃比赛返回 null
-
-3. **前端** `frontend/src/pages/ContestPage.tsx` - 页面加载时检查活跃比赛：
-   - 如果存在活跃比赛，显示 "Resume Contest" 卡片，点击导航到 `/contest/{id}`
-   - 同时显示 tier 选择卡片，但点击时提示已有活跃比赛
-
-4. **前端** `frontend/src/pages/DashboardPage.tsx` - Quick Actions 中的 Contest 卡片：
-   - 如果存在活跃比赛，显示 "Resume" 按钮和剩余时间提示
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **后端 - GET /contest/active 无活跃**: 未开始比赛时返回 `data: null`
-- [ ] **后端 - GET /contest/active 有活跃**: 返回活跃比赛的 id、tier、remaining_seconds
-- [ ] **后端 - 超时自动结束**: 超时的活跃比赛被自动结束，GET /contest/active 返回 null
-- [ ] **后端 - 认证要求**: 未认证请求返回 401
-- [ ] **前端 - ContestPage 显示 Resume**: 有活跃比赛时显示 Resume Contest 卡片
-- [ ] **前端 - ContestPage Resume 导航**: 点击 Resume 导航到 `/contest/{id}`
-- [ ] **前端 - ContestPage 阻止新比赛**: 有活跃比赛时 Start Contest 按钮禁用或提示
-- [ ] **前端 - Dashboard 显示活跃比赛**: Dashboard Quick Actions 中 Virtual Contest 卡片显示活跃比赛提示
-- [ ] **前端 - Dashboard 一键恢复**: 点击可导航到活跃比赛页面
-- [ ] **前端 - 无活跃比赛**: 页面正常显示，不出现活跃比赛相关的 UI 元素
-- [ ] **前端 - TypeScript 编译通过**: 无编译错误
-
-#### 验收标准
-1. 有活跃比赛时，ContestPage 显示 Resume Contest 入口
-2. 有活跃比赛时，Dashboard 的 Virtual Contest 卡片显示恢复提示
-3. 无活跃比赛时，页面正常显示，无多余 UI
-4. 超时比赛被自动结束
-
-#### 技术备注
-- 使用 `GET /contest/active` 端点而非在每个页面都查询 history
-- ContestPage 的 useEffect 中在加载 tiers 的同时检查活跃比赛
-
----
-
-### Task 14.3: Training 专题列表进度和星级显示修复
-**状态**: 🟢 已完成 (2026-05-20)
-**优先级**: P1
-**依赖**: Task 6.1
-
-#### 任务描述
-Training 专题列表页面（TrainingPage.tsx）所有 topic 的星级和进度都显示 0，解题后显示 "6/0"。Dashboard 的 Skill Radar 也是空的。
-
-**根因分析**：
-1. `backend/app/services/training_service.py` 的 `list_topics()` 方法中 `total_problems` 硬编码为 0，`stars` 也为 0
-2. `list_topics()` 不接受 `cf_service` 参数，无法调用 CF API 获取各专题的题目总数
-3. 对比 `get_progress()` 方法（正确工作），它传入了 `cf_service` 并调用 `_fetch_topic_problems()` 获取题目列表
-
-**需要修改的文件**：
-
-1. **`backend/app/services/training_service.py`** - 修改 `list_topics()` 方法：
-   - 添加 `cf_service: CFApiService` 参数
-   - 在循环中调用 `_fetch_topic_problems(cf_service, cf_tags)` 获取各专题题目列表
-   - 用 `len(problems)` 作为 `total_problems`
-   - 计算 `completion_rate` 和 `stars`（使用已有的 `calculate_stars()` 函数）
-
-2. **`backend/app/api/v1/training.py`** - 修改 `list_topics` 路由：
-   - 调用 `_get_cf_service()` 获取 cf_service 实例
-   - 将 `cf_service` 传入 `TrainingService.list_topics()`
-
-#### 测试要点（防Workaround验证清单）
-- [ ] **list_topics 接受 cf_service**: 方法签名包含 cf_service 参数
-- [ ] **total_problems > 0**: 有题目的专题返回的 total_problems 大于 0
-- [ ] **solved_count 正确**: 已解题目的 solved_count 与实际一致
-- [ ] **stars 计算**: completion_rate > 0 时 stars > 0，completion_rate == 0 时 stars == 0
-- [ ] **前端显示**: TrainingPage 各专题卡片显示正确的进度百分比和星级
-- [ ] **前端显示 solved/total**: 不再显示 "6/0"，而是 "6/N"
-- [ ] **Radar 数据**: `/training/progress` 返回正确数据（此端点未受影响，但需确认）
-- [ ] **TypeScript 编译通过**: 无编译错误
-- [ ] **后端测试通过**: 现有测试不回归
-
-#### 验收标准
-1. TrainingPage 各专题显示正确的星级、进度和 solved/total
-2. Dashboard Skill Radar 正确展示各专题完成率
-3. 无 CF API 数据的专题（如空 tag）优雅处理（total=0, solved=0）
-
-#### 技术备注
-- `_fetch_topic_problems()` 已有 CF API 缓存（TTL 30 分钟），不会每次请求都调 CF API
-- `calculate_stars()` 函数已存在，直接复用
-- 参照 `get_progress()` 的实现模式
+**第五波 (P3 - 增强)**:
+- 19.4 异步追踪
