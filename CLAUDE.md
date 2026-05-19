@@ -10,6 +10,10 @@
 
 3. **禁止 Workaround 和降级方案**：遇到意料外问题，立即向用户报告并等待决策，不允许自行变通。
 
+4. **每个 task 使用独立的子 agent**：不同 task 必须启动新的 feature-engineer 和 professional-test-engineer agent，不跨 task 复用。
+
+5. **每个 task 完成后必须 commit**：task 标记 🟢 后立即提交代码，不累积多个 task 一起提交。
+
 ## 子 Agent 协作规范
 
 | 子 Agent | 职责 | 调用方式 |
