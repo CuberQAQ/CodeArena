@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.services import economy_service as economy_svc_module
 from app.services import training_service as training_svc_module
 from app.services.training_service import (
     TrainingService,
@@ -139,8 +140,18 @@ async def async_engine():
 
 @pytest.fixture
 async def db(async_engine):
-    """Provide an async session with patched model references."""
+    """Provide an async session with patched model references.
+
+    Patches model references in training_service with SQLite-compatible
+    test models.  Also patches economy_svc.award_tokens to directly add
+    tokens to user (bypassing daily cap / production-column logic).
+    """
     session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _mock_award_tokens(db, user, amount, tx_type=None, reference_type=None, reference_id=None):
+        """Side-effect mock: add tokens directly to user object."""
+        user.tokens += amount
+        return amount
 
     async with session_factory() as session:
         with (
@@ -150,6 +161,7 @@ async def db(async_engine):
             patch.object(training_svc_module, "TrainingProblemRecord", _TestTrainingProblemRecord),
             patch.object(training_svc_module, "TokenTransaction", _TestTokenTransaction),
             patch.object(training_svc_module, "EloHistory", _TestEloHistory),
+            patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
         ):
             yield session
 

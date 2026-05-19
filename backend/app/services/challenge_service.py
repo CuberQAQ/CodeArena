@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.models.challenge_session import ChallengeSession
-from app.models.token_transaction import TokenTransaction
 from app.models.user import User
 from app.schemas.challenge import (
     ChallengeDetail,
@@ -27,6 +26,7 @@ from app.schemas.challenge import (
     StartChallengeResponse,
     SubmitResultResponse,
 )
+from app.services import economy_service as economy_svc
 from app.services.cf_api_service import CFApiService
 from app.services.elo_service import EloService
 from app.services.match_service import MatchService
@@ -703,30 +703,57 @@ async def _settle_challenge(
             tokens_challenger = base_tokens // 2
             tokens_opponent = base_tokens // 2
 
-    # Award tokens
+    # Award tokens via economy_service (enforces daily cap, updates daily_tokens_earned)
     if tokens_challenger > 0:
-        challenger.tokens += tokens_challenger
-        tx = TokenTransaction(
-            user_id=challenger.id,
-            amount=tokens_challenger,
-            type="challenge_reward",
+        await economy_svc.award_tokens(
+            db, challenger, tokens_challenger,
+            tx_type="challenge_reward",
             reference_type="challenge_session",
             reference_id=session.id,
-            balance_after=challenger.tokens,
         )
-        db.add(tx)
 
     if tokens_opponent > 0:
-        opponent.tokens += tokens_opponent
-        tx = TokenTransaction(
-            user_id=opponent.id,
-            amount=tokens_opponent,
-            type="challenge_reward",
+        await economy_svc.award_tokens(
+            db, opponent, tokens_opponent,
+            tx_type="challenge_reward",
             reference_type="challenge_session",
             reference_id=session.id,
-            balance_after=opponent.tokens,
         )
-        db.add(tx)
+
+    # Time bonus: if solved and time_spent > 20 min, award extra tokens
+    challenger_time_bonus = (
+        session.challenger_solved
+        and session.challenger_time is not None
+        and session.challenger_time > economy_svc.TIME_BONUS_THRESHOLD_SECONDS
+        and session.problem_rating > 0
+    )
+    if challenger_time_bonus:
+        time_bonus = economy_svc.time_bonus_for_rating(session.problem_rating)
+        if time_bonus > 0:
+            await economy_svc.award_tokens(
+                db, challenger, time_bonus,
+                tx_type="time_bonus",
+                reference_type="challenge_session",
+                reference_id=session.id,
+            )
+            tokens_challenger += time_bonus
+
+    opponent_time_bonus = (
+        session.opponent_solved
+        and session.opponent_time is not None
+        and session.opponent_time > economy_svc.TIME_BONUS_THRESHOLD_SECONDS
+        and session.problem_rating > 0
+    )
+    if opponent_time_bonus:
+        time_bonus = economy_svc.time_bonus_for_rating(session.problem_rating)
+        if time_bonus > 0:
+            await economy_svc.award_tokens(
+                db, opponent, time_bonus,
+                tx_type="time_bonus",
+                reference_type="challenge_session",
+                reference_id=session.id,
+            )
+            tokens_opponent += time_bonus
 
     # Record PP for solvers
     if session.challenger_solved and session.problem_rating > 0:

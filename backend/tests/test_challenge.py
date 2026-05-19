@@ -17,6 +17,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.services import challenge_service as challenge_svc_module
+from app.services import economy_service as economy_svc_module
 from app.services.challenge_service import (
     ChallengeService,
     _build_problem_info,
@@ -112,17 +113,24 @@ async def async_engine():
 async def db(async_engine):
     """Provide an async session with patched model references.
 
-    Patches User, ChallengeSession, and TokenTransaction in the
-    challenge_service module so that db.get() and select() calls
-    resolve to the SQLite-compatible test models.
+    Patches User and ChallengeSession in the challenge_service module
+    so that db.get() and select() calls resolve to the SQLite-compatible
+    test models. Also patches economy_svc.award_tokens to directly add
+    tokens to user (bypassing daily cap / TokenTransaction logic that
+    requires production columns).
     """
     session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _mock_award_tokens(db, user, amount, tx_type=None, reference_type=None, reference_id=None):
+        """Side-effect mock: add tokens directly to user object."""
+        user.tokens += amount
+        return amount
 
     async with session_factory() as session:
         with (
             patch.object(challenge_svc_module, "User", _TestUser),
             patch.object(challenge_svc_module, "ChallengeSession", _TestChallengeSession),
-            patch.object(challenge_svc_module, "TokenTransaction", _TestTokenTransaction),
+            patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
         ):
             yield session
 

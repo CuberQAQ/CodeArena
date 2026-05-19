@@ -17,6 +17,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.services import contest_service as contest_svc_module
+from app.services import economy_service as economy_svc_module
 from app.services import elo_service as elo_svc_module
 from app.services import pp_service as pp_svc_module
 from app.services.contest_service import TIER_CONFIGS, ContestService, _tokens_for_rating
@@ -157,12 +158,16 @@ async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, r
 async def db(async_engine):
     session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
+    async def _mock_award_tokens(db, user, amount, tx_type=None, reference_type=None, reference_id=None):
+        """Side-effect mock: add tokens directly to user object."""
+        user.tokens += amount
+        return amount
+
     async with session_factory() as session:
         # Patch all model references in contest_service module
         with (
             patch.object(contest_svc_module, "ContestSession", _TestContestSession),
             patch.object(contest_svc_module, "ContestProblemRecord", _TestContestProblemRecord),
-            patch.object(contest_svc_module, "TokenTransaction", _TestTokenTransaction),
             patch.object(contest_svc_module, "EloHistory", _TestEloHistory),
             # Patch PPService.record_pp to avoid querying PPRecord/User models
             patch.object(pp_svc_module.PPService, "record_pp", AsyncMock(return_value=None)),
@@ -172,6 +177,8 @@ async def db(async_engine):
                 "record_elo_history",
                 _mock_record_elo_history,
             ),
+            # Patch economy_svc.award_tokens to directly add tokens
+            patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
         ):
             yield session
 

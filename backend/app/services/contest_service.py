@@ -21,7 +21,6 @@ from app.core.exceptions import BadRequestException, ForbiddenException, NotFoun
 from app.models.contest_problem_record import ContestProblemRecord
 from app.models.contest_session import ContestSession
 from app.models.elo_history import EloHistory
-from app.models.token_transaction import TokenTransaction
 from app.models.user import User
 from app.schemas.contest import (
     ContestHistoryItem,
@@ -31,6 +30,7 @@ from app.schemas.contest import (
     SubmitContestResponse,
     TierInfo,
 )
+from app.services import economy_service as economy_svc
 from app.services.cf_api_service import CFApiService
 from app.services.elo_service import EloService
 from app.services.pp_service import PPService
@@ -346,18 +346,26 @@ class ContestService:
                 problem_rating=problem_rating,
             )
 
-        # Award tokens
+        # Award tokens via economy_service (enforces daily cap, updates daily_tokens_earned)
         if tokens_earned > 0:
-            user.tokens += tokens_earned
-            tx = TokenTransaction(
-                user_id=user.id,
-                amount=tokens_earned,
-                type="reward_ac" if solved else "reward_attempt",
+            await economy_svc.award_tokens(
+                db, user, tokens_earned,
+                tx_type="reward_ac" if solved else "reward_attempt",
                 reference_type="contest",
                 reference_id=contest_id,
-                balance_after=user.tokens,
             )
-            db.add(tx)
+
+            # Time bonus: if solved and time_spent > 20 min, award extra tokens
+            if solved and time_spent > economy_svc.TIME_BONUS_THRESHOLD_SECONDS:
+                time_bonus = economy_svc.time_bonus_for_rating(problem_rating)
+                if time_bonus > 0:
+                    await economy_svc.award_tokens(
+                        db, user, time_bonus,
+                        tx_type="time_bonus",
+                        reference_type="contest",
+                        reference_id=contest_id,
+                    )
+                    tokens_earned += time_bonus
 
         await db.flush()
 

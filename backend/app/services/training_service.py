@@ -33,6 +33,7 @@ from app.schemas.training import (
     TrainingProgress,
     TrainingSessionInfo,
 )
+from app.services import economy_service as economy_svc
 from app.services.cf_api_service import CFApiService
 from app.services.pp_service import PPService
 
@@ -624,42 +625,44 @@ class TrainingService:
             tokens_earned += attempt_tokens
             elo_change = None
 
-        # Award tokens
+        # Award tokens via economy_service (enforces daily cap, updates daily_tokens_earned)
         if tokens_earned > 0:
-            user.tokens += tokens_earned
             token_type = "reward_ac" if solved else "reward_attempt"
             if streak_tokens > 0:
                 # Record AC and streak separately
                 ac_tokens_only = tokens_earned - streak_tokens
                 if ac_tokens_only > 0:
-                    tx = TokenTransaction(
-                        user_id=user.id,
-                        amount=ac_tokens_only,
-                        type=token_type,
+                    await economy_svc.award_tokens(
+                        db, user, ac_tokens_only,
+                        tx_type=token_type,
                         reference_type="training",
                         reference_id=session_id,
-                        balance_after=user.tokens - streak_tokens,
                     )
-                    db.add(tx)
-                tx_streak = TokenTransaction(
-                    user_id=user.id,
-                    amount=streak_tokens,
-                    type="streak_bonus",
+                await economy_svc.award_tokens(
+                    db, user, streak_tokens,
+                    tx_type="streak_bonus",
                     reference_type="training",
                     reference_id=session_id,
-                    balance_after=user.tokens,
                 )
-                db.add(tx_streak)
             else:
-                tx = TokenTransaction(
-                    user_id=user.id,
-                    amount=tokens_earned,
-                    type=token_type,
+                await economy_svc.award_tokens(
+                    db, user, tokens_earned,
+                    tx_type=token_type,
                     reference_type="training",
                     reference_id=session_id,
-                    balance_after=user.tokens,
                 )
-                db.add(tx)
+
+            # Time bonus: if solved and time_spent > 20 min, award extra tokens
+            if solved and time_spent > economy_svc.TIME_BONUS_THRESHOLD_SECONDS:
+                time_bonus = economy_svc.time_bonus_for_rating(problem_rating)
+                if time_bonus > 0:
+                    await economy_svc.award_tokens(
+                        db, user, time_bonus,
+                        tx_type="time_bonus",
+                        reference_type="training",
+                        reference_id=session_id,
+                    )
+                    tokens_earned += time_bonus
 
         await db.flush()
 
