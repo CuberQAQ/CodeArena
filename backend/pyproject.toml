@@ -11,6 +11,10 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "A", "SIM"]
 
+# B008: Function call in argument defaults is idiomatic FastAPI for Depends()
+# N818: Custom exceptions use AppException suffix pattern, not Error suffix
+ignore = ["B008", "N818"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
