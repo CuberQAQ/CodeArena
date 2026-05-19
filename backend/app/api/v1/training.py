@@ -1,8 +1,9 @@
 """Training API routes.
 
-Mounts nine endpoints under ``/api/v1/training/``:
+Mounts ten endpoints under ``/api/v1/training/``:
   GET  /topics              -- list all topics
   GET  /topics/{id}         -- topic detail with problems
+  GET  /topics/{id}/recommend -- adaptive problem recommendation
   POST /start               -- start training session
   GET  /session/{id}        -- get session status
   POST /session/{id}/submit -- submit problem result
@@ -84,6 +85,36 @@ async def get_topic_detail(
     return success_response(
         data=detail.model_dump(mode="json"),
         message="Topic detail retrieved",
+    )
+
+
+@router.get("/topics/{topic_id}/recommend")
+async def get_recommended_problem(
+    topic_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get an adaptive problem recommendation based on the user's M-Elo.
+
+    Returns a single unsolved problem within a rating range derived from
+    the user's M-Elo for the topic's primary tag.  If no suitable problem
+    is found (after expanding the range up to 3 rounds), returns null data.
+    """
+    cf_service = _get_cf_service()
+    result = await TrainingService.get_adaptive_problem(
+        db=db,
+        user=current_user,
+        topic_id=topic_id,
+        cf_service=cf_service,
+    )
+    if result is None:
+        return success_response(
+            data=None,
+            message="No suitable problem found for your current level",
+        )
+    return success_response(
+        data=result.model_dump(mode="json"),
+        message="Recommended problem found",
     )
 
 

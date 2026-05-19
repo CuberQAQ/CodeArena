@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.schemas.training import RecommendedProblemResponse
 from app.services import economy_service as economy_svc_module
 from app.services import training_service as training_svc_module
 from app.services.training_service import (
@@ -114,6 +115,17 @@ class _TestEloHistory(_TestBase):
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class _TestUserTagElo(_TestBase):
+    __tablename__ = "user_tag_elo"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    tag: Mapped[str] = mapped_column(String(100), nullable=False)
+    elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
+    total_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    first_ac_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -145,6 +157,8 @@ async def db(async_engine):
     Patches model references in training_service with SQLite-compatible
     test models.  Also patches economy_svc.award_tokens to directly add
     tokens to user (bypassing daily cap / production-column logic).
+    Also patches MEloService methods (shield/elo logic) and config_svc
+    so _calculate_training_elo does not hit real DB tables or config.
     """
     session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -152,6 +166,19 @@ async def db(async_engine):
         """Side-effect mock: add tokens directly to user object."""
         user.tokens += amount
         return amount
+
+    # Default mock M-Elo methods -- return safe defaults
+    _mock_melo_service = AsyncMock()
+    _mock_melo_service.is_shield_active = AsyncMock(return_value=False)
+    _mock_melo_service.get_or_create_melo = AsyncMock(
+        return_value=_FakeMEloRecord(elo=1200, tag="dp"),
+    )
+    _mock_melo_service.deactivate_shield = AsyncMock(
+        return_value=_FakeMEloRecord(elo=1200, tag="dp"),
+    )
+    _mock_melo_service.update_melo = AsyncMock(
+        return_value=_FakeMEloRecord(elo=1200, tag="dp"),
+    )
 
     async with session_factory() as session:
         with (
@@ -161,6 +188,7 @@ async def db(async_engine):
             patch.object(training_svc_module, "TrainingProblemRecord", _TestTrainingProblemRecord),
             patch.object(training_svc_module, "TokenTransaction", _TestTokenTransaction),
             patch.object(training_svc_module, "EloHistory", _TestEloHistory),
+            patch.object(training_svc_module, "MEloService", _mock_melo_service),
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
         ):
             yield session
@@ -563,7 +591,9 @@ class TestSubmitProblem:
         assert result.solved is False
         # Attempt reward for 1200 rating -> 3 tokens
         assert result.tokens_earned == 3
-        assert result.elo_change is None
+        # Elo change is now computed for failures too (Task 16.3)
+        # With shield inactive, a failure should produce a negative or zero change
+        assert result.elo_change is not None
 
     async def test_submit_not_active_session(self, db, cf_mock):
         user = _make_test_user(db)
@@ -1227,7 +1257,7 @@ class TestEloUpdate:
 
     @patch.object(training_svc_module, "PPService")
     async def test_no_elo_change_on_failure(self, mock_pp_cls, db, cf_mock):
-        """Failing a training problem does not change Elo."""
+        """Failing a training problem with shield active produces no Elo change."""
         mock_pp_cls.record_pp = AsyncMock()
 
         user = _make_test_user(db, elo=1200)
@@ -1244,12 +1274,16 @@ class TestEloUpdate:
         db.add(session)
         await db.flush()
 
+        # Mock shield as active so failure produces no Elo change
+        training_svc_module.MEloService.is_shield_active = AsyncMock(return_value=True)
+
         result = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="300C", solved=False, attempts=3, time_spent=120.0,
             cf_service=cf_mock,
         )
 
+        # With shield active, failure should produce None elo_change
         assert result.elo_change is None
 
         await db.refresh(user)
@@ -1480,3 +1514,335 @@ class TestEdgeCases:
         )
         assert r2.solved is True
         assert r2.streak_count == 0  # Streak broken (800 < 2000)
+
+
+# ---------------------------------------------------------------------------
+# 16. Adaptive problem recommendation tests
+# ---------------------------------------------------------------------------
+
+
+class _FakeMEloRecord:
+    """Minimal stand-in for a UserTagElo ORM object."""
+
+    def __init__(self, elo: int = 1200, tag: str = "dp"):
+        self.elo = elo
+        self.tag = tag
+        self.total_submissions = 0
+        self.first_ac_at = None
+
+
+class TestAdaptiveRecommendation:
+    """Tests for TrainingService.get_adaptive_problem."""
+
+    async def test_recommend_uses_melo_not_global_elo(self, db, cf_mock):
+        """Recommended problem rating should be based on M-Elo, not Global Elo."""
+        user = _make_test_user(db, elo=1000)  # Global Elo = 1000
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # M-Elo is 1500, far from Global Elo of 1000
+        fake_melo = _FakeMEloRecord(elo=1500, tag="dp")
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is not None
+        assert result.melo == 1500
+        # With M-Elo=1500, base range is [1400, 1700]
+        # The only problem in that range from cf_mock is 1600 (contestId=300, index=C)
+        assert result.rating == 1600
+
+    async def test_base_range_correct(self, db, cf_mock):
+        """Base range is [M-Elo - 100, M-Elo + 200]."""
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # M-Elo = 1000, base range = [900, 1200]
+        fake_melo = _FakeMEloRecord(elo=1000, tag="dp")
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is not None
+        lo, hi = result.search_range
+        assert lo == 900   # 1000 - 100
+        assert hi == 1200  # 1000 + 200
+        assert 900 <= result.rating <= 1200
+
+    async def test_fallback_round_1(self, db, cf_mock):
+        """When base range has no match, fallback round 1 expands to [M-Elo - 200, M-Elo + 300]."""
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # M-Elo = 500 -- base range [400, 700], round 1 = [300, 800]
+        # Only 800-rating problem exists, so round 1 should find it
+        fake_melo = _FakeMEloRecord(elo=500, tag="dp")
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is not None
+        lo, hi = result.search_range
+        assert lo == 300   # 500 - 200
+        assert hi == 800   # 500 + 300
+        assert result.rating == 800
+
+    async def test_fallback_round_2(self, db, cf_mock):
+        """When round 1 has no match, round 2 expands to [M-Elo - 300, M-Elo + 400]."""
+        # Provide a single problem far from M-Elo
+        cf_mock.get_problemset_problems.return_value = {
+            "problems": [
+                {"contestId": 999, "index": "Z", "name": "Far Problem", "rating": 3000, "tags": ["dp"]},
+            ],
+        }
+
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # M-Elo = 1000: base [900,1200], round1 [800,1300], round2 [700,1400]
+        # None contain 3000, but [700,1400] doesn't either. Need to go wider.
+        # Actually 3000 is way above. Let me test with a closer problem.
+        # M-Elo = 2600: base [2500,2800], round1 [2400,2900], round2 [2300,3000]
+        fake_melo = _FakeMEloRecord(elo=2600, tag="dp")
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is not None
+        lo, hi = result.search_range
+        assert lo == 2300  # 2600 - 300
+        assert hi == 3000  # 2600 + 400
+        assert result.rating == 3000
+
+    async def test_returns_none_when_no_problem_found(self, db, cf_mock):
+        """Returns None when all rounds fail to find a match."""
+        # All problems are at 800-2400, but M-Elo is extremely high
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # M-Elo = 5000, max round range = [4700, 5400]
+        fake_melo = _FakeMEloRecord(elo=5000, tag="dp")
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is None
+
+    async def test_filters_solved_problems(self, db, cf_mock):
+        """Already-solved problems should not be recommended."""
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # Mark problem "200B" (rating 1200) as solved
+        session_id = uuid.uuid4()
+        session = _TestTrainingSession(
+            id=session_id,
+            user_id=user.id,
+            topic_id=topic.id,
+            total_problems=5,
+            status="completed",
+        )
+        db.add(session)
+        record = _TestTrainingProblemRecord(
+            session_id=session_id,
+            user_id=user.id,
+            topic_id=topic.id,
+            problem_id="200B",
+            problem_rating=1200,
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
+            solved_at=datetime.now(UTC),
+        )
+        db.add(record)
+        await db.flush()
+
+        # M-Elo = 1000, range = [900, 1200]
+        # "200B" (1200) is solved, "100A" (800) is out of range
+        # So there should be NO problems in the base range
+        fake_melo = _FakeMEloRecord(elo=1000, tag="dp")
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        # Should fall through to round 1 [800, 1300] which has "100A" (800)
+        assert result is not None
+        assert result.problem_id != "200B"
+        assert result.rating == 800  # Only unsolved in round 1 range
+
+    async def test_melo_dynamic_after_update(self, db, cf_mock):
+        """After M-Elo changes, the recommended problem range follows."""
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # First call with M-Elo = 1000
+        fake_melo_low = _FakeMEloRecord(elo=1000, tag="dp")
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo_low)
+            result_low = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result_low is not None
+        assert result_low.melo == 1000
+        assert 900 <= result_low.rating <= 1200  # base range
+
+        # Second call with M-Elo = 1800 (simulating improvement)
+        fake_melo_high = _FakeMEloRecord(elo=1800, tag="dp")
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo_high)
+            result_high = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result_high is not None
+        assert result_high.melo == 1800
+        assert 1700 <= result_high.rating <= 2000  # base range
+
+    async def test_topic_not_found_raises(self, db, cf_mock):
+        """Non-existent topic raises NotFoundException."""
+        user = _make_test_user(db)
+        db.add(user)
+        await db.flush()
+
+        with pytest.raises(NotFoundException, match="Topic not found"):
+            await TrainingService.get_adaptive_problem(db, user, uuid.uuid4(), cf_mock)
+
+    async def test_returns_none_when_no_cf_problems(self, db, cf_mock):
+        """Returns None when CF API returns empty problems."""
+        cf_mock.get_problemset_problems.return_value = {"problems": []}
+
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        fake_melo = _FakeMEloRecord(elo=1200, tag="dp")
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is None
+
+    async def test_returns_none_when_all_problems_solved(self, db, cf_mock):
+        """Returns None when all problems in the topic are already solved."""
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # Mark all problems as solved
+        session_id = uuid.uuid4()
+        session = _TestTrainingSession(
+            id=session_id,
+            user_id=user.id,
+            topic_id=topic.id,
+            total_problems=5,
+            status="completed",
+        )
+        db.add(session)
+        for pid in ["100A", "200B", "300C", "400D", "500E"]:
+            record = _TestTrainingProblemRecord(
+                session_id=session_id,
+                user_id=user.id,
+                topic_id=topic.id,
+                problem_id=pid,
+                problem_rating=800,
+                solved=True,
+                attempts=1,
+                time_spent=60.0,
+                solved_at=datetime.now(UTC),
+            )
+            db.add(record)
+        await db.flush()
+
+        fake_melo = _FakeMEloRecord(elo=1200, tag="dp")
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is None
+
+    async def test_topic_with_no_cf_tags_returns_none(self, db, cf_mock):
+        """A topic with empty cf_tags returns None immediately."""
+        user = _make_test_user(db, elo=1200)
+        # Manually create topic with empty cf_tags (bypassing the "or" default)
+        topic = _TestTopicCategory(
+            id=uuid.uuid4(),
+            name="No Tags Topic",
+            slug="no_tags_topic",
+            description="A topic without CF tags",
+            cf_tags=[],
+            display_order=99,
+        )
+        db.add_all([user, topic])
+        await db.flush()
+
+        fake_melo = _FakeMEloRecord(elo=1200, tag="dp")
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is None
+
+    async def test_filters_problems_without_rating(self, db, cf_mock):
+        """Problems without a rating field are excluded from recommendation."""
+        cf_mock.get_problemset_problems.return_value = {
+            "problems": [
+                {"contestId": 100, "index": "A", "name": "No Rating", "tags": ["dp"]},  # no rating
+                {"contestId": 200, "index": "B", "name": "Has Rating", "rating": 1200, "tags": ["dp"]},
+            ],
+        }
+
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        fake_melo = _FakeMEloRecord(elo=1000, tag="dp")
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is not None
+        assert result.problem_id == "200B"
+        assert result.rating == 1200
+
+    async def test_response_schema_fields_populated(self, db, cf_mock):
+        """Response includes all expected fields with correct values."""
+        user = _make_test_user(db, elo=1200)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        fake_melo = _FakeMEloRecord(elo=1100, tag="dp")
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=fake_melo)
+            result = await TrainingService.get_adaptive_problem(db, user, topic.id, cf_mock)
+
+        assert result is not None
+        assert isinstance(result, RecommendedProblemResponse)
+        assert result.problem_id is not None
+        assert result.contest_id > 0
+        assert result.index != ""
+        assert result.name != ""
+        assert result.rating is not None
+        assert result.tags == ["dp"]
+        assert "codeforces.com" in result.url
+        assert result.melo == 1100
+        assert len(result.search_range) == 2

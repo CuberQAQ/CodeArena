@@ -74,6 +74,48 @@ class EloService:
     """
 
     # ------------------------------------------------------------------
+    # S-value grading
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_s_value(
+        is_solved: bool,
+        is_first_ac: bool,
+        error_count: int,
+    ) -> float:
+        """Calculate the S-value (performance outcome) for a submission.
+
+        The S-value replaces the binary 0/1 actual_score with a continuous
+        value that distinguishes "perfect AC" from "flawed AC".
+
+        Formula
+        -------
+        - Solved with first-attempt AC (is_first_ac=True):  S = 1.0
+        - Solved but with errors (is_first_ac=False):       S = max(0.7, 1.0 - 0.05 * N_errors)
+        - Not solved:                                       S = 0.0
+
+        Parameters
+        ----------
+        is_solved:
+            Whether the problem was ultimately solved (AC).
+        is_first_ac:
+            True when the first submission was accepted (no prior errors).
+        error_count:
+            Number of non-AC submissions (WA, TLE, RE, MLE, etc.).  Only
+            relevant when *is_solved* is True and *is_first_ac* is False.
+
+        Returns
+        -------
+        float
+            S-value in the range [0.0, 1.0].
+        """
+        if not is_solved:
+            return 0.0
+        if is_first_ac:
+            return 1.0
+        return max(0.7, 1.0 - 0.05 * error_count)
+
+    # ------------------------------------------------------------------
     # K-factor segmented function
     # ------------------------------------------------------------------
 
@@ -281,10 +323,16 @@ class EloService:
         time_used_seconds: float,
         time_limit_seconds: float,
         config: EloConfig | None = None,
+        s_values: list[float] | None = None,
     ) -> float:
         """Calculate a normalised contest score (0.0 - 1.0+).
 
         ``base_score = solved_problems / total_problems``
+
+        When *s_values* is provided, it replaces the simple solved-count
+        ratio.  Each element is an S-value for one solved problem; the base
+        score becomes ``sum(s_values) / total_problems``.  This accounts
+        for the quality of each solve (perfect AC vs flawed AC).
 
         A time bonus is added proportionally to how much time remains:
         ``time_bonus = factor * (1 - time_used / time_limit)``, capped at
@@ -294,7 +342,7 @@ class EloService:
             config = _DEFAULT_CONFIG
         if total_problems <= 0:
             return 0.0
-        base_score = solved_problems / total_problems
+        base_score = sum(s_values) / total_problems if s_values is not None else solved_problems / total_problems
         if time_limit_seconds <= 0:
             return base_score
         time_ratio = max(0.0, min(time_used_seconds / time_limit_seconds, 1.0))
@@ -311,12 +359,16 @@ class EloService:
         time_limit_seconds: float,
         k_factor: float | None = None,
         config: EloConfig | None = None,
+        s_values: list[float] | None = None,
     ) -> tuple[int, int]:
         """Calculate new Elo after a contest session.
 
         The contest score is compared against a fixed expected score of 0.5
         (i.e. the system expects an average performance).  This is the
         simplest reasonable model; it can be refined later.
+
+        When *s_values* is provided, the base score is calculated from
+        S-values rather than a simple solved-count ratio.
 
         Returns
         -------
@@ -328,7 +380,8 @@ class EloService:
             k_factor = config.k_factor
 
         contest_score = EloService.calculate_contest_score(
-            solved_problems, total_problems, time_used_seconds, time_limit_seconds, config
+            solved_problems, total_problems, time_used_seconds, time_limit_seconds, config,
+            s_values=s_values,
         )
         expected_score = 0.5
         new_rating = round(current_rating + k_factor * (contest_score - expected_score))
@@ -378,15 +431,24 @@ class EloService:
         actual_score_a: float,
         session_id: uuid.UUID,
         hint_level_challenger: int = 0,
+        hint_level_opponent: int = 0,
         config: EloConfig | None = None,
         challenger_submission_count: int | None = None,
         opponent_submission_count: int | None = None,
         k_factor_config: dict | None = None,
+        s_value_challenger: float | None = None,
+        s_value_opponent: float | None = None,
     ) -> tuple[int, int, int, int]:
         """Process a completed challenge and record Elo history for both players.
 
         Parameters
         ----------
+        hint_level_challenger :
+            Number of hints used by the challenger (0-3).  Hint attenuation is
+            only applied to *positive* Elo changes for the challenger.
+        hint_level_opponent :
+            Number of hints used by the opponent (0-3).  Hint attenuation is
+            only applied to *positive* Elo changes for the opponent.
         challenger_submission_count :
             Total historical submissions for the challenger.  When provided,
             the K-factor is calculated via ``calculate_k_factor`` instead of
@@ -397,6 +459,12 @@ class EloService:
             Dict with K-factor configuration keys (``k_newbie``, etc.) passed
             through to ``calculate_k_factor``.  When ``None`` the module-level
             defaults are used.
+        s_value_challenger, s_value_opponent :
+            Optional S-values (performance outcomes) for each player.  When
+            provided, they replace the binary ``actual_score_a`` in the Elo
+            formula for each player independently.  The match outcome (who
+            won) is still determined by ``actual_score_a``, but the Elo
+            change magnitude is governed by the S-values.
 
         Returns
         -------
@@ -415,25 +483,33 @@ class EloService:
         if opponent_submission_count is not None:
             k_opponent = EloService.calculate_k_factor(opponent_submission_count, k_factor_config)
 
-        # Use challenger's K for the challenge calculation when both K-factors differ.
-        # In a two-player Elo system, we use separate K-factors for each player.
         expected_a = EloService.calculate_expected_score(challenger_rating, opponent_rating)
         expected_b = 1.0 - expected_a
-        actual_score_b = 1.0 - actual_score_a
 
-        raw_change_a = k_challenger * (actual_score_a - expected_a)
+        # When S-values are provided, use them as the actual scores for Elo calc.
+        # Otherwise fall back to the binary actual_score_a (backward compatible).
+        score_a = s_value_challenger if s_value_challenger is not None else actual_score_a
+        score_b = s_value_opponent if s_value_opponent is not None else 1.0 - actual_score_a
+
+        raw_change_a = k_challenger * (score_a - expected_a)
+        raw_change_b = k_opponent * (score_b - expected_b)
 
         # Apply hint attenuation only to positive gains for challenger
         if raw_change_a > 0 and hint_level_challenger > 0:
             attenuation = config.hint_attenuation.get(hint_level_challenger, 0.0)
             raw_change_a *= attenuation
 
+        # Apply hint attenuation only to positive gains for opponent
+        if raw_change_b > 0 and hint_level_opponent > 0:
+            attenuation = config.hint_attenuation.get(hint_level_opponent, 0.0)
+            raw_change_b *= attenuation
+
         new_a = round(challenger_rating + raw_change_a)
-        new_b = round(opponent_rating + k_opponent * (actual_score_b - expected_b))
+        new_b = round(opponent_rating + raw_change_b)
         change_a = new_a - challenger_rating
         change_b = new_b - opponent_rating
 
-        # Determine reason for challenger
+        # Determine reason from the binary match outcome (actual_score_a)
         if actual_score_a == 1.0:
             reason_a = EloReason.CHALLENGE_WIN
         elif actual_score_a == 0.0:
@@ -551,6 +627,7 @@ class EloService:
         config: EloConfig | None = None,
         user_submission_count: int | None = None,
         k_factor_config: dict | None = None,
+        s_values: list[float] | None = None,
     ) -> tuple[int, int]:
         """Process a completed contest session and record Elo history.
 
@@ -562,6 +639,10 @@ class EloService:
             using the fixed default or explicit ``k_factor``.
         k_factor_config :
             Dict with K-factor configuration keys for segmented K calculation.
+        s_values :
+            Optional list of S-values (one per solved problem).  When
+            provided, the contest score uses S-value weighting instead of a
+            simple solved-count ratio.
 
         Returns
         -------
@@ -578,7 +659,9 @@ class EloService:
             effective_k = EloService.calculate_k_factor(user_submission_count, k_factor_config)
 
         new_rating, elo_change = EloService.calculate_contest_elo(
-            current_rating, solved_problems, total_problems, time_used_seconds, time_limit_seconds, effective_k, config
+            current_rating, solved_problems, total_problems,
+            time_used_seconds, time_limit_seconds, effective_k, config,
+            s_values=s_values,
         )
         await EloService.record_elo_history(
             db, user_id, current_rating, new_rating, EloReason.CONTEST, contest_session_id

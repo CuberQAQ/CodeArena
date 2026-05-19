@@ -127,6 +127,8 @@ class AbandonTrainingResponse(BaseModel):
     status: str = "abandoned"
     problems_solved: int = 0
     total_problems: int = 0
+    elo_change: int | None = None
+    shield_active: bool = False
 
 
 class UserTagEloInfo(BaseModel):
@@ -146,3 +148,19 @@ class MEloListResponse(BaseModel):
 
     melos: list[UserTagEloInfo] = []
     global_elo: int = 1200
+
+
+class RecommendedProblemResponse(BaseModel):
+    """Adaptively recommended problem based on M-Elo."""
+
+    problem_id: str
+    contest_id: int
+    index: str
+    name: str
+    rating: int | None = None
+    tags: list[str] = []
+    url: str
+    melo: int = Field(description="User's M-Elo used for selection")
+    search_range: list[int] = Field(
+        description="The [low, high] rating range used to find this problem",
+    )

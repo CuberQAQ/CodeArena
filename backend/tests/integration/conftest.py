@@ -99,6 +99,10 @@ class _TestPPRecord(TestBase):
     base_pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     solved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     hints_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    wa_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    time_spent_minutes: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    performance_factor: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    final_pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
 
 class _TestChallengeSession(TestBase):

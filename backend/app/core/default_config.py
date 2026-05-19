@@ -72,6 +72,7 @@ DEFAULT_CONFIG: dict = {
         "cache_ttl_seconds": 300,
     },
     "melo": {
+        "initial_elo_inherit_global": True,
         "training_global_coefficient": 0.5,
         "training_melo_coefficient": 2.0,
     },
@@ -110,6 +111,7 @@ VALIDATION_RULES: dict[str, dict] = {
     "cf_api.request_interval_seconds": {"type": (int, float), "min": 0.1, "max": 60},
     "cf_api.max_retries": {"type": int, "min": 0, "max": 20},
     "cf_api.cache_ttl_seconds": {"type": (int, float), "min": 0, "max": 86400},
+    "melo.initial_elo_inherit_global": {"type": bool},
     "melo.training_global_coefficient": {"type": (int, float), "min": 0.0, "max": 10.0},
     "melo.training_melo_coefficient": {"type": (int, float), "min": 0.0, "max": 10.0},
 }

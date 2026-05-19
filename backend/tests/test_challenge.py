@@ -70,6 +70,8 @@ class _TestChallengeSession(_TestBase):
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     result: Mapped[str | None] = mapped_column(String(20), nullable=True)
     elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hints_used_challenger: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    hints_used_opponent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

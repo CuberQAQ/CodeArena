@@ -688,7 +688,7 @@ async def _settle_challenge(
         actual_score_a = 0.5
         result = "draw"
 
-    # Process Elo with K-factor segmentation
+    # Process Elo with K-factor segmentation and S-value grading
     elo_config = await ConfigService.get_config(db, "elo")
     k_factor_config = {
         "k_newbie": elo_config.get("k_newbie", 40),
@@ -699,6 +699,19 @@ async def _settle_challenge(
     challenger_sub_count = await EloService.get_submission_count(db, challenger.id)
     opponent_sub_count = await EloService.get_submission_count(db, opponent.id)
 
+    # Calculate S-values for each player independently
+    # S-value distinguishes "perfect AC" (first attempt) from "flawed AC" (with errors)
+    s_value_challenger = EloService.calculate_s_value(
+        is_solved=bool(session.challenger_solved),
+        is_first_ac=bool(session.challenger_solved) and (session.challenger_submissions or 0) <= 1,
+        error_count=max(0, (session.challenger_submissions or 0) - 1) if session.challenger_solved else 0,
+    )
+    s_value_opponent = EloService.calculate_s_value(
+        is_solved=bool(session.opponent_solved),
+        is_first_ac=bool(session.opponent_solved) and (session.opponent_submissions or 0) <= 1,
+        error_count=max(0, (session.opponent_submissions or 0) - 1) if session.opponent_solved else 0,
+    )
+
     new_challenger_elo, new_opponent_elo, challenger_elo_change, _opponent_elo_change = (
         await EloService.process_challenge_result(
             db=db,
@@ -708,9 +721,13 @@ async def _settle_challenge(
             opponent_rating=opponent.elo,
             actual_score_a=actual_score_a,
             session_id=session.id,
+            hint_level_challenger=session.hints_used_challenger or 0,
+            hint_level_opponent=session.hints_used_opponent or 0,
             challenger_submission_count=challenger_sub_count,
             opponent_submission_count=opponent_sub_count,
             k_factor_config=k_factor_config,
+            s_value_challenger=s_value_challenger,
+            s_value_opponent=s_value_opponent,
         )
     )
 
@@ -782,6 +799,30 @@ async def _settle_challenge(
                 reference_id=session.id,
             )
             tokens_opponent += time_bonus
+
+    # Attempt reward: players who submitted but did not AC still get attempt tokens
+    if session.problem_rating > 0:
+        if not session.challenger_solved and (session.challenger_submissions or 0) > 0:
+            attempt_tokens = economy_svc.attempt_tokens_for_rating(session.problem_rating)
+            if attempt_tokens > 0:
+                awarded = await economy_svc.award_tokens(
+                    db, challenger, attempt_tokens,
+                    tx_type="reward_attempt",
+                    reference_type="challenge_session",
+                    reference_id=session.id,
+                )
+                tokens_challenger += awarded
+
+        if not session.opponent_solved and (session.opponent_submissions or 0) > 0:
+            attempt_tokens = economy_svc.attempt_tokens_for_rating(session.problem_rating)
+            if attempt_tokens > 0:
+                awarded = await economy_svc.award_tokens(
+                    db, opponent, attempt_tokens,
+                    tx_type="reward_attempt",
+                    reference_type="challenge_session",
+                    reference_id=session.id,
+                )
+                tokens_opponent += awarded
 
     # Record PP for solvers
     if session.challenger_solved and session.problem_rating > 0:

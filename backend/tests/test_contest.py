@@ -468,7 +468,7 @@ class TestSubmitProblem:
 
     @pytest.mark.asyncio
     async def test_submit_unsolved_problem(self, db):
-        """Submitting an unsolved problem awards no tokens."""
+        """Submitting an unsolved problem awards attempt tokens."""
         user = _make_user(elo=1300)
         db.add(user)
         await db.flush()
@@ -487,7 +487,8 @@ class TestSubmitProblem:
         )
 
         assert result.solved is False
-        assert result.tokens_earned == 0
+        # Unsolved problems now award attempt tokens based on difficulty
+        assert result.tokens_earned > 0
 
     @pytest.mark.asyncio
     async def test_submit_updates_session_counters(self, db):

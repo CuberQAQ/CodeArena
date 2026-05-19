@@ -2,6 +2,7 @@
 
 Handles the training lifecycle:
 - Topic listing and problem retrieval from CF API
+- Adaptive problem recommendation based on M-Elo
 - Training session management (start, submit, abandon)
 - Streak tracking and bonus calculation
 - Star rating computation
@@ -10,6 +11,7 @@ Handles the training lifecycle:
 """
 
 import logging
+import random
 import uuid
 from datetime import UTC, datetime
 
@@ -25,6 +27,7 @@ from app.models.training_session import TrainingSession
 from app.models.user import User
 from app.schemas.training import (
     AbandonTrainingResponse,
+    RecommendedProblemResponse,
     SubmitTrainingResponse,
     TopicDetail,
     TopicInfo,
@@ -33,8 +36,10 @@ from app.schemas.training import (
     TrainingProgress,
     TrainingSessionInfo,
 )
+from app.services import config_service as config_svc
 from app.services import economy_service as economy_svc
 from app.services.cf_api_service import CFApiService
+from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
 
 logger = logging.getLogger("code_arena.training")
@@ -372,6 +377,107 @@ class TrainingService:
         )
 
     # ------------------------------------------------------------------
+    # 3b. Adaptive problem recommendation (M-Elo based)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def get_adaptive_problem(
+        db: AsyncSession,
+        user: User,
+        topic_id: uuid.UUID,
+        cf_service: CFApiService,
+    ) -> RecommendedProblemResponse | None:
+        """Recommend a problem based on the user's M-Elo for the topic's tag.
+
+        Selection rules (from FR-3.2):
+        - Base range: [M-Elo - 100, M-Elo + 200]
+        - Fallback round 1: [M-Elo - 200, M-Elo + 300]
+        - Fallback round 2: [M-Elo - 300, M-Elo + 400]
+        - Round 3 still empty: return None
+        - Unsolved filter: exclude problems the user already solved (AC)
+
+        Args:
+            db: Async database session.
+            user: The current user.
+            topic_id: The topic category ID.
+            cf_service: CF API service instance.
+
+        Returns:
+            A RecommendedProblemResponse with the selected problem, or None
+            if no suitable problem is found.
+        """
+        topic = await db.get(TopicCategory, topic_id)
+        if topic is None:
+            raise NotFoundException(message="Topic not found")
+
+        cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
+        if not cf_tags:
+            return None
+
+        # 1. Get user's M-Elo for the primary tag
+        primary_tag = cf_tags[0]
+        melo_record = await MEloService.get_or_create_melo(db, user.id, primary_tag)
+        melo = melo_record.elo
+
+        # 2. Fetch problems from CF API for this topic
+        problems = await TrainingService._fetch_topic_problems(cf_service, cf_tags)
+        if not problems:
+            return None
+
+        # 3. Build set of solved problem IDs for this user under this topic
+        solved_stmt = (
+            select(TrainingProblemRecord.problem_id)
+            .where(
+                TrainingProblemRecord.user_id == user.id,
+                TrainingProblemRecord.topic_id == topic_id,
+                TrainingProblemRecord.solved.is_(True),
+            )
+        )
+        solved_result = await db.execute(solved_stmt)
+        solved_ids = set(solved_result.scalars().all())
+
+        # 4. Filter to unsolved problems with a valid rating
+        candidates = [
+            p for p in problems
+            if p.get("rating") is not None
+            and f"{p.get('contestId', '')}{p.get('index', '')}" not in solved_ids
+        ]
+
+        if not candidates:
+            return None
+
+        # 5. Progressive range search with fallback
+        range_rounds = [
+            (100, 200),   # base: [M-Elo - 100, M-Elo + 200]
+            (200, 300),   # round 1: [M-Elo - 200, M-Elo + 300]
+            (300, 400),   # round 2: [M-Elo - 300, M-Elo + 400]
+        ]
+
+        for low_offset, high_offset in range_rounds:
+            lo = melo - low_offset
+            hi = melo + high_offset
+            in_range = [p for p in candidates if lo <= p.get("rating", 0) <= hi]
+            if in_range:
+                chosen = random.choice(in_range)
+                contest_id = chosen.get("contestId", 0)
+                index = chosen.get("index", "")
+                problem_id = f"{contest_id}{index}"
+                return RecommendedProblemResponse(
+                    problem_id=problem_id,
+                    contest_id=contest_id,
+                    index=index,
+                    name=chosen.get("name", ""),
+                    rating=chosen.get("rating"),
+                    tags=chosen.get("tags", []),
+                    url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
+                    melo=melo,
+                    search_range=[lo, hi],
+                )
+
+        # 6. No suitable problem found after all rounds
+        return None
+
+    # ------------------------------------------------------------------
     # 4. Start training session
     # ------------------------------------------------------------------
 
@@ -628,16 +734,23 @@ class TrainingService:
                 time_spent=time_spent_minutes,
             )
 
-            # Small Elo gain for training (use a fixed small bonus)
-            # Elo gain = based on problem difficulty relative to user Elo
-            elo_change = await TrainingService._calculate_training_elo(
-                db, user, problem_rating, session_id
+            # Elo calculation with shield and polarization
+            elo_result = await TrainingService._calculate_training_elo(
+                db, user, problem_rating, session_id,
+                topic_id=session.topic_id, solved=True, attempts=attempts,
             )
+            elo_change = elo_result["global_elo_change"]
         else:
             # Attempt reward (smaller than AC)
             attempt_tokens = _attempt_tokens_for_rating(problem_rating)
             tokens_earned += attempt_tokens
-            elo_change = None
+
+            # Check shield for failure -- no Elo deduction if shield is active
+            elo_result = await TrainingService._calculate_training_elo(
+                db, user, problem_rating, session_id,
+                topic_id=session.topic_id, solved=False, attempts=attempts,
+            )
+            elo_change = elo_result["global_elo_change"]
 
         # Award tokens via economy_service (enforces daily cap, updates daily_tokens_earned)
         if tokens_earned > 0:
@@ -701,7 +814,16 @@ class TrainingService:
         user: User,
         session_id: uuid.UUID,
     ) -> AbandonTrainingResponse:
-        """Abandon an active training session."""
+        """Abandon an active training session.
+
+        Applies quit-penalty Elo deduction following the rules in section 4.6:
+        - 0 submissions (no problems attempted): Elo unchanged
+        - 1-2 submissions: small penalty (-5 to -10)
+        - 3+ submissions: normal failure Elo calculation
+
+        The learning shield (Task 16.2) protects against Elo deductions
+        when the user has never AC'd a problem with the topic's primary tag.
+        """
         session = await db.get(TrainingSession, session_id)
         if session is None:
             raise NotFoundException(message="Training session not found")
@@ -712,6 +834,44 @@ class TrainingService:
 
         session.status = "abandoned"
         session.completed_at = datetime.now(UTC)
+
+        # Count total submissions in this session
+        count_stmt = select(func.count(TrainingProblemRecord.id)).where(
+            TrainingProblemRecord.session_id == session_id,
+        )
+        count_result = await db.execute(count_stmt)
+        submission_count = count_result.scalar_one()
+
+        # Check shield status for the topic's primary tag
+        primary_tag = await TrainingService._get_primary_tag_for_topic(db, session.topic_id)
+        shield_active = False
+        if primary_tag:
+            shield_active = await MEloService.is_shield_active(db, user.id, primary_tag)
+
+        elo_change: int | None = None
+
+        if submission_count == 0:
+            # No submissions: Elo unchanged
+            pass
+        elif shield_active:
+            # Shield active: no Elo deduction on abandon
+            logger.info(
+                "Shield active for user=%s tag=%s -- skipping Elo deduction on abandon",
+                user.id, primary_tag,
+            )
+        else:
+            # Apply quit penalty via _calculate_training_elo with solved=False
+            # This uses the standard failure calculation with polarization coefficients
+            elo_result = await TrainingService._calculate_training_elo(
+                db, user,
+                problem_rating=user.elo,  # Use user's Elo as baseline for quit penalty
+                session_id=session_id,
+                topic_id=session.topic_id,
+                solved=False,
+                attempts=submission_count,
+            )
+            elo_change = elo_result["global_elo_change"]
+
         await db.flush()
 
         return AbandonTrainingResponse(
@@ -719,6 +879,8 @@ class TrainingService:
             status="abandoned",
             problems_solved=session.problems_solved,
             total_problems=session.total_problems,
+            elo_change=elo_change,
+            shield_active=shield_active,
         )
 
     # ------------------------------------------------------------------
@@ -922,41 +1084,130 @@ class TrainingService:
         return 1000
 
     @staticmethod
+    async def _get_primary_tag_for_topic(
+        db: AsyncSession,
+        topic_id: uuid.UUID,
+    ) -> str | None:
+        """Get the primary CF tag for a topic.
+
+        Returns the first tag in the topic's cf_tags list, or None if
+        the topic has no tags.
+        """
+        topic = await db.get(TopicCategory, topic_id)
+        if topic is None:
+            return None
+        cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
+        return cf_tags[0] if cf_tags else None
+
+    @staticmethod
     async def _calculate_training_elo(
         db: AsyncSession,
         user: User,
         problem_rating: int,
         session_id: uuid.UUID,
-    ) -> int | None:
-        """Calculate and apply a small Elo change for solving a training problem.
+        topic_id: uuid.UUID,
+        solved: bool,
+        attempts: int = 1,
+    ) -> dict:
+        """Calculate and apply Elo changes for a training problem result.
 
-        Uses a simplified calculation: the user gains Elo based on the problem
-        difficulty relative to their current rating. Training gains are modest
-        compared to challenge gains.
+        Implements two features:
+        - **Learning Shield (Task 16.2)**: If the shield is active for the
+          topic's primary tag and the user failed/abandoned, no Elo changes
+          are applied (neither Global nor M-Elo).
+        - **Weight Polarization (Task 16.3)**: On AC, Global Elo changes are
+          multiplied by ``training_global_coefficient`` (default 0.5) and
+          M-Elo changes by ``training_melo_coefficient`` (default 2.0).
 
-        Formula: K_train * (1 - expected_score)
-        where expected_score = 1 / (1 + 10^((problem_rating - user_elo) / 400))
-        K_train = 8 (smaller than challenge K=32)
+        Returns a dict with keys:
+            global_elo_change: int | None  -- change applied to Global Elo
+            melo_change: int | None        -- change applied to M-Elo
+            shield_active: bool            -- whether shield was active
         """
+        from app.services.elo_service import EloService
+
+        # Resolve the primary CF tag for the topic
+        primary_tag = await TrainingService._get_primary_tag_for_topic(db, topic_id)
+
+        # Check learning shield status
+        shield_active = False
+        if primary_tag:
+            shield_active = await MEloService.is_shield_active(db, user.id, primary_tag)
+
+        # --- Shield protection for failures ---
+        if not solved and shield_active:
+            logger.info(
+                "Shield active for user=%s tag=%s -- skipping Elo deduction on failure",
+                user.id, primary_tag,
+            )
+            return {
+                "global_elo_change": None,
+                "melo_change": None,
+                "shield_active": True,
+            }
+
+        # --- Shield deactivation on first AC ---
+        if solved and shield_active and primary_tag:
+            await MEloService.deactivate_shield(db, user.id, primary_tag)
+            logger.info(
+                "Shield deactivated for user=%s tag=%s on first AC",
+                user.id, primary_tag,
+            )
+
+        # --- Load configurable coefficients ---
+        try:
+            global_coeff = await config_svc.ConfigService.get_config(db, "melo.training_global_coefficient")
+        except (KeyError, Exception):
+            global_coeff = 0.5
+        try:
+            melo_coeff = await config_svc.ConfigService.get_config(db, "melo.training_melo_coefficient")
+        except (KeyError, Exception):
+            melo_coeff = 2.0
+
         k_train = 8
 
-        # Calculate expected score against the "problem rating"
-        expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - user.elo) / 400.0))
-        elo_change = round(k_train * (1.0 - expected))
+        # Calculate S-value based on attempts
+        if solved:
+            is_first_ac = attempts <= 1
+            error_count = max(0, attempts - 1)
+            s_value = EloService.calculate_s_value(
+                is_solved=True,
+                is_first_ac=is_first_ac,
+                error_count=error_count,
+            )
+        else:
+            s_value = 0.0
 
-        if elo_change != 0:
+        # --- Global Elo calculation ---
+        global_expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - user.elo) / 400.0))
+        global_elo_change = round(k_train * (s_value - global_expected) * global_coeff)
+
+        if global_elo_change != 0:
             elo_before = user.elo
-            user.elo += elo_change
+            user.elo += global_elo_change
 
-            # Record Elo history
             history = EloHistory(
                 user_id=user.id,
                 elo_before=elo_before,
                 elo_after=user.elo,
-                elo_change=elo_change,
+                elo_change=global_elo_change,
                 reason="training",
                 reference_id=session_id,
             )
             db.add(history)
 
-        return elo_change
+        # --- M-Elo calculation ---
+        melo_change: int | None = None
+        if primary_tag:
+            melo_record = await MEloService.get_or_create_melo(db, user.id, primary_tag)
+            melo_expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - melo_record.elo) / 400.0))
+            melo_change = round(k_train * (s_value - melo_expected) * melo_coeff)
+
+            if melo_change != 0:
+                await MEloService.update_melo(db, user.id, primary_tag, melo_change)
+
+        return {
+            "global_elo_change": global_elo_change,
+            "melo_change": melo_change,
+            "shield_active": shield_active,
+        }

@@ -397,17 +397,17 @@ class ContestService:
                 time_spent=time_spent_minutes,
             )
 
-        # Award tokens via economy_service (enforces daily cap, updates daily_tokens_earned)
-        if tokens_earned > 0:
-            await economy_svc.award_tokens(
-                db, user, tokens_earned,
-                tx_type="reward_ac" if solved else "reward_attempt",
-                reference_type="contest",
-                reference_id=contest_id,
-            )
+            # Award AC tokens via economy_service (enforces daily cap)
+            if tokens_earned > 0:
+                await economy_svc.award_tokens(
+                    db, user, tokens_earned,
+                    tx_type="reward_ac",
+                    reference_type="contest",
+                    reference_id=contest_id,
+                )
 
             # Time bonus: if solved and time_spent > 20 min, award extra tokens
-            if solved and time_spent > economy_svc.TIME_BONUS_THRESHOLD_SECONDS:
+            if time_spent > economy_svc.TIME_BONUS_THRESHOLD_SECONDS:
                 time_bonus = economy_svc.time_bonus_for_rating(problem_rating)
                 if time_bonus > 0:
                     await economy_svc.award_tokens(
@@ -417,6 +417,17 @@ class ContestService:
                         reference_id=contest_id,
                     )
                     tokens_earned += time_bonus
+        else:
+            # Attempt reward: even if not AC, having submitted earns small tokens
+            attempt_tokens = economy_svc.attempt_tokens_for_rating(problem_rating)
+            if attempt_tokens > 0:
+                awarded = await economy_svc.award_tokens(
+                    db, user, attempt_tokens,
+                    tx_type="reward_attempt",
+                    reference_type="contest",
+                    reference_id=contest_id,
+                )
+                tokens_earned += awarded
 
         await db.flush()
 
@@ -479,7 +490,7 @@ class ContestService:
             )
             db.add(history)
         else:
-            # 3+ submissions: M-Elo formula with K-factor segmentation
+            # 3+ submissions: M-Elo formula with K-factor segmentation and S-value grading
             elo_config = await ConfigService.get_config(db, "elo")
             k_factor_config = {
                 "k_newbie": elo_config.get("k_newbie", 40),
@@ -488,6 +499,9 @@ class ContestService:
                 "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
             }
             user_sub_count = await EloService.get_submission_count(db, user.id)
+
+            # Calculate S-values from problem records
+            s_values = await ContestService._calculate_contest_s_values(db, contest_id)
 
             new_rating, elo_change = await EloService.process_contest_result(
                 db=db,
@@ -500,6 +514,7 @@ class ContestService:
                 contest_session_id=contest_id,
                 user_submission_count=user_sub_count,
                 k_factor_config=k_factor_config,
+                s_values=s_values,
             )
             user.elo = new_rating
             session.elo_change = elo_change
@@ -657,6 +672,9 @@ class ContestService:
             }
             user_sub_count = await EloService.get_submission_count(db, user.id)
 
+            # Calculate S-values from problem records
+            s_values = await ContestService._calculate_contest_s_values(db, session.id)
+
             new_rating, elo_change = await EloService.process_contest_result(
                 db=db,
                 user_id=user.id,
@@ -668,6 +686,7 @@ class ContestService:
                 contest_session_id=session.id,
                 user_submission_count=user_sub_count,
                 k_factor_config=k_factor_config,
+                s_values=s_values,
             )
             user.elo = new_rating
             session.elo_change = elo_change
@@ -850,3 +869,33 @@ class ContestService:
             ))
 
         return problem_infos
+
+    @staticmethod
+    async def _calculate_contest_s_values(
+        db: AsyncSession,
+        contest_id: uuid.UUID,
+    ) -> list[float]:
+        """Calculate S-values for all solved problems in a contest.
+
+        Returns a list of S-values, one per solved problem, suitable for
+        passing to ``EloService.process_contest_result`` via ``s_values``.
+        """
+        records_stmt = select(ContestProblemRecord).where(
+            ContestProblemRecord.contest_id == contest_id,
+            ContestProblemRecord.solved.is_(True),
+        )
+        records_result = await db.execute(records_stmt)
+        solved_records = records_result.scalars().all()
+
+        s_values: list[float] = []
+        for record in solved_records:
+            is_first_ac = record.attempts <= 1
+            error_count = max(0, record.attempts - 1)
+            s_val = EloService.calculate_s_value(
+                is_solved=True,
+                is_first_ac=is_first_ac,
+                error_count=error_count,
+            )
+            s_values.append(s_val)
+
+        return s_values
