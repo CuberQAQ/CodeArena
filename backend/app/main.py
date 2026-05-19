@@ -18,6 +18,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan: startup and shutdown logic."""
     # Startup
     logger.info("Starting %s (debug=%s)", settings.APP_NAME, settings.DEBUG)
+
+    # Auto-run database migrations on startup
+    import subprocess
+    import sys
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            env={**__import__("os").environ, "PYTHONPATH": "/app"},
+            timeout=30,
+        )
+        if result.returncode == 0:
+            logger.info("Database migrations applied successfully")
+        else:
+            logger.warning("Database migration warning: %s", result.stderr[:200])
+    except Exception as e:
+        logger.warning("Database migration skipped: %s", e)
+
     yield
     # Shutdown
     logger.info("Shutting down %s", settings.APP_NAME)

@@ -45,7 +45,15 @@ export default function CFBindPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback: select text for manual copy
+      // Fallback for non-HTTPS contexts
+      const textarea = document.createElement("textarea");
+      textarea.value = verificationCode;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 

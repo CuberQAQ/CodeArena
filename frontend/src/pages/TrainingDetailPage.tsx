@@ -255,8 +255,6 @@ export default function TrainingDetailPage() {
 
   // ── SESSION IN PROGRESS ─────────────────────────────────────────
   if (phase === "session" && session && topic) {
-    const currentProblem = topic.problems?.find((p) => p.problem_id === selectedProblem);
-
     return (
       <div className="mx-auto max-w-4xl space-y-5">
         <div className="flex items-center justify-between">
@@ -310,65 +308,7 @@ export default function TrainingDetailPage() {
           </div>
         )}
 
-        {/* Submit result panel */}
-        {selectedProblem && currentProblem && (
-          <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">
-                Reporting: {currentProblem.contest_id}
-                {currentProblem.index} - {currentProblem.name}
-              </h3>
-              {currentProblem.rating && (
-                <span
-                  className="text-sm font-bold"
-                  style={{ color: getRatingColor(currentProblem.rating) }}
-                >
-                  {currentProblem.rating}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">Solved?</span>
-              <Button
-                size="sm"
-                variant={submitSolved ? "default" : "outline"}
-                onClick={() => setSubmitSolved(true)}
-              >
-                Yes
-              </Button>
-              <Button
-                size="sm"
-                variant={!submitSolved ? "destructive" : "outline"}
-                onClick={() => setSubmitSolved(false)}
-              >
-                No
-              </Button>
-            </div>
-            {submitSolved && (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">Attempts:</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={submitAttempts}
-                  onChange={(e) => setSubmitAttempts(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                />
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button size="sm" onClick={submitProblem} disabled={loading}>
-                {loading && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                Submit
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setSelectedProblem(null)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Problem list */}
+        {/* Problem list with inline report panel */}
         <div className="rounded-xl border border-border bg-card">
           <div className="border-b border-border px-5 py-3">
             <h2 className="text-sm font-semibold text-foreground">Problems</h2>
@@ -377,52 +317,99 @@ export default function TrainingDetailPage() {
             {topic.problems?.map((problem) => {
               const isThis = problem.problem_id === selectedProblem;
               return (
-                <div
-                  key={problem.problem_id}
-                  className={`flex items-center gap-4 px-5 py-3 ${isThis ? "bg-primary/5" : ""}`}
-                >
-                  {problem.solved ? (
-                    <CheckCircle2 className="size-4 shrink-0 text-green-400" />
-                  ) : (
-                    <Circle className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {problem.contest_id}
-                      {problem.index} - {problem.name}
-                    </p>
-                  </div>
-                  {problem.rating && (
-                    <span
-                      className="shrink-0 text-sm font-bold"
-                      style={{ color: getRatingColor(problem.rating) }}
-                    >
-                      {problem.rating}
-                    </span>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={problem.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <ExternalLink className="size-4" />
-                    </a>
-                    {!problem.solved && !selectedProblem && (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedProblem(problem.problem_id);
-                          setSubmitSolved(true);
-                          setSubmitAttempts(1);
-                        }}
-                      >
-                        Report
-                      </Button>
+                <div key={problem.problem_id} className={isThis ? "bg-primary/5" : ""}>
+                  <div className="flex items-center gap-4 px-5 py-3">
+                    {problem.solved ? (
+                      <CheckCircle2 className="size-4 shrink-0 text-green-400" />
+                    ) : (
+                      <Circle className="size-4 shrink-0 text-muted-foreground" />
                     )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        {problem.contest_id}
+                        {problem.index} - {problem.name}
+                      </p>
+                    </div>
+                    {problem.rating && (
+                      <span
+                        className="shrink-0 text-sm font-bold"
+                        style={{ color: getRatingColor(problem.rating) }}
+                      >
+                        {problem.rating}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={problem.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <ExternalLink className="size-4" />
+                      </a>
+                      {!problem.solved && !selectedProblem && (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedProblem(problem.problem_id);
+                            setSubmitSolved(true);
+                            setSubmitAttempts(1);
+                          }}
+                        >
+                          Report
+                        </Button>
+                      )}
+                    </div>
                   </div>
+                  {isThis && (
+                    <div className="border-t border-border px-5 py-4 space-y-3 bg-primary/5">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">Solved?</span>
+                        <Button
+                          size="sm"
+                          variant={submitSolved ? "default" : "outline"}
+                          onClick={() => setSubmitSolved(true)}
+                        >
+                          Yes
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={!submitSolved ? "destructive" : "outline"}
+                          onClick={() => setSubmitSolved(false)}
+                        >
+                          No
+                        </Button>
+                      </div>
+                      {submitSolved && (
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-muted-foreground">Attempts:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={submitAttempts || ""}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value);
+                              setSubmitAttempts(isNaN(v) ? 0 : v);
+                            }}
+                            onBlur={() => {
+                              if (!submitAttempts || submitAttempts < 1) setSubmitAttempts(1);
+                            }}
+                            className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                          />
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={submitProblem} disabled={loading}>
+                          {loading && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                          Submit
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedProblem(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

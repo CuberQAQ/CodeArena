@@ -130,6 +130,11 @@ async def verify_cf_handle(
         NotFoundException: If the CF handle cannot be found.
         BadRequestException: On CF API errors.
     """
+    logger.info(
+        "verify_cf_handle called: user_cf=%s, req_handle=%s, req_code=%r, db_code=%r, verified=%s",
+        user.cf_handle, cf_handle, verification_code, user.cf_verification_code, user.cf_handle_verified,
+    )
+
     # Validate that the user has a pending binding
     if not user.cf_handle:
         raise BadRequestException(
@@ -198,10 +203,14 @@ async def verify_cf_handle(
     last_name = cf_user_data.get("lastName", "")
 
     searchable_text = f"{organization} {first_name} {last_name}".lower()
+    logger.info(
+        "CF verify check: handle=%s, code=%s, org=%r, fn=%r, ln=%r, searchable=%r",
+        cf_handle, verification_code, organization, first_name, last_name, searchable_text,
+    )
     if verification_code.lower() not in searchable_text:
         raise BadRequestException(
             message="Verification code not found in CF profile",
-            detail="Please add the verification code to your CF profile's organization field",
+            detail=f"org={organization!r}, searchable={searchable_text!r}, looking_for={verification_code.lower()!r}",
         )
 
     # Verification successful -- clear the code and mark verified

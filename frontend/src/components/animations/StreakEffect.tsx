@@ -29,10 +29,9 @@ export function StreakEffect({ streak, className = "" }: StreakEffectProps) {
     setPrevStreak(streak);
   }, [streak, prevStreak]);
 
-  if (streak < 2) return null;
+  if (streak < 1) return null;
 
   const intensity = Math.min(streak, 6);
-  // Color shifts from yellow to orange to red as streak grows
   const glowColor =
     intensity <= 2
       ? "rgba(255, 187, 0, 0.3)"
@@ -42,7 +41,6 @@ export function StreakEffect({ streak, className = "" }: StreakEffectProps) {
 
   return (
     <>
-      {/* Screen edge glow */}
       {!reduced && pulsing && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -73,26 +71,27 @@ export function StreakEffect({ streak, className = "" }: StreakEffectProps) {
                   opacity: { duration: 0.2 },
                 }
           }
-          className={`flex items-center gap-2 ${className}`}
+          className={`flex items-center justify-center gap-2 ${className}`}
         >
           <span
-            className="text-3xl font-black tabular-nums"
+            className="text-xl font-black tabular-nums"
             style={{
               color:
-                intensity <= 2
-                  ? "#FFBB00"
-                  : intensity <= 4
-                    ? "#FF8C00"
-                    : "#FF3C00",
+                streak < 2
+                  ? "#888"
+                  : intensity <= 2
+                    ? "#FFBB00"
+                    : intensity <= 4
+                      ? "#FF8C00"
+                      : "#FF3C00",
               textShadow:
                 intensity > 3 && !reduced
                   ? `0 0 ${intensity * 4}px ${glowColor}`
                   : "none",
             }}
           >
-            x{streak}
+            {streak}
           </span>
-          <span className="text-sm font-medium text-muted-foreground">streak</span>
         </motion.div>
       </AnimatePresence>
     </>

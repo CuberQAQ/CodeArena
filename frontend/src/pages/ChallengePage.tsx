@@ -413,8 +413,14 @@ export default function ChallengePage() {
               <input
                 type="number"
                 min={1}
-                value={attempts || 1}
-                onChange={(e) => setAttempts(Math.max(1, parseInt(e.target.value) || 1))}
+                value={attempts || ""}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value);
+                  setAttempts(isNaN(v) ? 0 : v);
+                }}
+                onBlur={() => {
+                  if (!attempts || attempts < 1) setAttempts(1);
+                }}
                 className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
               />
             </div>
