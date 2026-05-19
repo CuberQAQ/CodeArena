@@ -2,21 +2,131 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Bot,
   CheckCircle2,
   Circle,
   Clock,
   ExternalLink,
   Loader2,
   Trophy,
+  Wifi,
+  WifiOff,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
-import type { ApiResponse, ContestSessionInfo, ContestResult } from "@/types";
+import { useContestLiveStore } from "@/stores/contestStore";
+import type {
+  ApiResponse,
+  ContestSessionInfo,
+  ContestResult,
+  LeaderboardEntry,
+} from "@/types";
 
 type Phase = "loading" | "active" | "completed";
+
+// ---------------------------------------------------------------------------
+// Leaderboard table sub-component
+// ---------------------------------------------------------------------------
+
+function LeaderboardTable({
+  entries,
+}: {
+  entries: LeaderboardEntry[];
+}) {
+  if (entries.length === 0) {
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        Waiting for leaderboard data...
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs text-muted-foreground">
+            <th className="px-3 py-2 font-medium">#</th>
+            <th className="px-3 py-2 font-medium">Name</th>
+            <th className="px-3 py-2 font-medium text-right">Elo</th>
+            <th className="px-3 py-2 font-medium text-right">Solved</th>
+            <th className="px-3 py-2 font-medium text-center">Type</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/50">
+          {entries.map((entry) => {
+            const isHuman = !entry.is_bot;
+            return (
+              <tr
+                key={`${entry.name}-${entry.rank}`}
+                className={
+                  isHuman
+                    ? "bg-primary/10 font-medium"
+                    : "hover:bg-muted/30 transition-colors"
+                }
+              >
+                <td className="px-3 py-2 text-muted-foreground">
+                  {entry.rank <= 3 ? (
+                    <span
+                      className={
+                        entry.rank === 1
+                          ? "text-yellow-400"
+                          : entry.rank === 2
+                            ? "text-gray-300"
+                            : "text-amber-600"
+                      }
+                    >
+                      {entry.rank}
+                    </span>
+                  ) : (
+                    entry.rank
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    {isHuman ? null : (
+                      <Bot className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className={isHuman ? "text-foreground" : "text-muted-foreground"}>
+                      {entry.name}
+                    </span>
+                    {isHuman && (
+                      <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                        YOU
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <span style={{ color: getRatingColor(entry.elo) }}>
+                    {entry.elo}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right text-foreground">
+                  {entry.solved}
+                </td>
+                <td className="px-3 py-2 text-center">
+                  {isHuman ? (
+                    <span className="text-xs text-primary">Human</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Bot</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page component
+// ---------------------------------------------------------------------------
 
 export default function ContestDetailPage() {
   const { id: contestId } = useParams<{ id: string }>();
@@ -33,11 +143,25 @@ export default function ContestDetailPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasFetchedRef = useRef(false);
 
+  // Live leaderboard state from Zustand store
+  const {
+    leaderboard,
+    wsState,
+    timeElapsed,
+    timeTotal,
+    connect: connectWs,
+    disconnect: disconnectWs,
+    contestEnded: wsContestEnded,
+    reset: resetLive,
+  } = useContestLiveStore();
+
   const handleEndContest = useCallback(async () => {
     if (!contestId) return;
     setLoading(true);
     try {
       await api.post(`/contest/${contestId}/end`);
+      // Disconnect WS
+      disconnectWs();
       // Refetch contest data
       const res = await api.get<ApiResponse<ContestSessionInfo>>(`/contest/${contestId}`);
       const data = res.data.data;
@@ -58,7 +182,7 @@ export default function ContestDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [contestId]);
+  }, [contestId, disconnectWs]);
 
   // Initial fetch
   useEffect(() => {
@@ -70,6 +194,7 @@ export default function ContestDetailPage() {
         const res = await api.get<ApiResponse<ContestSessionInfo>>(`/contest/${contestId}`);
         const data = res.data.data;
         setContest(data);
+
         if (data.status === "completed" || data.status === "ended") {
           setPhase("completed");
           try {
@@ -85,6 +210,8 @@ export default function ContestDetailPage() {
           if (data.remaining_seconds != null) {
             setRemaining(Math.max(0, data.remaining_seconds));
           }
+          // Connect WebSocket for live leaderboard
+          connectWs(contestId);
         }
       } catch (err) {
         setError(extractApiError(err, "Failed to load contest"));
@@ -92,7 +219,7 @@ export default function ContestDetailPage() {
       }
     };
     doFetch();
-  }, [contestId]);
+  }, [contestId, connectWs]);
 
   // Countdown timer
   useEffect(() => {
@@ -120,6 +247,42 @@ export default function ContestDetailPage() {
     prevRemainingRef.current = remaining;
   }, [remaining, phase, handleEndContest]);
 
+  // Handle WS contest_ended -> transition to completed
+  useEffect(() => {
+    if (wsContestEnded && phase === "active" && contestId) {
+      // Fetch final result
+      const fetchResult = async () => {
+        try {
+          const res = await api.get<ApiResponse<ContestSessionInfo>>(`/contest/${contestId}`);
+          const data = res.data.data;
+          setContest(data);
+          if (data.status === "completed" || data.status === "ended") {
+            setPhase("completed");
+            try {
+              const resultRes = await api.get<ApiResponse<ContestResult>>(
+                `/contest/${contestId}/result`,
+              );
+              setResult(resultRes.data.data);
+            } catch {
+              // fallback
+            }
+          }
+        } catch {
+          // fallback
+        }
+      };
+      fetchResult();
+    }
+  }, [wsContestEnded, phase, contestId]);
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      disconnectWs();
+      resetLive();
+    };
+  }, [disconnectWs, resetLive]);
+
   const submitProblem = async () => {
     if (!contestId || !selectedProblem) return;
     setError("");
@@ -138,6 +301,7 @@ export default function ContestDetailPage() {
       setContest(data);
       if (data.status === "completed" || data.status === "ended") {
         setPhase("completed");
+        disconnectWs();
         try {
           const resultRes = await api.get<ApiResponse<ContestResult>>(
             `/contest/${contestId}/result`,
@@ -165,8 +329,12 @@ export default function ContestDetailPage() {
       ? Math.round((contest.problems_solved / contest.total_problems) * 100)
       : 0;
 
+    // Find the human's rank in the leaderboard
+    const humanEntry = leaderboard.find((e) => !e.is_bot);
+    const humanRank = humanEntry?.rank ?? null;
+
     return (
-      <div className="mx-auto max-w-4xl space-y-5">
+      <div className="mx-auto max-w-5xl space-y-5">
         {/* Header with timer */}
         <div className="flex items-center justify-between">
           <button
@@ -177,6 +345,30 @@ export default function ContestDetailPage() {
             Back to Contests
           </button>
           <div className="flex items-center gap-3">
+            {/* WS connection indicator */}
+            <div className="flex items-center gap-1.5 text-xs">
+              {wsState === "connected" ? (
+                <>
+                  <Wifi className="size-3.5 text-green-400" />
+                  <span className="text-green-400">Live</span>
+                </>
+              ) : wsState === "connecting" ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin text-yellow-400" />
+                  <span className="text-yellow-400">Connecting...</span>
+                </>
+              ) : wsState === "error" ? (
+                <>
+                  <WifiOff className="size-3.5 text-red-400" />
+                  <span className="text-red-400">Disconnected</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="size-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Offline</span>
+                </>
+              )}
+            </div>
             <div className="flex items-center gap-1.5">
               <Clock className="size-4 text-muted-foreground" />
               <span
@@ -199,8 +391,8 @@ export default function ContestDetailPage() {
           </div>
         )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Stats row */}
+        <div className="grid grid-cols-4 gap-3">
           <div className="rounded-xl border border-border bg-card p-4 text-center">
             <p className="text-xs text-muted-foreground">Solved</p>
             <p className="mt-1 text-xl font-bold text-green-400">{contest.problems_solved}</p>
@@ -210,8 +402,19 @@ export default function ContestDetailPage() {
             <p className="mt-1 text-xl font-bold text-foreground">{contest.total_problems}</p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">Submissions</p>
-            <p className="mt-1 text-xl font-bold text-foreground">{contest.submissions}</p>
+            <p className="text-xs text-muted-foreground">Rank</p>
+            <p className="mt-1 text-xl font-bold text-primary">
+              {humanRank ?? "-"}
+              <span className="text-xs font-normal text-muted-foreground">
+                {" "}/{leaderboard.length || "-"}
+              </span>
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4 text-center">
+            <p className="text-xs text-muted-foreground">Elapsed</p>
+            <p className="mt-1 text-xl font-bold text-foreground">
+              {timeElapsed}<span className="text-xs font-normal text-muted-foreground">/{timeTotal} min</span>
+            </p>
           </div>
         </div>
 
@@ -223,110 +426,131 @@ export default function ContestDetailPage() {
           />
         </div>
 
-        {/* Submit panel */}
-        {selectedProblem && (
-          <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-foreground">
-              Reporting result for problem
-            </h3>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">Solved?</span>
-              <Button
-                size="sm"
-                variant={submitSolved ? "default" : "outline"}
-                onClick={() => setSubmitSolved(true)}
-              >
-                Yes
-              </Button>
-              <Button
-                size="sm"
-                variant={!submitSolved ? "destructive" : "outline"}
-                onClick={() => setSubmitSolved(false)}
-              >
-                No
-              </Button>
-            </div>
-            {submitSolved && (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">Attempts:</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={submitAttempts}
-                  onChange={(e) => setSubmitAttempts(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                />
+        {/* Two-column layout: Problems + Leaderboard */}
+        <div className="grid gap-5 lg:grid-cols-2">
+          {/* Left: Problems */}
+          <div className="space-y-4">
+            {/* Submit panel */}
+            {selectedProblem && (
+              <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Reporting result for problem
+                </h3>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">Solved?</span>
+                  <Button
+                    size="sm"
+                    variant={submitSolved ? "default" : "outline"}
+                    onClick={() => setSubmitSolved(true)}
+                  >
+                    Yes
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={!submitSolved ? "destructive" : "outline"}
+                    onClick={() => setSubmitSolved(false)}
+                  >
+                    No
+                  </Button>
+                </div>
+                {submitSolved && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground">Attempts:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={submitAttempts}
+                      onChange={(e) => setSubmitAttempts(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                    />
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={submitProblem} disabled={loading}>
+                    {loading && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                    Submit
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedProblem(null)}>
+                    Cancel
+                  </Button>
+                </div>
               </div>
             )}
-            <div className="flex gap-2">
-              <Button size="sm" onClick={submitProblem} disabled={loading}>
-                {loading && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                Submit
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setSelectedProblem(null)}>
-                Cancel
-              </Button>
+
+            {/* Problem list */}
+            <div className="rounded-xl border border-border bg-card">
+              <div className="border-b border-border px-5 py-3">
+                <h2 className="text-sm font-semibold text-foreground">
+                  Problems ({contest.problems.length})
+                </h2>
+              </div>
+              <div className="divide-y divide-border">
+                {contest.problems.map((problem) => {
+                  const isThis = problem.problem_id === selectedProblem;
+                  return (
+                    <div
+                      key={problem.problem_id}
+                      className={`flex items-center gap-4 px-5 py-3 ${isThis ? "bg-primary/5" : ""}`}
+                    >
+                      {problem.solved ? (
+                        <CheckCircle2 className="size-4 shrink-0 text-green-400" />
+                      ) : (
+                        <Circle className="size-4 shrink-0 text-muted-foreground" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          {problem.index} - {problem.name}
+                        </p>
+                      </div>
+                      <span
+                        className="shrink-0 text-sm font-bold"
+                        style={{ color: getRatingColor(problem.rating) }}
+                      >
+                        {problem.rating}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={problem.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <ExternalLink className="size-4" />
+                        </a>
+                        {!problem.solved && !selectedProblem && (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedProblem(problem.problem_id);
+                              setSubmitSolved(true);
+                              setSubmitAttempts(1);
+                            }}
+                          >
+                            Report
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        )}
 
-        {/* Problem list */}
-        <div className="rounded-xl border border-border bg-card">
-          <div className="border-b border-border px-5 py-3">
-            <h2 className="text-sm font-semibold text-foreground">
-              Problems ({contest.problems.length})
-            </h2>
-          </div>
-          <div className="divide-y divide-border">
-            {contest.problems.map((problem) => {
-              const isThis = problem.problem_id === selectedProblem;
-              return (
-                <div
-                  key={problem.problem_id}
-                  className={`flex items-center gap-4 px-5 py-3 ${isThis ? "bg-primary/5" : ""}`}
-                >
-                  {problem.solved ? (
-                    <CheckCircle2 className="size-4 shrink-0 text-green-400" />
-                  ) : (
-                    <Circle className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {problem.index} - {problem.name}
-                    </p>
-                  </div>
-                  <span
-                    className="shrink-0 text-sm font-bold"
-                    style={{ color: getRatingColor(problem.rating) }}
-                  >
-                    {problem.rating}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={problem.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <ExternalLink className="size-4" />
-                    </a>
-                    {!problem.solved && !selectedProblem && (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedProblem(problem.problem_id);
-                          setSubmitSolved(true);
-                          setSubmitAttempts(1);
-                        }}
-                      >
-                        Report
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          {/* Right: Live Leaderboard */}
+          <div className="rounded-xl border border-border bg-card">
+            <div className="border-b border-border px-5 py-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">
+                Live Leaderboard
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                {leaderboard.length} participants
+              </span>
+            </div>
+            <LeaderboardTable
+              entries={leaderboard}
+            />
           </div>
         </div>
       </div>
@@ -335,8 +559,10 @@ export default function ContestDetailPage() {
 
   // ── COMPLETED ───────────────────────────────────────────────────
   const data = result ?? contest;
+  const pr = result?.performance_rating;
+
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-4xl space-y-5">
       <button
         onClick={() => navigate("/contest")}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -357,6 +583,7 @@ export default function ContestDetailPage() {
 
       {data && (
         <>
+          {/* Main result stats */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-xl border border-border bg-card p-4 text-center">
               <p className="text-xs text-muted-foreground">Solved</p>
@@ -386,6 +613,38 @@ export default function ContestDetailPage() {
               </p>
             </div>
           </div>
+
+          {/* Performance Rating card */}
+          {pr != null && (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 text-center">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Performance Rating
+              </p>
+              <div className="mt-2 flex items-center justify-center gap-3">
+                <span
+                  className="text-4xl font-bold"
+                  style={{ color: getRatingColor(pr) }}
+                >
+                  {pr}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Based on your rank among all participants (you + AI bots)
+              </p>
+            </div>
+          )}
+
+          {/* Final Leaderboard (if available) */}
+          {leaderboard.length > 0 && (
+            <div className="rounded-xl border border-border bg-card">
+              <div className="border-b border-border px-5 py-3">
+                <h2 className="text-sm font-semibold text-foreground">Final Standings</h2>
+              </div>
+              <LeaderboardTable
+                entries={leaderboard}
+              />
+            </div>
+          )}
 
           {/* Problems summary */}
           {result?.problems && result.problems.length > 0 && (

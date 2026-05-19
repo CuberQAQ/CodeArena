@@ -98,6 +98,7 @@ class ContestResult(BaseModel):
     ended_at: datetime | None = None
     status: str = "completed"
     elo_change: int | None = None
+    performance_rating: int | None = None
     problems: list[ContestProblemInfo] = []
 
 

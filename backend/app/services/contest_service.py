@@ -516,6 +516,13 @@ class ContestService:
         # Build result
         problem_infos = await ContestService._build_problem_infos(db, session)
 
+        # Calculate PR for result display
+        pr = await ContestSimulationService.calculate_performance_rating(
+            db=db,
+            contest_id=contest_id,
+            player_solved=session.problems_solved,
+        )
+
         return ContestResult(
             id=session.id,
             tier=session.contest_tier,
@@ -527,6 +534,7 @@ class ContestService:
             ended_at=session.ended_at,
             status="completed",
             elo_change=session.elo_change,
+            performance_rating=pr,
             problems=problem_infos,
         )
 
@@ -581,6 +589,15 @@ class ContestService:
 
         problem_infos = await ContestService._build_problem_infos(db, session)
 
+        # Calculate PR for completed contests
+        pr = None
+        if session.status in ("completed", "ended") and session.submissions > 0:
+            pr = await ContestSimulationService.calculate_performance_rating(
+                db=db,
+                contest_id=contest_id,
+                player_solved=session.problems_solved,
+            )
+
         return ContestResult(
             id=session.id,
             tier=session.contest_tier,
@@ -592,6 +609,7 @@ class ContestService:
             ended_at=session.ended_at,
             status=session.status,
             elo_change=session.elo_change,
+            performance_rating=pr,
             problems=problem_infos,
         )
 

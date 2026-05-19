@@ -270,6 +270,7 @@ export interface ContestResult {
   ended_at: string | null;
   status: string;
   elo_change: number | null;
+  performance_rating: number | null;
   problems: ContestProblemInfo[];
 }
 
@@ -469,4 +470,27 @@ export interface AdminUserList {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+// ---------------------------------------------------------------------------
+// Contest Leaderboard (AI bots + human)
+// ---------------------------------------------------------------------------
+
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  elo: number;
+  solved: number;
+  is_bot: boolean;
+}
+
+export interface LeaderboardResponse {
+  leaderboard: LeaderboardEntry[];
+  time_elapsed: number;
+  time_total: number;
+}
+
+export interface ContestEndedMessage {
+  type: "contest_ended";
+  leaderboard: LeaderboardResponse;
 }
