@@ -8,6 +8,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import register_exception_handlers
+from app.core.task_scheduler import scheduler as submission_scheduler
 from app.middleware import LoggingMiddleware, RateLimitMiddleware, setup_cors
 
 logger = logging.getLogger("code_arena")
@@ -38,8 +39,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning("Database migration skipped: %s", e)
 
+    # Start background submission tracking scheduler
+    submission_scheduler.start(app)
+
     yield
     # Shutdown
+    await submission_scheduler.stop()
     logger.info("Shutting down %s", settings.APP_NAME)
     await engine.dispose()
 

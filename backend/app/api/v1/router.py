@@ -9,6 +9,7 @@ from app.api.v1.contest_ws import router as contest_ws_router
 from app.api.v1.economy import router as economy_router
 from app.api.v1.hints import router as hints_router
 from app.api.v1.pve_challenge import router as pve_challenge_router
+from app.api.v1.submission_tracking import router as submission_tracking_router
 from app.api.v1.training import router as training_router
 
 api_router = APIRouter()
@@ -17,6 +18,7 @@ api_router.include_router(auth_router)
 api_router.include_router(cf_handle_router)
 api_router.include_router(challenge_router)
 api_router.include_router(pve_challenge_router)
+api_router.include_router(submission_tracking_router)
 api_router.include_router(training_router)
 api_router.include_router(contest_router)
 api_router.include_router(economy_router)

@@ -7,6 +7,7 @@ from app.models.elo_history import EloHistory
 from app.models.hint_purchase import HintPurchase
 from app.models.pve_challenge_session import PvEChallengeSession
 from app.models.pp_record import PPRecord
+from app.models.submission_tracking import SubmissionTracking
 from app.models.system_config import SystemConfig
 from app.models.token_transaction import TokenTransaction
 from app.models.topic_category import TopicCategory
@@ -32,4 +33,5 @@ __all__ = [
     "SystemConfig",
     "UserTagElo",
     "PvEChallengeSession",
+    "SubmissionTracking",
 ]
