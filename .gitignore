@@ -1,0 +1,60 @@
+# ===========================================
+# Code Arena - Git Ignore
+# ===========================================
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# ---- Node.js ----
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ---- Environment ----
+.env
+.env.local
+.env.*.local
+
+# ---- IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Database ----
+*.db
+*.sqlite3
+
+# ---- Test / Coverage ----
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+.pytest_cache/
+
+# ---- Build artifacts ----
+*.tar.gz
+*.zip
