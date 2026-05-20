@@ -340,3 +340,38 @@ class CFApiService:
         params: dict[str, Any] = {"handle": handle}
         result = await self._request("/user.rating", params)
         return result
+
+    async def get_contest_status(
+        self,
+        contest_id: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch all submissions for a contest.
+
+        CF API endpoint: ``/contest.status`` with ``contestId``.
+        Returns the list of submission objects.
+        """
+        params: dict[str, Any] = {"contestId": contest_id}
+        result = await self._request(
+            "/contest.status",
+            params,
+            ttl=STATUS_CACHE_TTL,
+        )
+        return result
+
+    async def get_contest_rating_changes(
+        self,
+        contest_id: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch rating changes for a contest.
+
+        CF API endpoint: ``/contest.ratingChanges`` with ``contestId``.
+        Returns the list of rating change objects, each containing
+        ``handle`` and ``oldRating`` among other fields.
+        """
+        params: dict[str, Any] = {"contestId": contest_id}
+        result = await self._request(
+            "/contest.ratingChanges",
+            params,
+            ttl=DEFAULT_CACHE_TTL,
+        )
+        return result
