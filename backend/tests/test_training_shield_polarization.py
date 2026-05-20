@@ -19,7 +19,7 @@ Test coverage:
 
 import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, UniqueConstraint, event
@@ -274,6 +274,7 @@ class TestLearningShield:
     async def test_shield_failure_no_deduction(self, mock_pp_cls, db, cf_mock):
         """Shield active + failure: Global Elo and M-Elo unchanged."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1200)
 
@@ -294,6 +295,7 @@ class TestLearningShield:
     async def test_shield_abandon_no_deduction(self, mock_pp_cls, db, cf_mock):
         """Shield active + abandon: no Elo deduction."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1200)
 
@@ -317,6 +319,7 @@ class TestLearningShield:
     async def test_shield_ac_normal_gain(self, mock_pp_cls, db, cf_mock):
         """Shield active + AC: normal Elo gain + shield deactivated."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1200)
 
@@ -344,6 +347,7 @@ class TestLearningShield:
     async def test_shield_ac_then_failure_deducts(self, mock_pp_cls, db, cf_mock):
         """After first AC (shield off), failure deducts Elo normally."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1500)
 
@@ -375,6 +379,7 @@ class TestLearningShield:
     async def test_shield_independent_per_tag(self, mock_pp_cls, db, cf_mock):
         """Shield for tag A does not affect tag B."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         # Create user with two topics: dp and greedy
         user = _make_test_user(elo=1200)
@@ -431,6 +436,7 @@ class TestLearningShield:
     async def test_shield_abandon_zero_submissions_no_change(self, mock_pp_cls, db, cf_mock):
         """Abandon with 0 submissions: Elo unchanged regardless of shield."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1200)
 
@@ -456,6 +462,7 @@ class TestWeightPolarization:
     async def test_global_elo_half_on_ac(self, mock_pp_cls, db, cf_mock):
         """Global Elo gain is multiplied by 0.5 on AC."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1200)
 
@@ -480,6 +487,7 @@ class TestWeightPolarization:
     async def test_melo_double_on_ac(self, mock_pp_cls, db, cf_mock):
         """M-Elo gain is multiplied by 2.0 on AC."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1200)
 
@@ -507,6 +515,7 @@ class TestWeightPolarization:
     async def test_global_elo_half_deduction_on_failure(self, mock_pp_cls, db, cf_mock):
         """Global Elo deduction is also multiplied by 0.5 on failure."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1500)
 
@@ -534,6 +543,7 @@ class TestWeightPolarization:
     async def test_melo_uses_own_elo_for_expected(self, mock_pp_cls, db, cf_mock):
         """M-Elo P(AC) is calculated using the M-Elo value, not Global Elo."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         # User starts at 1200, then AC some problems to raise global elo
         # Then verify M-Elo diverges
@@ -558,6 +568,7 @@ class TestWeightPolarization:
     async def test_coefficients_from_config(self, mock_pp_cls, db, cf_mock):
         """Coefficients are read from config_service."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         from app.services import config_service as config_svc_module
 
@@ -597,6 +608,7 @@ class TestWeightPolarization:
     async def test_shield_and_polarization_together(self, mock_pp_cls, db, cf_mock):
         """Full flow: shield protects failure, then AC uses polarization."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1200)
 
@@ -638,6 +650,7 @@ class TestWeightPolarization:
     async def test_no_tag_no_crash(self, mock_pp_cls, db, cf_mock):
         """Topic with no cf_tags should not crash -- just skip M-Elo."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user, topic, session = await _setup_training_session(db, user_elo=1200, cf_tags=[])
 

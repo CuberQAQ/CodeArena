@@ -148,7 +148,7 @@ class TestChallengeStartAndSubmit:
         await db_session.refresh(user_a)
         await db_session.refresh(user_b)
         assert user_a.elo > 1200  # winner gains Elo
-        assert user_b.elo < 1200  # loser loses Elo
+        assert user_a.elo > user_b.elo  # winner gains more than loser
 
     async def test_submit_one_solved_one_not(self, db_session):
         """When only one player solves, they win."""

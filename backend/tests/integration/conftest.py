@@ -250,7 +250,9 @@ from app.services import contest_simulation_service as _sim_mod
 from app.services import economy_service as _eco_mod
 from app.services import elo_service as _elo_mod
 from app.services import hint_service as _hint_mod
+from app.services import melo_service as _melo_mod
 from app.services import pp_service as _pp_mod
+from app.services import pve_challenge_service as _pve_mod
 from app.services import training_service as _train_mod
 
 # ---------------------------------------------------------------------------
@@ -326,6 +328,7 @@ def _apply_model_patches():
         patch.object(_contest_mod, "EloHistory", _TestEloHistory),
         patch.object(_hint_mod, "User", _TestUser),
         patch.object(_hint_mod, "HintPurchase", _TestHintPurchase),
+        patch.object(_hint_mod.HintService, "get_max_hint_level", AsyncMock(return_value=0)),
         patch.object(_elo_mod, "EloHistory", _TestEloHistory),
         patch.object(_pp_mod, "User", _TestUser),
         patch.object(_pp_mod, "PPRecord", _TestPPRecord),
@@ -340,6 +343,16 @@ def _apply_model_patches():
         # Patch ContestSimulationService to avoid DB operations on contest_bots table
         patch.object(_sim_mod.ContestSimulationService, "generate_bots", AsyncMock(return_value=[])),
         patch.object(_sim_mod.ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),
+        patch.object(_sim_mod.ContestSimulationService, "calculate_performance_rating", AsyncMock(return_value=1200)),
+        patch.object(_sim_mod.ContestSimulationService, "build_leaderboard", AsyncMock(return_value=None)),
+        # Patch MEloService to avoid querying user_tag_elo table (UUID type incompatible with SQLite)
+        patch.object(_melo_mod.MEloService, "is_shield_active", AsyncMock(return_value=False)),
+        patch.object(_melo_mod.MEloService, "deactivate_shield", AsyncMock(return_value=None)),
+        patch.object(_melo_mod.MEloService, "get_or_create_melo", AsyncMock(
+            return_value=type("FakeMelo", (), {"elo": 1200, "first_ac_at": None})()
+        )),
+        patch.object(_melo_mod.MEloService, "update_melo", AsyncMock(return_value=None)),
+        patch.object(_melo_mod.MEloService, "get_all_melos", AsyncMock(return_value=[])),
     ]
     for p in patches_list:
         p.start()

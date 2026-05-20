@@ -12,7 +12,7 @@ Tests cover:
 
 import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, event
@@ -340,6 +340,7 @@ class TestHintAttenuationPassThrough:
         mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user_a = _make_user(username="user_a", elo=1200, tokens=0)
         user_b = _make_user(username="user_b", elo=1200, tokens=0)
@@ -384,6 +385,7 @@ class TestHintAttenuationPassThrough:
         mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user_a = _make_user(username="user_a", elo=1200, tokens=0)
         user_b = _make_user(username="user_b", elo=1200, tokens=0)
@@ -556,6 +558,7 @@ class TestChallengeAttemptReward:
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
         mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user_a = _make_user(username="user_a", elo=1200, tokens=0)
         user_b = _make_user(username="user_b", elo=1200, tokens=0)
@@ -602,6 +605,7 @@ class TestChallengeAttemptReward:
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
         mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user_a = _make_user(username="user_a", elo=1200, tokens=0)
         user_b = _make_user(username="user_b", elo=1200, tokens=0)
@@ -639,6 +643,7 @@ class TestChallengeAttemptReward:
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
         mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1200, 1200, 0, 0))
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         user_a = _make_user(username="user_a", elo=1200, tokens=0)
         user_b = _make_user(username="user_b", elo=1200, tokens=0)
@@ -678,7 +683,7 @@ class TestChallengeAttemptReward:
         mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
         mock_pp_cls.record_pp = AsyncMock()
-
+        mock_pp_cls.calculate_overkill_multiplier = MagicMock(return_value=1.0)
 
         # Test each tier
         tiers = [
