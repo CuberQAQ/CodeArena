@@ -1082,6 +1082,20 @@ async def _settle_challenge(
         if overkill_event is not None:
             achievements.append(overkill_event.to_dict())
 
+    # Check overkill for opponent (if they solved)
+    if session.opponent_solved and session.problem_rating > 0:
+        opponent_elo_before = new_opponent_elo - _opponent_elo_change
+        opponent_overkill = PPService.calculate_overkill_multiplier(
+            opponent_elo_before, session.problem_rating,
+        )
+        opponent_overkill_event = AchievementService.check_overkill(
+            user_elo=opponent_elo_before,
+            problem_rating=session.problem_rating,
+            multiplier=opponent_overkill,
+        )
+        if opponent_overkill_event is not None:
+            achievements.append(opponent_overkill_event.to_dict())
+
     # Determine the submitting user's perspective
     if submitting_user_id is not None:
         user_result = _result_for_user(session, submitting_user_id)

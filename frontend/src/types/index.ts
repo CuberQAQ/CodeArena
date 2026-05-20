@@ -101,6 +101,8 @@ export interface ChallengeDetail {
   result: string | null;
   is_challenger: boolean;
   elo_change: number | null;
+  tokens_earned: number | null;
+  opponent_tokens_earned: number | null;
   created_at: string | null;
   completed_at: string | null;
 }

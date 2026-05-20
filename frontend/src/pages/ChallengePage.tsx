@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle, Sparkles } from "lucide-react";
+import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle, Sparkles, Coins } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
@@ -633,6 +633,19 @@ export default function ChallengePage() {
             </p>
           </div>
         </div>
+
+        {/* Tokens earned */}
+        {challenge.tokens_earned != null && challenge.tokens_earned > 0 && (
+          <div className="rounded-xl border border-border bg-card p-4 text-center">
+            <div className="flex items-center justify-center gap-2">
+              <Coins className="size-4 text-yellow-500" />
+              <p className="text-xs text-muted-foreground">{t("tokensEarned")}</p>
+            </div>
+            <p className="mt-1 text-lg font-bold text-yellow-500">
+              +{challenge.tokens_earned}
+            </p>
+          </div>
+        )}
 
         <div className="flex justify-center gap-3">
           <Button onClick={handleReset}>{t("newChallenge")}</Button>

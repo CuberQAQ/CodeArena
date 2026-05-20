@@ -1929,3 +1929,150 @@ class TestGetActiveChallenge:
         assert result is not None
         assert result.problem_name == "New Problem"
         assert result.problem_rating == 1500
+
+
+# ---------------------------------------------------------------------------
+# Overkill achievement detection tests
+# ---------------------------------------------------------------------------
+
+
+class TestOverkillAchievement:
+    """Tests for overkill achievement event detection in _settle_challenge.
+
+    Verifies that both challenger and opponent can trigger overkill
+    achievements when solving problems above their Elo level.
+    """
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_challenger_overkill_achievement(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        """Challenger solving a hard problem triggers overkill achievement."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        # Overkill multiplier > 1.0 means the problem is above user's Elo
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(
+            lambda elo, rating: 1.5 if rating > elo else 1.0
+        )
+        mock_pp_cls.record_pp = AsyncMock()
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1600, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        # Problem rating 1600 is well above challenger's 1200
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1600)
+        db.add(session)
+        await db.flush()
+
+        # Challenger submits first (solved)
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1260, 1580, 60, -20))
+
+        # Opponent submits (not solved) -> triggers settlement
+        result = await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+        assert result.settled is True
+        # The settlement response should include achievements
+        assert len(result.achievements) >= 1
+        assert result.achievements[0]["type"] == "overkill_bonus"
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_opponent_overkill_achievement(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        """Opponent solving a hard problem triggers overkill achievement."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(
+            lambda elo, rating: 1.5 if rating > elo else 1.0
+        )
+        mock_pp_cls.record_pp = AsyncMock()
+
+        # Opponent has lower Elo than the problem
+        user_a = _make_test_user(db, username="user_a", elo=1600, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1600)
+        db.add(session)
+        await db.flush()
+
+        # Challenger submits first (not solved)
+        await ChallengeService.submit_result(db, user_a, session.id, False, 120.0, 3)
+
+        # Opponent wins (solved faster), new_elo=1260, elo_change=60
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1580, 1260, -20, 60))
+
+        # Opponent submits (solved) -> triggers settlement
+        result = await ChallengeService.submit_result(db, user_b, session.id, True, 60.0, 1)
+        assert result.settled is True
+        # Opponent overkill should generate an achievement event
+        assert len(result.achievements) >= 1
+        assert result.achievements[0]["type"] == "overkill_bonus"
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_both_players_overkill_achievement(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        """Both players solving a hard problem each triggers two overkill achievements."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(
+            lambda elo, rating: 1.5 if rating > elo else 1.0
+        )
+        mock_pp_cls.record_pp = AsyncMock()
+
+        # Both players have lower Elo than the problem
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1600)
+        db.add(session)
+        await db.flush()
+
+        # Challenger solves first
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1260, 1260, 60, 60))
+
+        # Opponent also solves (slower) -> draw but both get overkill
+        result = await ChallengeService.submit_result(db, user_b, session.id, True, 90.0, 1)
+        assert result.settled is True
+        # Both players should trigger overkill achievements
+        overkill_achievements = [a for a in result.achievements if a["type"] == "overkill_bonus"]
+        assert len(overkill_achievements) == 2
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_no_overkill_when_problem_easy(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        """No overkill achievement when problem rating is at or below user Elo."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(
+            lambda elo, rating: 1.0  # No overkill
+        )
+        mock_pp_cls.record_pp = AsyncMock()
+
+        user_a = _make_test_user(db, username="user_a", elo=1600, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1600, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        # Problem at same level as users
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1600)
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1630, 1570, 30, -30))
+
+        result = await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+        assert result.settled is True
+        assert len(result.achievements) == 0
