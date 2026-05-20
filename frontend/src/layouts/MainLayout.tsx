@@ -98,7 +98,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         {/* User info & logout */}
         <div className="border-t border-border p-4">
           <div className="mb-2 text-sm font-medium text-foreground truncate">
-            {user?.username ?? "User"}
+            {user?.username ?? t("profile")}
           </div>
           <div className="mb-3 text-xs text-muted-foreground">
             {t("nav:eloTokens", { elo: user?.elo ?? 1200, tokens: user?.tokens ?? 0 })}
