@@ -25,6 +25,7 @@
 | feature-engineer | 按 requirements.md 实现功能，交付生产级代码。task 描述是最小范围，需主动检查横切特性在所有模式中的集成 | `Agent(subagent_type="feature-engineer")` |
 | professional-test-engineer | 以 requirements.md 为完整标准验证交付物，task 测试要点是最小覆盖集 | `Agent(subagent_type="professional-test-engineer")` |
 | requirements-auditor | 逐条比对需求与代码实现的一致性（含横切一致性） | `Agent(subagent_type="requirements-auditor")` |
+| bug-diagnostician | 诊断 bug 根因、追踪调用链、评估影响范围。只产出诊断报告，不修复 | `Agent(subagent_type="bug-diagnostician")` |
 
 对每个子 agent 的约束：不允许修改 task.md 和 requirements.md，不允许 workaround。
 
@@ -105,17 +106,13 @@ task.md 写完后，调用 requirements-auditor 验证：
 
 当用户报告 bug 或异常行为时：
 
-1. **定位根因**：复现问题，定位到具体代码位置
-2. **评估范围**：判断是孤立 bug 还是同类问题（如刚才的验证提示 bug，`extractApiError` 对 `VALIDATION_ERROR` 的解析可能在其他页面也有影响）
-3. **生成修复 task**：在 task.md 中新增 bug 修复 task，包含：
-   - 根因分析
-   - 需要修改的文件
-   - 测试要点（含同类场景排查）
-4. **调度 feature-engineer** 修复
-5. **调度 professional-test-engineer** 验证修复 + 检查无回归
-6. commit + task 标记 🟢
+1. **调度 bug-diagnostician**：提供用户报告的现象 + 可用的日志/错误信息，要求产出诊断报告（根因、出错位置、影响范围、同类问题）
+2. **生成修复 task**（主 agent）：根据诊断报告在 task.md 中新增 bug 修复 task，包含根因分析、需要修改的文件、测试要点（含同类场景排查）
+3. **调度 feature-engineer** 修复
+4. **调度 professional-test-engineer** 验证修复 + 检查无回归
+5. commit + task 标记 🟢
 
-原则：即使是小 bug 也走 feature-engineer → test-engineer 流程，不允许跳过测试直接提交。
+原则：即使是小 bug 也走完整的诊断→修复→验证流程，不允许跳过测试直接提交。
 
 ## 异常处理
 
