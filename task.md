@@ -1713,3 +1713,290 @@ AI 机器人模拟存在三个叠加问题：
 - [ ] **PR 结算正常**: 比赛结束后 PR 和 Elo 结算仍然正确
 - [ ] **WebSocket 排行榜**: 排行榜仍然实时更新
 - [ ] **配置可热更新**: tick 间隔和难度参数可通过 admin config 页面调整
+
+---
+
+## 阶段 26: PvP 挑战模式致命 Bug 修复 (2026-05-20)
+
+> 诊断报告确认 PvP 模式存在三个致命缺陷：
+> 1. 多 worker 内存状态不共享，匹配成功率约 1/16
+> 2. 前后端结果协议断裂，胜负/Elo/Token 展示全部错误
+> 3. 页面刷新后无法恢复比赛，无恢复入口
+>
+> 修复方案：引入 Redis 共享状态 + 后端视角转换 + 对标 Contest 恢复机制
+
+### Task 26.1: Redis 基础设施 + 匹配状态迁移
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+引入 Redis 作为共享状态存储，将 `MatchService._queue` 和 `_pending_matches` 从进程内存迁移到 Redis，解决多 worker 环境下状态不共享的根本问题。
+
+**根因**: `MatchService._queue`（`match_service.py:86`）和 `_pending_matches`（`challenge_service.py:75`）都是模块级全局变量，每个 Gunicorn worker 独立一份。生产环境 4 worker 下，匹配成功率约 1/16。
+
+**需要修改/新增的文件**:
+
+1. `docker-compose.yml` + `docker-compose.prod.yml` — 新增 Redis 服务容器
+2. `backend/app/core/redis.py` — 新建，Redis 连接管理（连接池、配置）
+3. `backend/app/core/config.py` — 新增 Redis URL 配置项
+4. `backend/app/services/match_service.py` — `_queue` 从内存 dict 迁移到 Redis Sorted Set（按 Elo 排序）
+5. `backend/app/services/challenge_service.py` — `_pending_matches` 从内存 dict 迁移到 Redis Hash，设置 TTL 5 分钟
+6. `.env.example` — 新增 `REDIS_URL` 环境变量
+
+**关键实现细节**:
+1. Redis 连接使用 `redis.asyncio` 异步客户端，连接池模式
+2. `_queue` 用 Redis Sorted Set 实现，score 为用户 Elo，member 为用户 ID 的 JSON 序列化（含 user_id、elo、joined_at）
+3. `_pending_matches` 用 Redis Hash 实现，key 为 `pending_match:{session_id}`，value 为匹配详情 JSON，TTL 5 分钟
+4. 匹配操作使用 Lua 脚本保证原子性（如 `try_match` 中读取 + 移除队列成员 + 创建 pending 记录需原子执行）
+5. 匹配算法（概率权重：close 50% / challenge 25% / consolidate 15% / far 10%）逻辑不变，仅数据源从内存改为 Redis
+6. Redis 不可用时降级处理：日志告警，返回服务不可用错误
+
+**调用方清单**:
+- `challenge_service.py:join_queue`（~L100） — 调用 `match_svc.join_queue`，需适配 Redis 版本
+- `challenge_service.py:get_queue_status`（~L185） — 读取 `_pending_matches` 和 DB，需改为 Redis 读取
+- `challenge_service.py:start_challenge`（~L280） — 读取 `_pending_matches` 确认状态，需改为 Redis 读取
+- `challenge_service.py:submit_result`（~L340） — 清除 `_pending_matches`，需改为 Redis 删除
+- `challenge_service.py:quit_challenge`（~L530） — 清除 `_pending_matches`，需改为 Redis 删除
+- `match_service.py` 全部公开方法 — `join_queue`、`leave_queue`、`try_match`、`try_match_any`、`get_queue_status`
+
+**反向集成清单**:
+- 无横切特性集成，纯基础设施变更
+
+**触发场景**:
+- 用户点击"寻找对手"加入匹配队列
+- 匹配成功后双方确认开始
+- 退出匹配队列或退出比赛
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **单 worker 匹配**: 单 worker 下匹配流程完整（加入队列 → 匹配 → 确认 → 开始）
+- [ ] **多 worker 匹配**: 4 worker 下两个用户能稳定匹配成功（不再依赖路由到同一 worker）
+- [ ] **队列状态查询**: 加入队列后 `get_queue_status` 正确返回排队状态
+- [ ] **离开队列**: 用户离开队列后 Redis 中无残留数据
+- [ ] **pending TTL**: 匹配后 5 分钟内未确认，pending 记录自动过期
+- [ ] **原子性**: 两个用户同时被匹配时不会出现重复 session
+- [ ] **Redis 不可用降级**: Redis 连接失败时返回 503 而非崩溃
+- [ ] **现有匹配算法不变**: close/challenge/consolidate/far 权重概率不变
+- [ ] **前端无感知**: 前端 API 调用和返回格式不变
+
+#### 验收标准
+1. 多 worker 环境下匹配成功率 100%（不再受 worker 路由影响）
+2. Redis 连接稳定，原子操作正确
+3. 前端无需修改即可正常使用匹配功能
+
+---
+
+### Task 26.2: 后端视角转换 + 前端结果展示修复
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: 无（与 Task 26.1 并行）
+
+#### 任务描述
+修复后端 API 返回用户视角的胜负结果、Elo 变化、Token 奖励，同时修复前端对结果的展示逻辑。
+
+**根因**:
+1. 后端 `_settle_challenge` 返回 `challenger_win`/`opponent_win`，前端期望 `win`/`loss`/`draw`
+2. `elo_change` 和 `tokens_earned` 始终返回 challenger 视角，opponent 看到错误数据
+3. 前端结果页固定显示 `challenger_time`/`challenger_submissions`，不区分角色
+
+**需要修改的文件**:
+
+后端:
+- `backend/app/services/challenge_service.py`:
+  - `_settle_challenge`（~L670）— 新增 `submitting_user_id` 参数，返回该用户视角数据
+  - `get_challenge_detail`（~L850）— 根据请求用户返回视角转换后的 `result`、`elo_change`
+  - `submit_result`（~L340）— 响应中 `result`/`elo_change`/`tokens_earned` 为当前用户视角
+  - API 响应层新增视角转换：DB 原值 `challenger_win`/`opponent_win`/`draw` → 用户视角 `win`/`loss`/`draw`
+
+前端:
+- `frontend/src/pages/ChallengePage.tsx`:
+  - `start_challenge` 返回 `no_match` 时（~L120）不进入 `in_progress`，显示错误提示
+  - 验证 `session_id` 不为空/undefined（~L122）
+  - 结果页（~L466）适配新的 `win`/`loss`/`draw` 值
+  - 结果页统计数据（~L545）根据当前用户角色显示对应字段
+
+**关键实现细节**:
+
+后端视角转换:
+1. DB `ChallengeSession.result` 保持原值（`challenger_win`/`opponent_win`/`draw`），视角转换仅在 API 响应层
+2. 新增辅助方法 `_result_for_user(session: ChallengeSession, user_id: UUID) -> str`：
+   - `draw` → `draw`
+   - `challenger_win` + user_id == challenger_id → `win`
+   - `challenger_win` + user_id == opponent_id → `loss`
+   - `opponent_win` + user_id == opponent_id → `win`
+   - `opponent_win` + user_id == challenger_id → `loss`
+   - `challenger_quit` + user_id == challenger_id → `quit`
+   - `challenger_quit` + user_id == opponent_id → `win`
+   - `opponent_quit` + user_id == opponent_id → `quit`
+   - `opponent_quit` + user_id == challenger_id → `win`
+3. `opponent_elo_change` 存储：新增 `opponent_elo_change` 字段到 `ChallengeSession` 模型（含 migration），`_settle_challenge` 中同时存储两个用户的 elo_change。当前 DB 仅存 `session.elo_change = challenger_elo_change`，opponent 的 elo_change 被丢弃。新增字段后 `get_challenge_detail` 和 `submit_result` 响应根据用户角色返回对应值
+4. `opponent_tokens_earned` 同理：新增字段或使用 JSON 存储，确保 API 返回当前用户的 token 奖励
+5. `ChallengeDetail` schema 新增 `is_challenger: bool` 字段，前端据此切换统计展示
+6. 统计数据（time/submissions）返回双方数据（`challenger_time`/`opponent_time`/`challenger_submissions`/`opponent_submissions`），前端根据 `is_challenger` 选择显示
+
+前端适配:
+1. `start_challenge` 调用后检查 `status` 字段，`no_match` 时回到 `matched` 或 `idle` 状态
+2. 验证 `session_id` 存在后才进入 `in_progress`
+3. 结果页使用 `result === "win"` / `result === "loss"` / `result === "draw"` / `result === "quit"` 判断
+4. 后端返回 `is_challenger: bool` 字段，前端据此选择 `challenger_time`/`opponent_time` 等字段展示
+
+**调用方清单**:
+- `challenge_service.py:submit_result` — 调用 `_settle_challenge`，需传入 user_id
+- `challenge_service.py:get_challenge_detail` — 返回详情，需做视角转换
+- `challenge_service.py:quit_challenge` — 退出结果也需视角转换
+- `ChallengePage.tsx:handleStart`（~L120）— 需增加 status 检查
+- `ChallengePage.tsx:handleSubmit`（~L350）— 提交结果展示需适配
+- `ChallengePage.tsx` 结果页（~L466）— 判断逻辑需适配
+
+**反向集成清单**:
+- Elo 结算逻辑不变（K 因子、S 值、提示衰减等横切特性不受影响）
+- 代币奖励逻辑不变
+- PP 计算不变
+
+**触发场景**:
+- 两人对战完成，查看胜负结果
+- 查看挑战详情页（Elo 变化、统计信息）
+- 退出比赛查看惩罚
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **challenger 胜利**: challenger 调用 API 返回 `result=win`，`elo_change > 0`
+- [ ] **challenger 失败**: challenger 调用 API 返回 `result=loss`，`elo_change < 0`
+- [ ] **opponent 胜利**: opponent 调用 API 返回 `result=win`，`elo_change > 0`
+- [ ] **opponent 失败**: opponent 调用 API 返回 `result=loss`，`elo_change < 0`
+- [ ] **平局**: 双方都返回 `result=draw`
+- [ ] **退出**: 退出者返回 `result=quit`，对手返回 `result=win`
+- [ ] **tokens_earned 正确**: 各用户看到自己的 token 奖励
+- [ ] **前端 start_challenge 错误处理**: `no_match` 时不进入做题，显示错误提示
+- [ ] **前端 session_id 校验**: `session_id` 为空时不请求 `GET /challenge/undefined`
+- [ ] **前端结果页**: challenger 和 opponent 看到各自的胜负、Elo、时间、提交数
+- [ ] **DB 原值不变**: ChallengeSession.result 仍为 `challenger_win`/`opponent_win`/`draw`
+
+#### 验收标准
+1. 两个用户各自看到正确的胜负结果、Elo 变化、Token 奖励
+2. 前端不再因 `no_match` 而进入做题状态
+3. DB 存储格式不变，视角转换仅在 API 响应层
+
+---
+
+### Task 26.3: 比赛恢复机制
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: Task 26.1（Redis 迁移完成后匹配才能正常工作）, Task 26.4（需要 problem_name 字段恢复题面）
+
+#### 任务描述
+对标 Contest 模式实现 PvP 挑战的比赛恢复机制：新增专用 API、前端路由、Dashboard 恢复入口、ChallengePage 自动恢复。
+
+**根因**: `ChallengePage` 用 `useState` 保存 `sessionId`，刷新即丢失。Dashboard 无 PvP 恢复入口。后端 `get_queue_status` 查询了 pending 状态但不处理。
+
+**需要新增/修改的文件**:
+
+后端:
+- `backend/app/api/v1/challenge.py` — 新增 `GET /challenge/active` 端点
+- `backend/app/services/challenge_service.py` — 新增 `get_active_challenge` 方法
+
+前端:
+- `frontend/src/App.tsx` 或路由配置 — 新增 `/challenge/:sessionId` 路由
+- `frontend/src/pages/ChallengePage.tsx` — 支持通过 URL `sessionId` 加载比赛 + 挂载时调用 `/challenge/active` 检查
+- `frontend/src/pages/DashboardPage.tsx` — 新增 PvP 活跃挑战恢复横幅
+
+**关键实现细节**:
+
+后端:
+1. `GET /challenge/active`：查询当前用户 `status IN ('active')` 的 ChallengeSession，返回 session 概要（id、problem_id、problem_name、created_at、opponent 信息），无活跃会话返回 null
+2. `get_challenge_detail` 需支持返回完整题目信息（需 Task 26.4 的 `problem_name` 字段，或临时从 CF API 补充获取）
+3. 恢复的 session 需要返回 `is_challenger` 角色标识
+
+前端:
+1. 新增路由 `/challenge/:sessionId`，参数可选（无参数时显示 idle 页面，有参数时加载对应 session）
+2. ChallengePage 挂载逻辑：
+   - 有 URL `sessionId` → 直接加载该 session
+   - 无 URL `sessionId` → 调用 `/challenge/active` 检查
+   - 有活跃 session → 恢复到 `in_progress` 状态
+   - 无活跃 session → 显示 `idle`
+3. 恢复计时器：从 `session.created_at` 计算 `elapsed = now - created_at`（秒），不从 0 开始
+4. DashboardPage 新增恢复横幅：类似 Contest 的 "Resume Contest" 横幅，检测到活跃 PvP 时显示 "Resume Challenge" 按钮跳转到 `/challenge/:sessionId`
+5. 恢复后正常进入做题/提交/结算流程
+
+**调用方清单**:
+- `DashboardPage.tsx`（~L79）— 已有 `GET /contest/active` 调用，需新增 `GET /challenge/active`
+- `ChallengePage.tsx` — 挂载时新增恢复检查逻辑
+- `App.tsx` 路由配置 — 新增 `/challenge/:sessionId` 路由
+
+**反向集成清单**:
+- 需集成 i18n（横幅文字需翻译）
+- 无其他横切特性依赖
+
+**触发场景**:
+- 用户刷新挑战页面
+- 用户在 Dashboard 页面看到有进行中的 PvP 挑战
+- 用户通过 URL 直接访问 `/challenge/{sessionId}`
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **刷新页面恢复**: 比赛进行中刷新页面，自动恢复到做题状态
+- [ ] **关闭浏览器恢复**: 关闭浏览器后重新打开，从 Dashboard 点击恢复
+- [ ] **计时器恢复**: 恢复后计时器从正确时间继续（非从 0 开始）
+- [ ] **Dashboard 横幅**: 有活跃挑战时显示"继续挑战"按钮
+- [ ] **Dashboard 无活跃**: 无活跃挑战时不显示横幅
+- [ ] **URL 直接访问**: `/challenge/{sessionId}` 直接加载对应比赛
+- [ ] **无活跃时 idle**: 无活跃挑战时页面显示 idle 状态
+- [ ] **i18n**: 恢复横幅文字有中英文翻译
+
+#### 验收标准
+1. 刷新页面或关闭浏览器后能恢复进行中的 PvP 比赛
+2. Dashboard 有恢复入口
+3. 计时器正确恢复
+4. 对标 Contest 模式的恢复体验
+
+---
+
+### Task 26.4: 僵尸 Session 清理 + 题目信息持久化
+**状态**: 🟢 已完成
+**优先级**: P1
+**依赖**: 无（与 Task 26.1/26.2 并行）
+
+#### 任务描述
+两部分：1) 清理数据库中无法恢复的僵尸 session；2) 在 ChallengeSession 中持久化题目名称，确保恢复时能显示完整题面。
+
+**需要新增/修改的文件**:
+
+1. `backend/migrations/versions/` — 新增迁移：
+   - ChallengeSession 新增 `problem_name` 字段（VARCHAR, nullable）
+   - 将所有 `status IN ('pending', 'active')` 的 session 标记为 `cancelled`（一次性清理）
+2. `backend/app/models/challenge.py` — ChallengeSession 模型新增 `problem_name` 字段
+3. `backend/app/services/challenge_service.py`:
+   - 创建 session 时保存 `problem_name`
+   - `get_challenge_detail` 返回 `problem_name`
+
+**关键实现细节**:
+1. `problem_name` 可空，兼容迁移前已存在的 session
+2. 创建 session 时从 CF 题目数据中获取 `problem_name` 并存入 DB
+3. 迁移中的僵尸清理：`UPDATE challenge_sessions SET status='cancelled', result='expired' WHERE status IN ('pending', 'active')`
+4. 被清理的 session 不进行 Elo 结算、不扣代币
+5. 清理仅在迁移执行时运行一次
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **僵尸清理**: 迁移后所有 pending/active session 状态变为 cancelled
+- [ ] **已完成不受影响**: completed 状态的 session 不被清理
+- [ ] **problem_name 存储**: 新建 session 时 problem_name 正确保存
+- [ ] **detail 返回 problem_name**: `get_challenge_detail` 返回 problem_name
+- [ ] **旧数据兼容**: 无 problem_name 的旧 session 返回 null 不报错
+- [ ] **迁移幂等**: 重复执行迁移不报错
+
+#### 验收标准
+1. 僵尸 session 清理完成
+2. 新建 session 持久化题目名称
+3. 恢复比赛时能显示题目名称
+
+---
+
+### 任务依赖关系
+
+```
+阶段 26 (PvP 修复):
+  26.1 Redis + 匹配迁移 ← 无依赖 (P0)
+  26.2 视角转换 + 前端修复 ← 无依赖 (P0, 与 26.1 并行)
+  26.4 僵尸清理 + 题目持久化 ← 无依赖 (P1, 与 26.1/26.2 并行)
+  26.3 比赛恢复 ← 26.1 + 26.4 (P0)
+```
+
+**建议执行顺序**: 26.1 + 26.2 + 26.4 并行开发 → 26.3
