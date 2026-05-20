@@ -1,11 +1,13 @@
 """Authentication API routes.
 
-Mounts five endpoints under ``/api/v1/auth/``:
+Mounts seven endpoints under ``/api/v1/auth/``:
   POST /register   -- create account
   POST /login      -- obtain token pair
   POST /refresh    -- rotate access token
   GET  /me         -- current user profile (auth required)
   PUT  /profile    -- update username / email (auth required)
+  GET  /settings   -- get user settings (auth required)
+  PUT  /settings   -- update user settings (auth required)
 """
 
 from fastapi import APIRouter, Depends
@@ -18,6 +20,7 @@ from app.core.security import get_current_user
 from app.models.elo_history import EloHistory
 from app.models.pp_record import PPRecord
 from app.models.user import User
+from app.models.user_settings import UserSettings
 from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
@@ -27,6 +30,7 @@ from app.schemas.auth import (
     UpdateProfileRequest,
     UserInfo,
 )
+from app.schemas.medal import UpdateSettingsRequest, UserSettingsResponse
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -197,4 +201,71 @@ async def get_pp_contributions(
             }
             for r in records
         ],
+    )
+
+
+@router.get("/settings")
+async def get_settings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the authenticated user's display settings.
+
+    Creates default settings if none exist yet.
+    """
+    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+    result = await db.execute(stmt)
+    settings = result.scalar_one_or_none()
+
+    if settings is None:
+        # Create default settings
+        settings = UserSettings(
+            user_id=current_user.id,
+            display_mode="medal",
+        )
+        db.add(settings)
+        await db.flush()
+
+    return success_response(
+        data=UserSettingsResponse.model_validate(settings).model_dump(mode="json"),
+        message="Settings retrieved",
+    )
+
+
+@router.put("/settings")
+async def update_settings(
+    body: UpdateSettingsRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the authenticated user's display settings."""
+    stmt = select(UserSettings).where(UserSettings.user_id == current_user.id)
+    result = await db.execute(stmt)
+    settings = result.scalar_one_or_none()
+
+    if settings is None:
+        # Create settings with provided values
+        settings = UserSettings(
+            user_id=current_user.id,
+            display_mode=body.display_mode or "medal",
+            avatar_path=body.avatar_path,
+        )
+        db.add(settings)
+    else:
+        # Update only provided fields
+        if body.display_mode is not None:
+            if body.display_mode not in ("medal", "cf_tier"):
+                from app.core.exceptions import BadRequestException
+                raise BadRequestException(
+                    message="display_mode must be 'medal' or 'cf_tier'"
+                )
+            settings.display_mode = body.display_mode
+        if body.avatar_path is not None:
+            settings.avatar_path = body.avatar_path
+
+    await db.flush()
+
+    return success_response(
+        data=UserSettingsResponse.model_validate(settings).model_dump(mode="json"),
+        message="Settings updated",
     )

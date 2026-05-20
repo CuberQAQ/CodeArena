@@ -39,6 +39,7 @@ from app.services.config_service import ConfigService
 from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
 from app.services.hint_service import HintService
+from app.services.medal_service import MedalService
 from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
@@ -1135,5 +1136,21 @@ class ContestService:
             reference_id=contest_id,
         )
         db.add(history)
+
+        # --- Award contest medal based on PR (FR-10.4) ---
+        # Medal is determined by PR vs XCPC tier thresholds, independent of
+        # contest group (beginner/advanced/master).
+        try:
+            await MedalService.award_contest_medal(
+                db=db,
+                user_id=user.id,
+                contest_session_id=contest_id,
+                pr=pr,
+            )
+        except Exception:
+            # Medal awarding is best-effort and must not break settlement.
+            logger.warning(
+                "Failed to award contest medal for contest %s", contest_id, exc_info=True
+            )
 
         return elo_change

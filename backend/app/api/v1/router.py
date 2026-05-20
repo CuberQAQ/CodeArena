@@ -9,6 +9,7 @@ from app.api.v1.contest_ws import router as contest_ws_router
 from app.api.v1.economy import router as economy_router
 from app.api.v1.free_play import router as free_play_router
 from app.api.v1.hints import router as hints_router
+from app.api.v1.medal import router as medal_router
 from app.api.v1.pve_challenge import router as pve_challenge_router
 from app.api.v1.submission_tracking import router as submission_tracking_router
 from app.api.v1.training import router as training_router
@@ -25,6 +26,7 @@ api_router.include_router(contest_router)
 api_router.include_router(economy_router)
 api_router.include_router(hints_router)
 api_router.include_router(free_play_router)
+api_router.include_router(medal_router)
 api_router.include_router(admin_router)
 api_router.include_router(contest_ws_router)
 
