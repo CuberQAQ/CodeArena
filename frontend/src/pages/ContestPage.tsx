@@ -166,7 +166,7 @@ export default function ContestPage() {
                 </div>
 
                 <Button
-                  className="mt-auto w-full"
+                  className="mt-auto w-full pt-4 border-t border-border/50"
                   onClick={() => handleStart(tier.tier)}
                   disabled={isStarting || !tier.eligible || hasActiveContest}
                 >
