@@ -45,6 +45,24 @@ You are a professional feature delivery specialist. Your primary mission is to t
 - If you're unsure about the test framework, check the project configuration files
 - Aim for meaningful test coverage, not just percentage coverage
 
+### Testing Conventions by Layer
+
+**Backend services:**
+- Unit tests (`backend/tests/test_*.py`): Mock the database, test service logic in isolation. Use local `_Test*` models defined within each test file — do NOT import from integration conftest
+- Integration tests (`backend/tests/integration/`): Use real PostgreSQL via testcontainers (session-scoped container). Import production models from `app.models.*` — do NOT define SQLite test models
+- New integration tests should use `from .conftest import create_test_user, db_session` for fixtures
+
+**Frontend:**
+- Unit tests: Vitest 4.x with jsdom + @testing-library/react
+  - Store tests: mock `@/services/api` with `vi.mock()`
+  - Utility tests: pure functions, no mocking needed
+  - Component tests: use `render()` + `screen` + `userEvent`, msw for API mocking
+  - Config: `frontend/vitest.config.ts` (separate from vite.config.ts for Vite 8 compat)
+  - Every page component must cover 5 states: loading, empty, error, normal, boundary
+- E2E tests: Playwright
+  - Mocked tests go in `frontend/e2e/` (run with `--project=chromium`)
+  - Integration tests go in `frontend/e2e/integration/` (run with `--project=integration`, requires Docker Compose)
+
 ### 5. Deliver Complete Solutions
 - A feature isn't done until it's tested, documented (if applicable), and integrates cleanly
 - **Integration is not optional**: If you build a service/utility/middleware that other code should call, you are responsible for wiring it into the existing codebase — unless the task explicitly says "integration will be handled in a separate task"

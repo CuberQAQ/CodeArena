@@ -168,3 +168,45 @@ Your MEMORY.md is loaded from your persistent agent memory directory. Keep it co
 
 ## UI Testing Rules
 - 如果你需要测试前端ui，需要包含使用无头浏览器截图或者playwright等能真实反应ui渲染效果的步骤
+
+## UX 质量验证流程
+
+### 测试基础设施
+
+#### 后端集成测试
+- 使用 **testcontainers-python** + 真实 PostgreSQL 16 容器（session-scoped）
+- 生产 SQLAlchemy 模型直接使用，不定义 SQLite 测试模型
+- Alembic migration 创建 schema，fakeredis 模拟 Redis
+- 运行: `cd backend && pytest tests/integration/ -v`
+- 环境要求: Docker 运行中。Docker 不可用时测试自动 skip
+- 单元测试（`tests/test_*.py`）独立运行，不依赖 Docker
+
+#### 前端测试三层体系
+1. **Vitest 组件边界状态测试** — 每个页面覆盖 loading/empty/error/正常/边界 五种状态
+   - 运行: `cd frontend && npm test`
+   - 配置: `frontend/vitest.config.ts`（独立于 vite.config.ts）
+   - Store 测试: mock `@/services/api` with `vi.mock()`
+   - 组件测试: `render()` + `screen` + `userEvent`，msw mock API
+
+2. **Playwright E2E (mocked API)** — 快速冒烟测试，不依赖后端
+   - 运行: `cd frontend && npx playwright test --project=chromium`
+   - 现有 4 个 mock E2E 文件在 `frontend/e2e/`
+
+3. **Playwright E2E (integration)** — 真实后端完整业务流
+   - 前置: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`
+   - 运行: `cd frontend && npx playwright test --project=integration`
+   - 4 条完整业务流: auth, challenge, training, contest
+   - 每步自动截图
+
+### 截图验证流程（前端 UI 测试必须执行）
+
+对每个涉及前端 UI 的 task，测试时必须：
+
+1. 确保 Docker 环境运行（`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`）
+2. 用 Playwright 导航到受影响的页面
+3. 对每个关键状态截图（加载中、正常数据、空状态、错误状态等）
+4. 用 Read 工具读取截图文件（Read 支持读取图片）
+5. 在测试报告中附上截图分析和 UI 质量判定
+6. 截图保存到 `frontend/e2e/integration/screenshots/`
+
+截图工具函数: `frontend/e2e/integration/helpers/screenshots.ts` 中的 `screenshotPage(page, name)`
