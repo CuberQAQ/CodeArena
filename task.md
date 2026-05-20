@@ -1115,7 +1115,7 @@ P_i = base(rating) × f(wa, t)
 ---
 
 ### Task 16-B2: Training 页面 "Failed to load topics"
-**状态**: 🟡 待调查
+**状态**: 🟢 已完成
 **优先级**: P0
 **依赖**: 无
 
@@ -1140,7 +1140,7 @@ P_i = base(rating) × f(wa, t)
 ---
 
 ### Task 16-B3: 登录页 "Invalid credentials"
-**状态**: 🟡 待调查
+**状态**: 🟢 已完成
 **优先级**: P0
 **依赖**: 无
 

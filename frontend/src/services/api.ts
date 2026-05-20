@@ -9,7 +9,7 @@ const api = axios.create({
 });
 
 // ---------------------------------------------------------------------------
-// Request interceptor – attach JWT access token
+// Request interceptor -- attach JWT access token
 // ---------------------------------------------------------------------------
 
 api.interceptors.request.use((config) => {
@@ -21,25 +21,97 @@ api.interceptors.request.use((config) => {
 });
 
 // ---------------------------------------------------------------------------
-// Response interceptor – handle 401 & unwrap errors
+// Response interceptor -- handle 401 with token refresh & unwrap errors
 // ---------------------------------------------------------------------------
+
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (err: unknown) => void;
+}> = [];
+
+function processQueue(error: unknown, token: string | null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token!);
+    }
+  });
+  failedQueue = [];
+}
+
+function isAuthPage(): boolean {
+  const path = window.location.pathname;
+  // Login page is at "/", register at "/register"
+  return path === "/" || path.startsWith("/register");
+}
+
+function redirectToLogin() {
+  if (!isAuthPage()) {
+    window.location.href = "/";
+  }
+}
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear stale credentials and redirect to login
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      // Only redirect if we are in a browser context and not already on login/register
-      if (
-        typeof window !== "undefined" &&
-        !window.location.pathname.startsWith("/login") &&
-        !window.location.pathname.startsWith("/register")
-      ) {
-        window.location.href = "/";
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      const refreshToken = localStorage.getItem("refresh_token");
+
+      // If this is the login endpoint itself failing, no point trying to refresh
+      if (originalRequest.url?.includes("/auth/login")) {
+        return Promise.reject(error);
+      }
+
+      // If there is no refresh token, clear everything and redirect
+      if (!refreshToken) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        redirectToLogin();
+        return Promise.reject(error);
+      }
+
+      // If already refreshing, queue this request
+      if (isRefreshing) {
+        return new Promise<string>((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        // Attempt to refresh the access token
+        const res = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
+          refresh_token: refreshToken,
+        });
+        const newAccessToken = res.data.data.access_token;
+        localStorage.setItem("access_token", newAccessToken);
+
+        processQueue(null, newAccessToken);
+
+        // Retry the original request with the new token
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Refresh failed -- clear tokens and redirect to login
+        processQueue(refreshError, null);
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        redirectToLogin();
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
+
     return Promise.reject(error);
   },
 );
