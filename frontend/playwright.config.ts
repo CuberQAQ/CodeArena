@@ -15,13 +15,21 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testDir: "./e2e",
+      testIgnore: /integration/,
       use: { ...devices["Desktop Chrome"] },
+      webServer: {
+        command: "npx vite --host 0.0.0.0 --port 5173",
+        url: "http://localhost:5173",
+        reuseExistingServer: true,
+        timeout: 30_000,
+      },
+    },
+    {
+      name: "integration",
+      testDir: "./e2e/integration",
+      use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:5173" },
+      // No webServer — assumes Docker Compose is already running
     },
   ],
-  webServer: {
-    command: "npx vite --host 0.0.0.0 --port 5173",
-    url: "http://localhost:5173",
-    reuseExistingServer: true,
-    timeout: 30_000,
-  },
 });
