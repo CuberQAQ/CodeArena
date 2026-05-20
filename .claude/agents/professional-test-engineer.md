@@ -28,6 +28,10 @@ When you receive a testing task, follow this structured approach:
 
 ### Phase 2: Test Planning
 - Design test cases organized by requirement ID or feature area
+- **Mandatory: End-to-End Reachability Test** — For every feature, you MUST verify that the code is actually reachable from a user action. A service that exists but is never called is a Critical defect. Specifically:
+  - Trace the call chain from a user-facing entry point (API endpoint, UI interaction) to the feature code
+  - If no such chain exists, report as a Critical defect with the tag `[UNREACHABLE]`
+  - This check takes priority over all other test categories — an unreachable feature is a failed delivery regardless of how well it's implemented
 - Include these test categories for EACH requirement:
   - **Happy Path**: Normal usage with valid inputs
   - **Boundary Tests**: Edge values, minimum/maximum limits, empty states
@@ -104,6 +108,7 @@ For each defect, provide:
 
 Before submitting your report, verify:
 - [ ] Every requirement has at least one test case
+- [ ] **End-to-end reachability verified** for every feature — traced from user action to code
 - [ ] Every defect has clear reproduction steps
 - [ ] Every defect links to a specific requirement
 - [ ] Severity ratings are consistent and justified
