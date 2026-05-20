@@ -1,9 +1,10 @@
 """Challenge API routes.
 
-Mounts seven endpoints under ``/api/v1/challenge/``:
+Mounts eight endpoints under ``/api/v1/challenge/``:
   POST /queue           -- join match queue (auth required)
   DELETE /queue         -- leave match queue (auth required)
   GET  /status          -- query match status (auth required)
+  GET  /active          -- get active challenge for resume (auth required)
   POST /start           -- confirm start / reveal problem (auth required)
   GET  /{id}            -- get challenge detail (auth required)
   POST /{id}/submit     -- submit result (auth required)
@@ -89,6 +90,19 @@ async def get_status(
     return success_response(
         data=result,
         message="Status retrieved",
+    )
+
+
+@router.get("/active")
+async def get_active_challenge(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the user's currently active challenge session, if any."""
+    result = await ChallengeService.get_active_challenge(db, user=current_user)
+    return success_response(
+        data=result.model_dump(mode="json") if result else None,
+        message="Active challenge retrieved",
     )
 
 

@@ -1803,3 +1803,129 @@ class TestChallengerTokensPersistence:
         # Opponent (user_b) sees their tokens
         detail = await ChallengeService.get_challenge_detail(db, user_b, session.id)
         assert detail.tokens_earned == 20  # opponent won: green tier = 20
+
+
+# ---------------------------------------------------------------------------
+# get_active_challenge tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetActiveChallenge:
+    """Tests for ChallengeService.get_active_challenge."""
+
+    async def test_returns_none_when_no_active_session(self, db):
+        """Returns None when user has no active challenge sessions."""
+        user = _make_test_user(db, username="user1")
+        db.add(user)
+        await db.flush()
+
+        result = await ChallengeService.get_active_challenge(db, user)
+        assert result is None
+
+    async def test_returns_active_session_for_challenger(self, db):
+        """Returns active session info when user is the challenger."""
+        user_a = _make_test_user(db, username="challenger", elo=1300)
+        user_b = _make_test_user(db, username="opponent", elo=1400)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(
+            user_a.id, user_b.id, status="active", problem_id="1234B", problem_rating=1400,
+        )
+        session.problem_name = "Test Problem"
+        from datetime import datetime as _dt
+        session.created_at = _dt(2026, 1, 15, 10, 30, 0)
+        db.add(session)
+        await db.flush()
+
+        result = await ChallengeService.get_active_challenge(db, user_a)
+        assert result is not None
+        assert result.id == session.id
+        assert result.is_challenger is True
+        assert result.problem_name == "Test Problem"
+        assert result.problem_rating == 1400
+        assert result.opponent_username == "opponent"
+        assert result.opponent_elo == 1400
+        assert result.status == "active"
+
+    async def test_returns_active_session_for_opponent(self, db):
+        """Returns active session info when user is the opponent."""
+        user_a = _make_test_user(db, username="challenger", elo=1300)
+        user_b = _make_test_user(db, username="opponent", elo=1400)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(
+            user_a.id, user_b.id, status="active", problem_id="1234B", problem_rating=1400,
+        )
+        session.problem_name = "Test Problem"
+        db.add(session)
+        await db.flush()
+
+        result = await ChallengeService.get_active_challenge(db, user_b)
+        assert result is not None
+        assert result.id == session.id
+        assert result.is_challenger is False
+        assert result.opponent_username == "challenger"
+        assert result.opponent_elo == 1300
+
+    async def test_ignores_completed_session(self, db):
+        """Does not return completed sessions."""
+        user_a = _make_test_user(db, username="challenger", elo=1300)
+        user_b = _make_test_user(db, username="opponent", elo=1400)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(
+            user_a.id, user_b.id, status="completed", problem_rating=1400,
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await ChallengeService.get_active_challenge(db, user_a)
+        assert result is None
+
+    async def test_ignores_pending_session(self, db):
+        """Does not return pending sessions."""
+        user_a = _make_test_user(db, username="challenger", elo=1300)
+        user_b = _make_test_user(db, username="opponent", elo=1400)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(
+            user_a.id, user_b.id, status="pending", problem_rating=1400,
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await ChallengeService.get_active_challenge(db, user_a)
+        assert result is None
+
+    async def test_returns_most_recent_active_session(self, db):
+        """When multiple active sessions exist, returns the most recent one."""
+        user_a = _make_test_user(db, username="challenger", elo=1300)
+        user_b = _make_test_user(db, username="opponent", elo=1400)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        from datetime import datetime as _dt
+
+        old_session = _make_test_session(
+            user_a.id, user_b.id, status="active", problem_id="1111A", problem_rating=1200,
+        )
+        old_session.problem_name = "Old Problem"
+        old_session.created_at = _dt(2026, 1, 1, 10, 0, 0)
+        db.add(old_session)
+
+        new_session = _make_test_session(
+            user_a.id, user_b.id, status="active", problem_id="2222B", problem_rating=1500,
+        )
+        new_session.problem_name = "New Problem"
+        new_session.created_at = _dt(2026, 1, 15, 10, 0, 0)
+        db.add(new_session)
+        await db.flush()
+
+        result = await ChallengeService.get_active_challenge(db, user_a)
+        assert result is not None
+        assert result.problem_name == "New Problem"
+        assert result.problem_rating == 1500

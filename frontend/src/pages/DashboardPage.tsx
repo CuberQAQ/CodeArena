@@ -19,7 +19,7 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { DashboardCharts } from "@/components/charts/DashboardCharts";
 import { getRatingColor, getDifficultyLabelKey } from "@/utils";
 import api from "@/services/api";
-import type { ApiResponse, TransactionItem, ContestSessionInfo } from "@/types";
+import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo } from "@/types";
 
 interface QuickAction {
   to: string;
@@ -67,6 +67,7 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [loadingTx, setLoadingTx] = useState(true);
   const [activeContest, setActiveContest] = useState<ContestSessionInfo | null>(null);
+  const [activeChallenge, setActiveChallenge] = useState<ActiveChallengeInfo | null>(null);
 
   useEffect(() => {
     fetchUser().catch(() => {});
@@ -78,6 +79,10 @@ export default function DashboardPage() {
     api
       .get<ApiResponse<ContestSessionInfo | null>>("/contest/active")
       .then((res) => setActiveContest((res.data.data as ContestSessionInfo | null) ?? null))
+      .catch(() => {});
+    api
+      .get<ApiResponse<ActiveChallengeInfo | null>>("/challenge/active")
+      .then((res) => setActiveChallenge((res.data.data as ActiveChallengeInfo | null) ?? null))
       .catch(() => {});
   }, [fetchUser]);
 
@@ -166,6 +171,31 @@ export default function DashboardPage() {
           </div>
           <Button onClick={() => navigate(`/contest/${activeContest.id}`)}>
             {t("dashboard:resumeContest")}
+          </Button>
+        </div>
+      )}
+
+      {/* Active Challenge Banner */}
+      {activeChallenge && (
+        <div className="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-red-500/10">
+              <Swords className="size-5 text-red-400" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {t("dashboard:activeChallenge")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("dashboard:activeChallengeDetail", {
+                  opponent: activeChallenge.opponent_username ?? "???",
+                  rating: activeChallenge.problem_rating,
+                })}
+              </p>
+            </div>
+          </div>
+          <Button onClick={() => navigate(`/challenge/${activeChallenge.id}`)}>
+            {t("dashboard:resumeChallenge")}
           </Button>
         </div>
       )}

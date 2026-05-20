@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import api from "@/services/api";
 import type {
   ApiResponse,
   AchievementEvent,
+  ActiveChallengeInfo,
   QueueStatus,
   StartChallengeResponse,
   ChallengeDetail,
@@ -24,6 +25,7 @@ type Phase = "idle" | "queuing" | "matched" | "in_progress" | "result";
 
 export default function ChallengePage() {
   const navigate = useNavigate();
+  const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>();
   const { t } = useTranslation("challenge");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
@@ -33,6 +35,7 @@ export default function ChallengePage() {
   const [elapsed, setElapsed] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasResumedRef = useRef(false);
   const [solved, setSolved] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [quitSubmissions, setQuitSubmissions] = useState(0);
@@ -40,6 +43,71 @@ export default function ChallengePage() {
   const [eloTriggerKey, setEloTriggerKey] = useState(0);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
   const [showAchievements, setShowAchievements] = useState(false);
+
+  // Resume logic on mount
+  useEffect(() => {
+    if (hasResumedRef.current) return;
+    hasResumedRef.current = true;
+
+    const resumeChallenge = async (sid: string) => {
+      try {
+        const res = await api.get<ApiResponse<ChallengeDetail>>(`/challenge/${sid}`);
+        const data = res.data.data;
+
+        if (data.status === "completed" || data.result) {
+          // Already completed -- show result
+          setSessionId(sid);
+          setChallenge(data);
+          setEloTriggerKey((k) => k + 1);
+          setPhase("result");
+          return;
+        }
+
+        if (data.status === "active") {
+          // Active session -- resume
+          setSessionId(sid);
+          setChallenge(data);
+
+          // Recover elapsed time from created_at
+          if (data.created_at) {
+            const elapsedSec = Math.floor((Date.now() - new Date(data.created_at).getTime()) / 1000);
+            setElapsed(Math.max(0, elapsedSec));
+          }
+
+          setPhase("in_progress");
+
+          // Update URL to include sessionId for bookmarkability
+          if (!urlSessionId) {
+            navigate(`/challenge/${sid}`, { replace: true });
+          }
+
+          // Start timer from recovered elapsed
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = setInterval(() => {
+            setElapsed((prev) => prev + 1);
+          }, 1000);
+        }
+      } catch {
+        // Session not found or error -- stay idle
+      }
+    };
+
+    if (urlSessionId) {
+      // Direct URL with session ID -- load that session
+      resumeChallenge(urlSessionId);
+    } else {
+      // No session ID in URL -- check for active challenge
+      api
+        .get<ApiResponse<ActiveChallengeInfo | null>>("/challenge/active")
+        .then((res) => {
+          const active = res.data.data as ActiveChallengeInfo | null;
+          if (active && active.status === "active") {
+            resumeChallenge(active.id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [urlSessionId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -59,13 +127,14 @@ export default function ChallengePage() {
         if (status.matched && status.session_id) {
           if (pollRef.current) clearInterval(pollRef.current);
           setSessionId(status.session_id);
+          navigate(`/challenge/${status.session_id}`, { replace: true });
           setPhase("matched");
         }
       } catch {
         // Continue polling on transient errors
       }
     }, 2000);
-  }, []);
+  }, [navigate]);
 
   // Timer for in-progress phase
   const startTimer = useCallback(() => {
@@ -85,6 +154,7 @@ export default function ChallengePage() {
       const status = res.data.data;
       if (status.matched && status.session_id) {
         setSessionId(status.session_id);
+        navigate(`/challenge/${status.session_id}`, { replace: true });
         setPhase("matched");
       } else {
         setPhase("queuing");
@@ -226,6 +296,10 @@ export default function ChallengePage() {
     setShowCelebration(false);
     setAchievements([]);
     setShowAchievements(false);
+    // Navigate to /challenge (no session ID) so URL is clean
+    if (urlSessionId) {
+      navigate("/challenge", { replace: true });
+    }
   };
 
   // -- IDLE --

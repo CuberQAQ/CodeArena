@@ -125,3 +125,19 @@ class QuitChallengeResponse(BaseModel):
     status: str = "quit"
     elo_change: int | None = None
     penalty: int | None = None
+
+
+class ActiveChallengeInfo(BaseModel):
+    """Summary of an active challenge session for resume purposes."""
+
+    id: UUID
+    problem_id: str
+    problem_name: str | None = None
+    problem_rating: int
+    created_at: datetime | None = None
+    is_challenger: bool
+    opponent_username: str | None = None
+    opponent_elo: int | None = None
+    status: str = "active"
+
+    model_config = {"from_attributes": True}

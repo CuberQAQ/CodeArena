@@ -129,6 +129,18 @@ export interface QuitChallengeResponse {
   penalty: number | null;
 }
 
+export interface ActiveChallengeInfo {
+  id: string;
+  problem_id: string;
+  problem_name: string | null;
+  problem_rating: number;
+  created_at: string | null;
+  is_challenger: boolean;
+  opponent_username: string | null;
+  opponent_elo: number | null;
+  status: string;
+}
+
 // ---------------------------------------------------------------------------
 // Training
 // ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ from app.core.redis import RedisUnavailableError, get_redis, safe_redis_call
 from app.models.challenge_session import ChallengeSession
 from app.models.user import User
 from app.schemas.challenge import (
+    ActiveChallengeInfo,
     ChallengeDetail,
     OpponentInfo,
     ProblemInfo,
@@ -526,7 +527,52 @@ class ChallengeService:
         )
 
     # ------------------------------------------------------------------
-    # 7. Quit challenge
+    # 7. Get active challenge (for resume)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def get_active_challenge(
+        db: AsyncSession,
+        user: User,
+    ) -> ActiveChallengeInfo | None:
+        """Get the user's currently active challenge session, if any.
+
+        Returns a summary suitable for the resume banner / auto-restore.
+        Returns None if no active session exists.
+        """
+        stmt = (
+            select(ChallengeSession)
+            .where(
+                (ChallengeSession.challenger_id == user.id) | (ChallengeSession.opponent_id == user.id),
+                ChallengeSession.status == "active",
+            )
+            .order_by(ChallengeSession.created_at.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        session = result.scalar_one_or_none()
+
+        if session is None:
+            return None
+
+        is_challenger = user.id == session.challenger_id
+        opponent_id = session.opponent_id if is_challenger else session.challenger_id
+        opp_user = await db.get(User, opponent_id)
+
+        return ActiveChallengeInfo(
+            id=session.id,
+            problem_id=session.problem_id,
+            problem_name=session.problem_name,
+            problem_rating=session.problem_rating,
+            created_at=session.created_at,
+            is_challenger=is_challenger,
+            opponent_username=opp_user.username if opp_user else None,
+            opponent_elo=opp_user.elo if opp_user else None,
+            status=session.status,
+        )
+
+    # ------------------------------------------------------------------
+    # 8. Quit challenge
     # ------------------------------------------------------------------
 
     @staticmethod

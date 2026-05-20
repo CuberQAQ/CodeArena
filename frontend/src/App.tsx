@@ -57,6 +57,7 @@ function App() {
             >
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/challenge" element={<ChallengePage />} />
+              <Route path="/challenge/:sessionId" element={<ChallengePage />} />
               <Route path="/pve-challenge" element={<PvEChallengePage />} />
               <Route path="/training" element={<TrainingPage />} />
               <Route path="/training/:id" element={<TrainingDetailPage />} />
