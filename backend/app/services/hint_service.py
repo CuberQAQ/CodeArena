@@ -37,11 +37,13 @@ logger = logging.getLogger("code_arena.hints")
 
 _HINT_PRICE_TIERS: list[tuple[int, list[int]]] = [
     # (rating_threshold, [level_1, level_2, level_3])
-    (1100, [3, 10, 20]),     # gray (800-1099)
-    (1400, [5, 15, 30]),     # green (1100-1399)
-    (1700, [8, 20, 40]),     # blue (1400-1699)
-    (2000, [10, 25, 50]),    # purple (1700-1999)
-    (9999, [15, 30, 60]),    # yellow/red (2000+)
+    (1200, [3, 10, 20]),     # gray (800-1199)
+    (1400, [5, 15, 30]),     # green (1200-1399)
+    (1600, [6, 18, 35]),     # cyan (1400-1599)
+    (1900, [8, 20, 40]),     # blue (1600-1899)
+    (2100, [10, 25, 50]),    # purple (1900-2099)
+    (2400, [12, 28, 55]),    # orange (2100-2399)
+    (9999, [15, 30, 60]),    # red (2400+)
 ]
 
 # Elo decay multipliers per hint level

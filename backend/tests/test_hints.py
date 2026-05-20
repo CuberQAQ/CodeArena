@@ -149,19 +149,25 @@ class TestHintPricing:
         [
             (800, [3, 10, 20]),      # gray
             (900, [3, 10, 20]),      # gray
-            (1099, [3, 10, 20]),     # gray
-            (1100, [5, 15, 30]),     # green
+            (1199, [3, 10, 20]),     # gray
             (1200, [5, 15, 30]),     # green
+            (1300, [5, 15, 30]),     # green
             (1399, [5, 15, 30]),     # green
-            (1400, [8, 20, 40]),     # blue
-            (1500, [8, 20, 40]),     # blue
-            (1699, [8, 20, 40]),     # blue
-            (1700, [10, 25, 50]),    # purple
-            (1800, [10, 25, 50]),    # purple
-            (1999, [10, 25, 50]),    # purple
-            (2000, [15, 30, 60]),    # yellow/red
-            (2500, [15, 30, 60]),    # yellow/red
-            (3000, [15, 30, 60]),    # yellow/red
+            (1400, [6, 18, 35]),     # cyan
+            (1500, [6, 18, 35]),     # cyan
+            (1599, [6, 18, 35]),     # cyan
+            (1600, [8, 20, 40]),     # blue
+            (1750, [8, 20, 40]),     # blue
+            (1899, [8, 20, 40]),     # blue
+            (1900, [10, 25, 50]),    # purple
+            (2000, [10, 25, 50]),    # purple
+            (2099, [10, 25, 50]),    # purple
+            (2100, [12, 28, 55]),    # orange
+            (2250, [12, 28, 55]),    # orange
+            (2399, [12, 28, 55]),    # orange
+            (2400, [15, 30, 60]),    # red
+            (2500, [15, 30, 60]),    # red
+            (3000, [15, 30, 60]),    # red
         ],
     )
     def test_prices_by_rating(self, rating, expected_prices):
@@ -172,10 +178,12 @@ class TestHintPricing:
         "rating,expected_total",
         [
             (800, 33),    # gray: 3+10+20
-            (1100, 50),   # green: 5+15+30
-            (1400, 68),   # blue: 8+20+40
-            (1700, 85),   # purple: 10+25+50
-            (2000, 105),  # yellow/red: 15+30+60
+            (1200, 50),   # green: 5+15+30
+            (1400, 59),   # cyan: 6+18+35
+            (1600, 68),   # blue: 8+20+40
+            (1900, 85),   # purple: 10+25+50
+            (2100, 95),   # orange: 12+28+55
+            (2400, 105),  # red: 15+30+60
         ],
     )
     def test_cumulative_prices(self, rating, expected_total):
@@ -247,11 +255,11 @@ class TestGetHintStatus:
 
         assert len(status.prices) == 3
         assert status.prices[0].level == 1
-        assert status.prices[0].tokens == 8  # blue tier
+        assert status.prices[0].tokens == 6  # cyan tier
         assert status.prices[1].level == 2
-        assert status.prices[1].tokens == 20
+        assert status.prices[1].tokens == 18
         assert status.prices[2].level == 3
-        assert status.prices[2].tokens == 40
+        assert status.prices[2].tokens == 35
 
     @pytest.mark.asyncio
     async def test_status_shows_elo_decay(self, db):
@@ -749,9 +757,11 @@ class TestPricingAllTiers:
         [
             (900, 3, 10, 20),       # gray
             (1200, 5, 15, 30),      # green
-            (1500, 8, 20, 40),      # blue
-            (1800, 10, 25, 50),     # purple
-            (2500, 15, 30, 60),     # yellow/red
+            (1500, 6, 18, 35),      # cyan
+            (1700, 8, 20, 40),      # blue
+            (2000, 10, 25, 50),     # purple
+            (2200, 12, 28, 55),     # orange
+            (2500, 15, 30, 60),     # red
         ],
     )
     @pytest.mark.asyncio

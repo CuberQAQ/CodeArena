@@ -276,7 +276,7 @@ class TestGetConfig:
 
     async def test_get_deeply_nested(self, db: AsyncSession):
         value = await ConfigService.get_config(db, "economy.difficulty_tiers.blue.ac_reward")
-        assert value == 30
+        assert value == 35
 
     async def test_get_list_value(self, db: AsyncSession):
         value = await ConfigService.get_config(db, "elo.hint_decay")
@@ -509,7 +509,7 @@ class TestEndToEnd:
     async def test_economy_nested_dict(self, db: AsyncSession):
         """Economy config has deeply nested structures."""
         value = await ConfigService.get_config(db, "economy.difficulty_tiers.purple")
-        assert value == {"min": 1700, "max": 1999, "ac_reward": 40, "attempt_reward": 5}
+        assert value == {"min": 1900, "max": 2099, "ac_reward": 45, "attempt_reward": 6}
 
     async def test_contest_tiers(self, db: AsyncSession):
         value = await ConfigService.get_config(db, "contest.tiers.beginner")

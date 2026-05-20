@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BarChart3, TrendingUp, Medal } from "lucide-react";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { getRatingColor } from "@/utils";
+import { getRatingColor, getDifficultyLabel } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, UserInfo } from "@/types";
 
@@ -80,7 +80,7 @@ export default function LeaderboardPage() {
       ) : (
         <div className="rounded-xl border border-border bg-card">
           {/* Header row */}
-          <div className="grid grid-cols-[3rem_1fr_5rem_5rem_5rem] items-center border-b border-border px-5 py-2.5 text-xs font-medium text-muted-foreground">
+          <div className="grid grid-cols-[3rem_1fr_7rem_5rem_5rem] items-center border-b border-border px-5 py-2.5 text-xs font-medium text-muted-foreground">
             <span>#</span>
             <span>Player</span>
             <span className="text-right">Elo</span>
@@ -91,7 +91,7 @@ export default function LeaderboardPage() {
             {sorted.map((user, index) => (
               <div
                 key={user.id}
-                className="grid grid-cols-[3rem_1fr_5rem_5rem_5rem] items-center px-5 py-3 transition-colors hover:bg-muted/50"
+                className="grid grid-cols-[3rem_1fr_7rem_5rem_5rem] items-center px-5 py-3 transition-colors hover:bg-muted/50"
               >
                 <span className="text-sm font-medium text-muted-foreground">
                   {index + 1}
@@ -108,7 +108,7 @@ export default function LeaderboardPage() {
                   className="text-right text-sm font-bold"
                   style={{ color: getRatingColor(user.elo) }}
                 >
-                  {user.elo}
+                  {user.elo} <span className="text-xs font-medium">/ {getDifficultyLabel(user.elo)}</span>
                 </span>
                 <span className="text-right text-sm font-semibold text-yellow-400">
                   {user.pp}

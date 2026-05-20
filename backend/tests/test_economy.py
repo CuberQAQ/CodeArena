@@ -129,27 +129,37 @@ class TestTokensForRating:
     def test_gray_range(self):
         assert tokens_for_rating(800) == 10
         assert tokens_for_rating(900) == 10
-        assert tokens_for_rating(1099) == 10
+        assert tokens_for_rating(1199) == 10
 
     def test_green_range(self):
-        assert tokens_for_rating(1100) == 20
         assert tokens_for_rating(1200) == 20
+        assert tokens_for_rating(1300) == 20
         assert tokens_for_rating(1399) == 20
 
+    def test_cyan_range(self):
+        assert tokens_for_rating(1400) == 25
+        assert tokens_for_rating(1500) == 25
+        assert tokens_for_rating(1599) == 25
+
     def test_blue_range(self):
-        assert tokens_for_rating(1400) == 30
-        assert tokens_for_rating(1550) == 30
-        assert tokens_for_rating(1699) == 30
+        assert tokens_for_rating(1600) == 35
+        assert tokens_for_rating(1750) == 35
+        assert tokens_for_rating(1899) == 35
 
     def test_purple_range(self):
-        assert tokens_for_rating(1700) == 40
-        assert tokens_for_rating(1850) == 40
-        assert tokens_for_rating(1999) == 40
+        assert tokens_for_rating(1900) == 45
+        assert tokens_for_rating(2000) == 45
+        assert tokens_for_rating(2099) == 45
 
-    def test_yellow_red_range(self):
-        assert tokens_for_rating(2000) == 50
-        assert tokens_for_rating(2500) == 50
-        assert tokens_for_rating(3500) == 50
+    def test_orange_range(self):
+        assert tokens_for_rating(2100) == 55
+        assert tokens_for_rating(2250) == 55
+        assert tokens_for_rating(2399) == 55
+
+    def test_red_range(self):
+        assert tokens_for_rating(2400) == 65
+        assert tokens_for_rating(2500) == 65
+        assert tokens_for_rating(3500) == 65
 
     def test_below_range(self):
         assert tokens_for_rating(500) == 10
@@ -158,45 +168,61 @@ class TestTokensForRating:
 class TestAttemptTokensForRating:
     def test_gray_range(self):
         assert attempt_tokens_for_rating(800) == 2
-        assert attempt_tokens_for_rating(1099) == 2
+        assert attempt_tokens_for_rating(1199) == 2
 
     def test_green_range(self):
-        assert attempt_tokens_for_rating(1100) == 3
+        assert attempt_tokens_for_rating(1200) == 3
         assert attempt_tokens_for_rating(1399) == 3
 
-    def test_blue_range(self):
+    def test_cyan_range(self):
         assert attempt_tokens_for_rating(1400) == 4
-        assert attempt_tokens_for_rating(1699) == 4
+        assert attempt_tokens_for_rating(1599) == 4
+
+    def test_blue_range(self):
+        assert attempt_tokens_for_rating(1600) == 5
+        assert attempt_tokens_for_rating(1899) == 5
 
     def test_purple_range(self):
-        assert attempt_tokens_for_rating(1700) == 5
-        assert attempt_tokens_for_rating(1999) == 5
+        assert attempt_tokens_for_rating(1900) == 6
+        assert attempt_tokens_for_rating(2099) == 6
 
-    def test_yellow_red_range(self):
-        assert attempt_tokens_for_rating(2000) == 6
-        assert attempt_tokens_for_rating(3000) == 6
+    def test_orange_range(self):
+        assert attempt_tokens_for_rating(2100) == 7
+        assert attempt_tokens_for_rating(2399) == 7
+
+    def test_red_range(self):
+        assert attempt_tokens_for_rating(2400) == 8
+        assert attempt_tokens_for_rating(3000) == 8
 
 
 class TestTimeBonusForRating:
     def test_gray_bonus(self):
         assert time_bonus_for_rating(800) == 5
-        assert time_bonus_for_rating(1099) == 5
+        assert time_bonus_for_rating(1199) == 5
 
     def test_green_bonus(self):
-        assert time_bonus_for_rating(1100) == 10
+        assert time_bonus_for_rating(1200) == 10
         assert time_bonus_for_rating(1399) == 10
 
+    def test_cyan_bonus(self):
+        assert time_bonus_for_rating(1400) == 12
+        assert time_bonus_for_rating(1599) == 12
+
     def test_blue_bonus(self):
-        assert time_bonus_for_rating(1400) == 15
-        assert time_bonus_for_rating(1699) == 15
+        assert time_bonus_for_rating(1600) == 18
+        assert time_bonus_for_rating(1899) == 18
 
     def test_purple_bonus(self):
-        assert time_bonus_for_rating(1700) == 20
-        assert time_bonus_for_rating(1999) == 20
+        assert time_bonus_for_rating(1900) == 22
+        assert time_bonus_for_rating(2099) == 22
 
-    def test_yellow_red_bonus(self):
-        assert time_bonus_for_rating(2000) == 25
-        assert time_bonus_for_rating(3000) == 25
+    def test_orange_bonus(self):
+        assert time_bonus_for_rating(2100) == 28
+        assert time_bonus_for_rating(2399) == 28
+
+    def test_red_bonus(self):
+        assert time_bonus_for_rating(2400) == 35
+        assert time_bonus_for_rating(3000) == 35
 
 
 # ---------------------------------------------------------------------------

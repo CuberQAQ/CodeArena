@@ -1159,3 +1159,288 @@ P_i = base(rating) × f(wa, t)
 #### 验收标准
 1. 用户能通过前端正常登录
 2. 错误凭据给出正确提示
+
+---
+
+## 阶段 23: Rating 对标 CF + Profile Elo Chart + i18n (2026-05-20)
+
+> 需求文档: requirements.md Section 6.3 (i18n), 6.2 补充 (Profile Elo Chart), 6.4 (Rating 段位)
+
+### Task 23.1: Rating 段位体系对标 Codeforces
+**状态**: 🔵 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+将前端的 Rating 颜色、范围和段位名称从现有简化 6 档体系升级为 Codeforces 官方 10 档体系。
+
+**需求规格** (requirements.md Section 6.4, FR-7.1):
+| 段位英文名 | Rating 范围 | 颜色 (HEX) |
+|-----------|------------|------------|
+| Newbie | < 1200 | #808080 (灰) |
+| Pupil | 1200–1399 | #008000 (绿) |
+| Specialist | 1400–1599 | #03A89E (青) |
+| Expert | 1600–1899 | #0000FF (蓝) |
+| Candidate Master | 1900–2099 | #AA00AA (紫) |
+| Master | 2100–2299 | #FF8C00 (橙) |
+| International Master | 2300–2399 | #FF8C00 (橙) |
+| Grandmaster | 2400–2599 | #FF0000 (红) |
+| International Grandmaster | 2600–2999 | #FF0000 (红) |
+| Legendary Grandmaster | ≥ 3000 | #FF0000 (红，首字母加粗/黑色) |
+
+**需要修改的文件**:
+- `frontend/src/utils/index.ts` — 重写 `getRatingColor()` 和 `getDifficultyLabel()`，颜色和段位精确对标 CF 标准；新增 `RATING_TIERS` 常量数组作为单一数据源
+- `frontend/src/components/charts/DashboardCharts.tsx` — 更新 `difficultyDistribution` 中的硬编码段位名称和颜色（当前 "Yellow (CM)"、"Red (GM+)" 等不匹配新体系）
+- `frontend/src/pages/ProfilePage.tsx` — Elo 卡片增加段位名称展示
+- `frontend/src/pages/DashboardPage.tsx` — Elo 卡片增加段位名称展示
+- `frontend/src/pages/LeaderboardPage.tsx` — 排名列表增加段位名称展示
+- `backend/app/core/default_config.py` — `difficulty_tiers` 和 `hint_pricing` 的 rating 边界对齐 CF 段位边界（详见下方关键实现细节）
+- 所有调用 `getRatingColor` / `getDifficultyLabel` 的文件确认兼容（无需改动逻辑，只改映射函数内部）:
+  - `frontend/src/pages/ChallengePage.tsx`
+  - `frontend/src/pages/TrainingDetailPage.tsx`
+  - `frontend/src/pages/ContestDetailPage.tsx`
+  - `frontend/src/pages/challenge/PvEChallengePage.tsx`
+  - `frontend/src/components/charts/PPChart.tsx`
+- `backend/app/services/economy_service.py` 或相关经济服务 — 确认 difficulty_tiers 边界更新后代币奖励计算正确
+
+**关键实现细节**:
+1. 新增 `RATING_TIERS` 常量数组，每项包含 `{ name, nameZh, min, color }`，作为所有段位相关逻辑的单一数据源
+2. `getRatingColor(rating)` 返回值从 `DIFFICULTY_COLORS` 字典查找改为基于 `RATING_TIERS` 二分查找
+3. `getDifficultyLabel(rating)` 改为返回英文名（后续 Task 23.3 接入 i18n 后用翻译 key 替代）
+4. 新增 `getRatingTierInfo(rating)` 辅助函数，返回完整段位信息（名称、颜色、范围），供需要同时获取多项信息的调用方使用
+5. `Legendary Grandmaster` 特殊样式：在展示段位名称的位置，首字母使用加粗/深色处理（通过 CSS 或返回特殊标记实现）
+6. `DashboardCharts` 中 `difficultyDistribution` 的段位名称和颜色应从 `RATING_TIERS` 动态生成而非硬编码
+7. 确保所有已有调用方（`getRatingColor(elo)` 等）行为正确更新——只要映射函数内部改了，调用方无需改动
+8. **段位名称展示（FR-7.3 可达性修复）**：在以下位置的 Elo 数值旁展示段位名称：
+   - `ProfilePage.tsx` — Elo Rating 卡片：显示 `1650 / Expert` 格式
+   - `DashboardPage.tsx` — Elo 卡片：同上格式
+   - `LeaderboardPage.tsx` — 排名列表中用户名旁展示段位名称
+   调用 `getDifficultyLabel(rating)` 获取段位名称，后续 Task 23.3 会将其包裹 `t()` 实现国际化
+9. **后端 difficulty_tiers 边界对齐 CF（FR-7.4）**：将 `default_config.py` 中的 `difficulty_tiers` 从当前 5 档调整为与 CF 段位边界对齐的 7 档：
+   - gray: 800-1199（Newbie）
+   - green: 1200-1399（Pupil）
+   - cyan: 1400-1599（Specialist）
+   - blue: 1600-1899（Expert）
+   - purple: 1900-2099（Candidate Master）
+   - orange: 2100-2399（Master + International Master）
+   - red: 2400-9999（Grandmaster 及以上）
+   对应的 `hint_pricing` 也需调整为 7 档，奖励数值可合并相邻档位（如 cyan 和 blue 可共享相近奖励）
+
+#### 集成点追踪
+**调用方清单**:
+- `DashboardCharts.tsx:67-72` — `difficultyDistribution` 数组中硬编码了段位名称和颜色，需改为从 `RATING_TIERS` 动态生成
+- `utils/index.ts` — 所有 import `getRatingColor` / `getDifficultyLabel` 的文件通过函数接口调用，函数签名不变，无需改动调用方
+
+**反向集成清单**:
+- 后端 `default_config.py` 中的 `difficulty_tiers`（代币奖励分级）和 `hint_pricing`（提示定价）的 rating 边界需从 5 档调整为 CF 对齐的 7 档
+- 后端 `contest.tiers`（比赛分级 Beginner/Advanced/Master）作为独立赛事规则**不需要修改**
+- 后端经济服务（代币发放、提示定价）需确认新的 7 档分级下计算正确
+- i18n（Task 23.3）将在此基础上提取段位名称为翻译 key
+
+**触发场景**:
+- 用户查看 Dashboard、Profile、Leaderboard、Challenge、Training、Contest 页面中任何显示 rating 颜色/段位的元素
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **颜色精确匹配**: 每个段位的 HEX 颜色值严格等于 CF 标准（#808080, #008000, #03A89E, #0000FF, #AA00AA, #FF8C00, #FF0000）
+- [ ] **10 档完整覆盖**: rating=0 灰, rating=1200 绿, rating=1400 青, rating=1600 蓝, rating=1900 紫, rating=2100 橙, rating=2300 橙(IM), rating=2400 红, rating=2600 红(IGM), rating=3000 红(LGM)
+- [ ] **边界值正确**: rating=1199 → Newbie, rating=1200 → Pupil, rating=2399 → IM, rating=2400 → GM, rating=2999 → IGM, rating=3000 → LGM
+- [ ] **Legendary GM 特殊样式**: rating≥3000 的段位名称首字母有加粗/深色处理
+- [ ] **Dashboard 图表更新**: 难度分布图使用新的段位名称和颜色
+- [ ] **null/undefined 处理**: `getRatingColor(null)` 返回灰色, `getDifficultyLabel(null)` 返回 "Unrated"
+- [ ] **无回归**: 所有现有页面（Leaderboard、Challenge、Training、Contest、Profile）的 rating 颜色展示正常
+- [ ] **段位名称展示**: Profile、Dashboard、Leaderboard 页面的 Elo 旁正确显示段位名称
+- [ ] **后端 difficulty_tiers 对齐**: 7 档分级边界匹配 CF 段位（800-1199, 1200-1399, 1400-1599, 1600-1899, 1900-2099, 2100-2399, 2400+）
+- [ ] **后端 hint_pricing 对齐**: 提示定价与新的 7 档 difficulty_tiers 一一对应
+- [ ] **代币奖励计算正确**: 各档位题目 AC/尝试的代币奖励在新分级下正确发放
+- [ ] **管理后台配置**: 管理员配置页面正确展示新的 7 档参数
+
+#### 验收标准
+1. Rating 段位名称、颜色、范围精确匹配 Codeforces 10 档体系
+2. `RATING_TIERS` 作为单一数据源，所有段位相关逻辑从中派生
+3. 现有功能无回归
+
+---
+
+### Task 23.2: Profile 页 Elo Chart 接入
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+将 Profile 页面的 Elo History 占位符替换为已存在的 `EloChart` 组件，并确保数据正确加载。
+
+**需求规格** (requirements.md Section 6.2):
+> 个人资料页必须展示用户的 Elo 历史折线图（复用已有的 EloChart 组件），不得使用占位符。
+
+**当前状态**:
+- `ProfilePage.tsx:231-240` 使用占位符显示 "Chart placeholder"
+- `EloChart` 组件 (`components/charts/EloChart.tsx`) 已完整实现，支持 7D/30D/All 筛选
+- 后端 API `GET /api/v1/auth/elo-history` 已存在
+
+**需要修改的文件**:
+- `frontend/src/pages/ProfilePage.tsx` — 移除占位符（231-240行），导入 `EloChart` 组件，新增 elo-history 数据获取逻辑（`useState` + `useEffect` 调用 `api.get("/auth/elo-history")`），将数据传入 `EloChart`
+
+**关键实现细节**:
+1. 参照 `DashboardCharts.tsx` 中 `EloChart` 的使用方式（数据获取 + 传参）
+2. 数据获取使用 `api.get("/auth/elo-history")`，返回 `EloHistoryPoint[]` 类型
+3. 加载状态：数据未返回时显示 `LoadingSpinner`；无数据时 `EloChart` 自带空状态处理
+4. 错误处理：获取失败时静默降级（不阻断整个 Profile 页），显示错误提示文案
+
+#### 集成点追踪
+**调用方清单**:
+- `ProfilePage.tsx` — 替换 231-240 行的占位符
+
+**反向集成清单**:
+- 无需集成其他横切特性
+
+**触发场景**:
+- 用户访问 `/profile` 页面，在 Stats 卡片下方看到 Elo 历史折线图
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **占位符已移除**: ProfilePage 中无 "Chart placeholder" 文本
+- [ ] **EloChart 渲染**: 有 elo-history 数据时，折线图正确渲染（含时间筛选按钮 7D/30D/All）
+- [ ] **空数据状态**: 无 elo-history 数据时，显示 "No Elo history yet" 提示
+- [ ] **数据获取**: 页面加载时自动请求 `/auth/elo-history` 接口
+- [ ] **加载状态**: 数据加载中显示 loading spinner
+- [ ] **错误降级**: 接口失败不阻断整个页面，显示错误提示
+- [ ] **交互正常**: 时间范围筛选（7D/30D/All）功能正常，Tooltip 显示 Elo 值和变化量
+- [ ] **Tooltip 交互**: hover 折线图数据点时显示日期、Elo 值和变化量的 Tooltip 弹出框
+
+#### 验收标准
+1. Profile 页面展示真实 Elo 历史折线图，占位符已移除
+2. 有数据/无数据/加载中/错误 四种状态均正确处理
+3. 现有 Profile 功能（编辑、CF 绑定、Stats 卡片）无回归
+
+---
+
+### Task 23.3: 前端国际化 (i18n) — 中英双语
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: Task 23.1（段位名称需先更新为 CF 标准后再提取为翻译 key）
+
+#### 任务描述
+为前端实现完整的中英文国际化支持，覆盖所有页面和组件的硬编码文本。
+
+**需求规格** (requirements.md Section 6.3, FR-6.1~6.4):
+- 前端所有用户可见的硬编码文本支持中英文切换
+- 语言偏好存储在 localStorage
+- 导航栏提供语言切换控件，切换后无需刷新即生效
+- 使用 react-i18next + i18next
+
+**需要修改的文件**:
+- `frontend/package.json` — 新增 `react-i18next`、`i18next` 依赖
+- `frontend/src/main.tsx` — 导入并初始化 i18n 实例
+- `frontend/src/locales/en/*.json` — 新建，英文翻译文件（按命名空间拆分）
+- `frontend/src/locales/zh/*.json` — 新建，中文翻译文件
+- `frontend/src/i18n.ts` — 新建，i18n 配置（语言检测、fallback、命名空间注册）
+- `frontend/src/components/LanguageSwitcher.tsx` — 新建，语言切换控件
+- `frontend/src/layouts/MainLayout.tsx` — 接入 LanguageSwitcher，提取导航文本
+- `frontend/src/layouts/AuthLayout.tsx` — 提取文本
+- `frontend/src/layouts/AdminLayout.tsx` — 提取文本
+- `frontend/src/pages/LoginPage.tsx` — 提取文本
+- `frontend/src/pages/RegisterPage.tsx` — 提取文本
+- `frontend/src/pages/DashboardPage.tsx` — 提取文本
+- `frontend/src/pages/ProfilePage.tsx` — 提取文本
+- `frontend/src/pages/ChallengePage.tsx` — 提取文本
+- `frontend/src/pages/TrainingPage.tsx` — 提取文本
+- `frontend/src/pages/TrainingDetailPage.tsx` — 提取文本
+- `frontend/src/pages/ContestPage.tsx` — 提取文本
+- `frontend/src/pages/ContestDetailPage.tsx` — 提取文本
+- `frontend/src/pages/LeaderboardPage.tsx` — 提取文本
+- `frontend/src/pages/CFBindPage.tsx` — 提取文本
+- `frontend/src/pages/AdminOverviewPage.tsx` — 提取文本
+- `frontend/src/pages/AdminConfigPage.tsx` — 提取文本
+- `frontend/src/pages/challenge/PvEChallengePage.tsx` — 提取文本
+- `frontend/src/components/charts/EloChart.tsx` — 提取文本
+- `frontend/src/components/charts/PPChart.tsx` — 提取文本
+- `frontend/src/components/charts/StatsPanel.tsx` — 提取文本
+- `frontend/src/components/charts/RadarChart.tsx` — 提取文本
+- `frontend/src/components/charts/DashboardCharts.tsx` — 提取文本
+- `frontend/src/components/LoadingSpinner.tsx` — 提取文本
+- `frontend/src/components/ErrorBoundary.tsx` — 提取文本
+- `frontend/src/utils/index.ts` — `getDifficultyLabel()` 改为返回翻译 key（由调用方通过 `t()` 转换），或改为接受 i18n 实例
+- 所有动画组件 (`components/animations/*.tsx`) 中有硬编码文本的文件
+
+**关键实现细节**:
+1. **i18n 配置**:
+   - 使用 `i18next-browser-languagedetector` 检测浏览器语言（优先级：localStorage > navigator > fallback 'en'）
+   - 默认语言 'en'，fallback 'en'
+   - 命名空间按功能模块拆分：`common`（通用）、`nav`（导航）、`auth`（认证）、`dashboard`、`challenge`、`training`、`contest`、`profile`、`leaderboard`、`admin`、`rating`（段位）
+
+2. **翻译文件结构**:
+   ```
+   src/locales/
+     en/
+       common.json      # "Save", "Cancel", "Loading...", "Error", etc.
+       nav.json         # "Dashboard", "Challenge", "Training", "Contest", etc.
+       auth.json        # "Sign In", "Create Account", "Email", "Password", etc.
+       dashboard.json   # Dashboard page texts
+       challenge.json   # Challenge + PvE page texts
+       training.json    # Training pages texts
+       contest.json     # Contest pages texts
+       profile.json     # Profile + CF Bind page texts
+       leaderboard.json # Leaderboard page texts
+       admin.json       # Admin pages texts
+       rating.json      # Rating tier names (EN)
+     zh/
+       (同结构，中文翻译)
+   ```
+
+3. **LanguageSwitcher 组件**:
+   - 显示当前语言图标/文字（如 "EN" / "中"）
+   - 点击切换，使用 `i18next.changeLanguage()`
+   - 放置于 MainLayout 右上角导航栏区域
+
+4. **Rating 段位名称 i18n**:
+   - `getDifficultyLabel()` 改为返回 i18n key（如 `rating:newbie`）
+   - 所有调用 `getDifficultyLabel()` 的地方包裹 `t()` 转换
+   - 或：`getDifficultyLabel()` 接受当前语言参数，直接返回对应语言文本
+   - `rating.json` 包含 CF 10 档的中英文名称：
+     ```json
+     { "unrated": "Unrated" / "未评级", "newbie": "Newbie" / "新手", ... }
+     ```
+
+5. **提取原则**:
+   - 所有 JSX 中的硬编码英文字符串替换为 `{t('namespace:key')}`
+   - placeholder、title、aria-label 等属性中的字符串也需提取
+   - 代码逻辑中的字符串（如 error message fallback）也需提取
+   - `formatDate` 中的 locale "en-US" 应根据当前语言动态切换
+
+#### 集成点追踪
+**调用方清单**:
+- 所有前端页面和组件中包含硬编码英文字符串的位置（约 18+ 文件，75-80 个字符串）
+
+**反向集成清单**:
+- Rating 段位名称（Task 23.1 产出的 `RATING_TIERS`）需集成到 `rating.json` 翻译文件
+- `getDifficultyLabel()` 函数需改为 i18n 感知
+
+**触发场景**:
+- 用户点击导航栏语言切换按钮，整个 UI 即时切换语言
+- 新用户首次访问，自动检测浏览器语言
+- 刷新页面后语言偏好保持
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **语言切换即时生效**: 点击语言切换按钮，所有页面文本立即切换，无需刷新
+- [ ] **语言偏好持久化**: 切换语言后刷新页面，语言保持不变
+- [ ] **默认语言**: 首次访问（无 localStorage）默认英文
+- [ ] **英文翻译完整**: 切换到英文，所有页面无遗漏的硬编码中文或未翻译文本
+- [ ] **中文翻译完整**: 切换到中文，所有页面无遗漏的硬编码英文文本
+- [ ] **导航栏**: 侧边栏菜单项中英切换正确（Dashboard/仪表盘, Challenge/挑战, etc.）
+- [ ] **认证页面**: 登录、注册页面的标题、按钮、表单标签、错误提示中英切换
+- [ ] **Profile 页**: 所有文本中英切换（包括 Elo History、PP Ranking 区域）
+- [ ] **Rating 段位名称**: 各页面中的段位名称随语言切换（Newbie/新手, Master/大师, etc.）
+- [ ] **Dashboard**: 欢迎语、统计卡片、图表标题中英切换
+- [ ] **Challenge 页面**: PvP + PvE 所有状态文本中英切换
+- [ ] **Training/Contest 页面**: 标题、按钮、状态文本中英切换
+- [ ] **Leaderboard 页面**: 表头、排名文本中英切换
+- [ ] **Admin 页面**: 管理后台所有文本中英切换
+- [ ] **错误/加载状态**: ErrorBoundary、LoadingSpinner 文本中英切换
+- [ ] **EloChart**: "Elo Trend"、"7D/30D/All"、空状态提示中英切换
+- [ ] **无遗漏**: 执行自动化 grep 验证 `grep -rn '"[A-Z][a-z]' frontend/src/ --include="*.tsx" | grep -v 'import\|className\|type\|interface\|const\|key\|id\|to="'` 确认无残留硬编码英文用户可见文本
+
+#### 验收标准
+1. react-i18next + i18next 正确初始化，LanguageSwitcher 在导航栏可用
+2. 所有前端页面的用户可见文本均通过 i18n key 引用，无遗漏
+3. 中英文翻译文件完整，切换即时生效，偏好持久化
+4. Rating 段位名称随语言切换
+5. 现有功能无回归

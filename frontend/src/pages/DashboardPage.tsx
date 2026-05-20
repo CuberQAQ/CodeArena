@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { DashboardCharts } from "@/components/charts/DashboardCharts";
-import { getRatingColor } from "@/utils";
+import { getRatingColor, getDifficultyLabel } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, TransactionItem, ContestSessionInfo } from "@/types";
 
@@ -109,7 +109,7 @@ export default function DashboardPage() {
                 className="text-2xl font-bold"
                 style={{ color: getRatingColor(user.elo) }}
               >
-                {user.elo}
+                {user.elo} <span className="text-sm font-medium">/ {getDifficultyLabel(user.elo)}</span>
               </p>
             </div>
           </div>

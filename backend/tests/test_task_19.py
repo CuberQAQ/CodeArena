@@ -689,9 +689,10 @@ class TestChallengeAttemptReward:
         tiers = [
             (900, 2),    # gray
             (1200, 3),   # green
-            (1500, 4),   # blue
-            (1800, 5),   # purple
-            (2200, 6),   # yellow/red
+            (1500, 4),   # cyan
+            (1800, 5),   # blue
+            (2000, 6),   # purple
+            (2200, 7),   # orange
         ]
 
         for rating, expected_attempt_tokens in tiers:

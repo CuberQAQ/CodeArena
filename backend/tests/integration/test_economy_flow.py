@@ -301,31 +301,43 @@ class TestTokenTiers:
     """Test token tier calculation."""
 
     def test_tokens_for_rating_gray(self):
-        """Rating 800-1099 gives gray tier (10 tokens)."""
+        """Rating 800-1199 gives gray tier (10 tokens)."""
         from app.services.economy_service import tokens_for_rating
         assert tokens_for_rating(800) == 10
         assert tokens_for_rating(1000) == 10
 
     def test_tokens_for_rating_green(self):
-        """Rating 1100-1399 gives green tier (20 tokens)."""
+        """Rating 1200-1399 gives green tier (20 tokens)."""
         from app.services.economy_service import tokens_for_rating
-        assert tokens_for_rating(1100) == 20
+        assert tokens_for_rating(1200) == 20
         assert tokens_for_rating(1300) == 20
 
-    def test_tokens_for_rating_blue(self):
-        """Rating 1400-1699 gives blue tier (30 tokens)."""
+    def test_tokens_for_rating_cyan(self):
+        """Rating 1400-1599 gives cyan tier (25 tokens)."""
         from app.services.economy_service import tokens_for_rating
-        assert tokens_for_rating(1400) == 30
-        assert tokens_for_rating(1600) == 30
+        assert tokens_for_rating(1400) == 25
+        assert tokens_for_rating(1500) == 25
+
+    def test_tokens_for_rating_blue(self):
+        """Rating 1600-1899 gives blue tier (35 tokens)."""
+        from app.services.economy_service import tokens_for_rating
+        assert tokens_for_rating(1600) == 35
+        assert tokens_for_rating(1800) == 35
 
     def test_tokens_for_rating_purple(self):
-        """Rating 1700-1999 gives purple tier (40 tokens)."""
+        """Rating 1900-2099 gives purple tier (45 tokens)."""
         from app.services.economy_service import tokens_for_rating
-        assert tokens_for_rating(1700) == 40
-        assert tokens_for_rating(1900) == 40
+        assert tokens_for_rating(1900) == 45
+        assert tokens_for_rating(2000) == 45
 
-    def test_tokens_for_rating_yellow(self):
-        """Rating 2000+ gives yellow/red tier (50 tokens)."""
+    def test_tokens_for_rating_orange(self):
+        """Rating 2100-2399 gives orange tier (55 tokens)."""
         from app.services.economy_service import tokens_for_rating
-        assert tokens_for_rating(2000) == 50
-        assert tokens_for_rating(3000) == 50
+        assert tokens_for_rating(2100) == 55
+        assert tokens_for_rating(2250) == 55
+
+    def test_tokens_for_rating_red(self):
+        """Rating 2400+ gives red tier (65 tokens)."""
+        from app.services.economy_service import tokens_for_rating
+        assert tokens_for_rating(2400) == 65
+        assert tokens_for_rating(3000) == 65

@@ -287,33 +287,45 @@ class TestHintPricing:
     """Test hint pricing tiers."""
 
     def test_gray_problem_pricing(self):
-        """Gray problems (800-1099) have lowest prices."""
+        """Gray problems (800-1199) have lowest prices."""
         from app.services.hint_service import get_hint_prices
         prices = get_hint_prices(800)
         assert prices == [3, 10, 20]
 
     def test_green_problem_pricing(self):
-        """Green problems (1100-1399) have moderate prices."""
+        """Green problems (1200-1399) have moderate prices."""
         from app.services.hint_service import get_hint_prices
         prices = get_hint_prices(1200)
         assert prices == [5, 15, 30]
 
-    def test_blue_problem_pricing(self):
-        """Blue problems (1400-1699) have higher prices."""
+    def test_cyan_problem_pricing(self):
+        """Cyan problems (1400-1599) have moderate prices."""
         from app.services.hint_service import get_hint_prices
         prices = get_hint_prices(1500)
+        assert prices == [6, 18, 35]
+
+    def test_blue_problem_pricing(self):
+        """Blue problems (1600-1899) have higher prices."""
+        from app.services.hint_service import get_hint_prices
+        prices = get_hint_prices(1700)
         assert prices == [8, 20, 40]
 
     def test_purple_problem_pricing(self):
-        """Purple problems (1700-1999) have even higher prices."""
+        """Purple problems (1900-2099) have even higher prices."""
         from app.services.hint_service import get_hint_prices
-        prices = get_hint_prices(1800)
+        prices = get_hint_prices(2000)
         assert prices == [10, 25, 50]
 
-    def test_yellow_problem_pricing(self):
-        """Yellow/red problems (2000+) have highest prices."""
+    def test_orange_problem_pricing(self):
+        """Orange problems (2100-2399) have higher prices."""
         from app.services.hint_service import get_hint_prices
         prices = get_hint_prices(2200)
+        assert prices == [12, 28, 55]
+
+    def test_red_problem_pricing(self):
+        """Red problems (2400+) have highest prices."""
+        from app.services.hint_service import get_hint_prices
+        prices = get_hint_prices(2500)
         assert prices == [15, 30, 60]
 
 

@@ -853,35 +853,47 @@ class TestGetChallengeDetail:
 
 class TestTokenTiers:
     def test_tokens_for_gray_rating(self):
-        # 灰 (800-1099)
+        # gray (800-1199)
         assert _tokens_for_rating(500) == 10
         assert _tokens_for_rating(800) == 10
-        assert _tokens_for_rating(1099) == 10
+        assert _tokens_for_rating(1199) == 10
 
     def test_tokens_for_green_rating(self):
-        # 绿 (1100-1399)
-        assert _tokens_for_rating(1100) == 20
+        # green (1200-1399)
         assert _tokens_for_rating(1200) == 20
+        assert _tokens_for_rating(1300) == 20
         assert _tokens_for_rating(1399) == 20
 
+    def test_tokens_for_cyan_rating(self):
+        # cyan (1400-1599)
+        assert _tokens_for_rating(1400) == 25
+        assert _tokens_for_rating(1500) == 25
+        assert _tokens_for_rating(1599) == 25
+
     def test_tokens_for_blue_rating(self):
-        # 蓝 (1400-1699)
-        assert _tokens_for_rating(1400) == 30
-        assert _tokens_for_rating(1500) == 30
-        assert _tokens_for_rating(1699) == 30
+        # blue (1600-1899)
+        assert _tokens_for_rating(1600) == 35
+        assert _tokens_for_rating(1750) == 35
+        assert _tokens_for_rating(1899) == 35
 
     def test_tokens_for_purple_rating(self):
-        # 紫 (1700-1999)
-        assert _tokens_for_rating(1700) == 40
-        assert _tokens_for_rating(1900) == 40
-        assert _tokens_for_rating(1999) == 40
+        # purple (1900-2099)
+        assert _tokens_for_rating(1900) == 45
+        assert _tokens_for_rating(2000) == 45
+        assert _tokens_for_rating(2099) == 45
 
-    def test_tokens_for_yellow_red_rating(self):
-        # 黄/红 (2000+)
-        assert _tokens_for_rating(2000) == 50
-        assert _tokens_for_rating(2100) == 50
-        assert _tokens_for_rating(3000) == 50
-        assert _tokens_for_rating(3500) == 50
+    def test_tokens_for_orange_rating(self):
+        # orange (2100-2399)
+        assert _tokens_for_rating(2100) == 55
+        assert _tokens_for_rating(2250) == 55
+        assert _tokens_for_rating(2399) == 55
+
+    def test_tokens_for_red_rating(self):
+        # red (2400+)
+        assert _tokens_for_rating(2400) == 65
+        assert _tokens_for_rating(2500) == 65
+        assert _tokens_for_rating(3000) == 65
+        assert _tokens_for_rating(3500) == 65
 
 
 # ---------------------------------------------------------------------------

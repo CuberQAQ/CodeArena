@@ -31,29 +31,35 @@ logger = logging.getLogger("code_arena.economy")
 
 DAILY_TOKEN_CAP: int = 120
 
-# Token reward tiers by problem rating threshold
+# Token reward tiers by problem rating threshold (7 tiers aligned with CF boundaries)
 _TOKEN_TIERS: list[tuple[int, int]] = [
-    (1100, 10),   # gray (800-1099)
-    (1400, 20),   # green (1100-1399)
-    (1700, 30),   # blue (1400-1699)
-    (2000, 40),   # purple (1700-1999)
-    (9999, 50),   # yellow/red (2000+)
+    (1200, 10),   # gray (800-1199)
+    (1400, 20),   # green (1200-1399)
+    (1600, 25),   # cyan (1400-1599)
+    (1900, 35),   # blue (1600-1899)
+    (2100, 45),   # purple (1900-2099)
+    (2400, 55),   # orange (2100-2399)
+    (9999, 65),   # red (2400+)
 ]
 
 _ATTEMPT_TOKEN_TIERS: list[tuple[int, int]] = [
-    (1100, 2),   # gray
+    (1200, 2),   # gray
     (1400, 3),   # green
-    (1700, 4),   # blue
-    (2000, 5),   # purple
-    (9999, 6),   # yellow/red
+    (1600, 4),   # cyan
+    (1900, 5),   # blue
+    (2100, 6),   # purple
+    (2400, 7),   # orange
+    (9999, 8),   # red
 ]
 
 _TIME_BONUS_TIERS: list[tuple[int, int]] = [
-    (1100, 5),   # gray
+    (1200, 5),   # gray
     (1400, 10),  # green
-    (1700, 15),  # blue
-    (2000, 20),  # purple
-    (9999, 25),  # yellow/red
+    (1600, 12),  # cyan
+    (1900, 18),  # blue
+    (2100, 22),  # purple
+    (2400, 28),  # orange
+    (9999, 35),  # red
 ]
 
 TIME_BONUS_THRESHOLD_SECONDS: float = 20 * 60  # 20 minutes
@@ -69,7 +75,7 @@ def tokens_for_rating(rating: int) -> int:
     for threshold, reward in _TOKEN_TIERS:
         if rating < threshold:
             return reward
-    return 50
+    return 65
 
 
 def attempt_tokens_for_rating(rating: int) -> int:
@@ -77,7 +83,7 @@ def attempt_tokens_for_rating(rating: int) -> int:
     for threshold, reward in _ATTEMPT_TOKEN_TIERS:
         if rating < threshold:
             return reward
-    return 6
+    return 8
 
 
 def time_bonus_for_rating(rating: int) -> int:
@@ -85,7 +91,7 @@ def time_bonus_for_rating(rating: int) -> int:
     for threshold, reward in _TIME_BONUS_TIERS:
         if rating < threshold:
             return reward
-    return 25
+    return 35
 
 
 # ---------------------------------------------------------------------------

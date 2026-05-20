@@ -295,39 +295,53 @@ class TestStarCalculation:
 class TestTokenTiers:
     def test_ac_tokens_gray(self):
         assert _tokens_for_rating(800) == 10
-        assert _tokens_for_rating(1099) == 10
+        assert _tokens_for_rating(1199) == 10
 
     def test_ac_tokens_green(self):
-        assert _tokens_for_rating(1100) == 20
+        assert _tokens_for_rating(1200) == 20
         assert _tokens_for_rating(1399) == 20
 
+    def test_ac_tokens_cyan(self):
+        assert _tokens_for_rating(1400) == 25
+        assert _tokens_for_rating(1599) == 25
+
     def test_ac_tokens_blue(self):
-        assert _tokens_for_rating(1400) == 30
-        assert _tokens_for_rating(1699) == 30
+        assert _tokens_for_rating(1600) == 35
+        assert _tokens_for_rating(1899) == 35
 
     def test_ac_tokens_purple(self):
-        assert _tokens_for_rating(1700) == 40
-        assert _tokens_for_rating(1999) == 40
+        assert _tokens_for_rating(1900) == 45
+        assert _tokens_for_rating(2099) == 45
 
-    def test_ac_tokens_yellow_red(self):
-        assert _tokens_for_rating(2000) == 50
-        assert _tokens_for_rating(3000) == 50
+    def test_ac_tokens_orange(self):
+        assert _tokens_for_rating(2100) == 55
+        assert _tokens_for_rating(2399) == 55
+
+    def test_ac_tokens_red(self):
+        assert _tokens_for_rating(2400) == 65
+        assert _tokens_for_rating(3000) == 65
 
     def test_attempt_tokens_gray(self):
         assert _attempt_tokens_for_rating(800) == 2
-        assert _attempt_tokens_for_rating(1099) == 2
+        assert _attempt_tokens_for_rating(1199) == 2
 
     def test_attempt_tokens_green(self):
-        assert _attempt_tokens_for_rating(1100) == 3
+        assert _attempt_tokens_for_rating(1200) == 3
 
-    def test_attempt_tokens_blue(self):
+    def test_attempt_tokens_cyan(self):
         assert _attempt_tokens_for_rating(1400) == 4
 
-    def test_attempt_tokens_purple(self):
-        assert _attempt_tokens_for_rating(1700) == 5
+    def test_attempt_tokens_blue(self):
+        assert _attempt_tokens_for_rating(1600) == 5
 
-    def test_attempt_tokens_yellow_red(self):
-        assert _attempt_tokens_for_rating(2000) == 6
+    def test_attempt_tokens_purple(self):
+        assert _attempt_tokens_for_rating(1900) == 6
+
+    def test_attempt_tokens_orange(self):
+        assert _attempt_tokens_for_rating(2100) == 7
+
+    def test_attempt_tokens_red(self):
+        assert _attempt_tokens_for_rating(2400) == 8
 
 
 # ---------------------------------------------------------------------------
@@ -1229,9 +1243,9 @@ class TestTokenRewards:
         assert r3.streak_tokens == 10
         assert r3.streak_count == 2
 
-        # Total: 10 + 20 + 30 + 5 + 10 = 75 tokens (AC: 10+20+30=60, streak: 5+10=15)
+        # Total: 10 + 20 + 35 + 5 + 10 = 80 tokens (AC: 10+20+35=65, streak: 5+10=15)
         await db.refresh(user)
-        assert user.tokens == 10 + 20 + 30 + 5 + 10
+        assert user.tokens == 10 + 20 + 35 + 5 + 10
 
 
 # ---------------------------------------------------------------------------

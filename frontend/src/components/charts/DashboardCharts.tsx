@@ -13,7 +13,7 @@ import type {
   DashboardStats,
   DifficultyDistribution,
 } from "@/types";
-import { getRatingColor } from "@/utils";
+import { getRatingColor, getDifficultyLabel } from "@/utils";
 import { EloChart } from "./EloChart";
 import { RadarChart } from "./RadarChart";
 import { PPChart } from "./PPChart";
@@ -62,15 +62,23 @@ function buildStatsFromTransactions(
   // We do not have per-problem rating data from the transaction list, so we show a
   // simplified view based on total solved. A richer API endpoint would provide
   // actual per-difficulty counts.
+  // Distribution weights for chart display (sum to 1.0).
+  // Each entry uses a representative rating that maps to a CF tier via getDifficultyLabel.
+  const _DIST_WEIGHTS = [
+    { rating: 800, weight: 0.35 },   // Newbie
+    { rating: 1300, weight: 0.25 },  // Pupil
+    { rating: 1500, weight: 0.20 },  // Specialist
+    { rating: 1800, weight: 0.12 },  // Expert
+    { rating: 2000, weight: 0.06 },  // Candidate Master
+    { rating: 2600, weight: 0.02 },  // International Grandmaster
+  ];
+
   const difficultyDistribution: DifficultyDistribution[] = radarData.length > 0
-    ? [
-        { difficulty: "Gray (Newbie)", count: Math.round(userSolved * 0.35), color: getRatingColor(800) },
-        { difficulty: "Green (Pupil)", count: Math.round(userSolved * 0.25), color: getRatingColor(1300) },
-        { difficulty: "Blue (Specialist)", count: Math.round(userSolved * 0.2), color: getRatingColor(1500) },
-        { difficulty: "Purple (Expert)", count: Math.round(userSolved * 0.12), color: getRatingColor(1800) },
-        { difficulty: "Yellow (CM)", count: Math.round(userSolved * 0.06), color: getRatingColor(2200) },
-        { difficulty: "Red (GM+)", count: Math.round(userSolved * 0.02), color: getRatingColor(2600) },
-      ]
+    ? _DIST_WEIGHTS.map(({ rating, weight }) => ({
+        difficulty: getDifficultyLabel(rating),
+        count: Math.round(userSolved * weight),
+        color: getRatingColor(rating),
+      }))
     : [];
 
   return {

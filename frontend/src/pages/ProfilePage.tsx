@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { extractApiError, getRatingColor, formatDate } from "@/utils";
+import { extractApiError, getRatingColor, getDifficultyLabel, formatDate } from "@/utils";
 import api from "@/services/api";
 
 // ---------------------------------------------------------------------------
@@ -199,7 +199,7 @@ export default function ProfilePage() {
             <div>
               <p className="text-xs text-muted-foreground">Elo Rating</p>
               <p className="text-2xl font-bold" style={{ color: getRatingColor(user.elo) }}>
-                {user.elo}
+                {user.elo} <span className="text-sm font-medium">/ {getDifficultyLabel(user.elo)}</span>
               </p>
             </div>
           </div>

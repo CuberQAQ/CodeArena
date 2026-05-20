@@ -598,19 +598,25 @@ class TestTokenRewards:
         [
             (800, 10),
             (900, 10),
-            (1099, 10),
-            (1100, 20),
+            (1199, 10),
             (1200, 20),
+            (1300, 20),
             (1399, 20),
-            (1400, 30),
-            (1500, 30),
-            (1699, 30),
-            (1700, 40),
-            (1800, 40),
-            (1999, 40),
-            (2000, 50),
-            (2500, 50),
-            (3000, 50),
+            (1400, 25),
+            (1500, 25),
+            (1599, 25),
+            (1600, 35),
+            (1750, 35),
+            (1899, 35),
+            (1900, 45),
+            (2000, 45),
+            (2099, 45),
+            (2100, 55),
+            (2250, 55),
+            (2399, 55),
+            (2400, 65),
+            (2500, 65),
+            (3000, 65),
         ],
     )
     def test_tokens_for_rating(self, rating, expected):
@@ -619,7 +625,7 @@ class TestTokenRewards:
 
     @pytest.mark.asyncio
     async def test_gray_problem_awards_10_tokens(self, db):
-        """Gray (800-1099) problem awards 10 tokens on AC."""
+        """Gray (800-1199) problem awards 10 tokens on AC."""
         user = _make_user(elo=1300)
         db.add(user)
         await db.flush()
@@ -646,7 +652,7 @@ class TestTokenRewards:
 
     @pytest.mark.asyncio
     async def test_green_problem_awards_20_tokens(self, db):
-        """Green (1100-1399) problem awards 20 tokens on AC."""
+        """Green (1200-1399) problem awards 20 tokens on AC."""
         user = _make_user(elo=1300)
         db.add(user)
         await db.flush()

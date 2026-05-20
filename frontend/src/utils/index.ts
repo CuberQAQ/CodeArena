@@ -1,32 +1,69 @@
-/** Difficulty color mapping for competitive programming ratings. */
+/** Rating tier definitions aligned with Codeforces 10-tier system.
+ *
+ * Each tier has:
+ *  - name: English tier name (e.g. "Newbie", "Expert")
+ *  - nameZh: Chinese tier name (for future i18n, Task 23.3)
+ *  - min: minimum rating (inclusive). The first tier has min = -Infinity.
+ *  - color: official CF hex color
+ *  - legendary: true only for Legendary Grandmaster (>= 3000)
+ *
+ * Boundary reference (CF standard):
+ *   < 1200   Newbie              #808080
+ *   1200-1399  Pupil             #008000
+ *   1400-1599  Specialist        #03A89E
+ *   1600-1899  Expert            #0000FF
+ *   1900-2099  Candidate Master  #AA00AA
+ *   2100-2299  Master            #FF8C00
+ *   2300-2399  International Master   #FF8C00
+ *   2400-2599  Grandmaster       #FF0000
+ *   2600-2999  International Grandmaster  #FF0000
+ *   >= 3000    Legendary Grandmaster      #FF0000 (legendary: true)
+ */
 
-const DIFFICULTY_COLORS: Record<string, string> = {
-  gray: "#999999",
-  green: "#00AA00",
-  blue: "#6666FF",
-  purple: "#CC00CC",
-  yellow: "#FFBB00",
-  red: "#FF0000",
-};
-
-export function getRatingColor(rating: number | null | undefined): string {
-  if (rating == null) return DIFFICULTY_COLORS.gray;
-  if (rating < 1200) return DIFFICULTY_COLORS.gray;
-  if (rating < 1400) return DIFFICULTY_COLORS.green;
-  if (rating < 1600) return DIFFICULTY_COLORS.blue;
-  if (rating < 2000) return DIFFICULTY_COLORS.purple;
-  if (rating < 2400) return DIFFICULTY_COLORS.yellow;
-  return DIFFICULTY_COLORS.red;
+export interface RatingTier {
+  name: string;
+  nameZh: string;
+  min: number;
+  color: string;
+  legendary?: boolean;
 }
 
+export const RATING_TIERS: RatingTier[] = [
+  { name: "Newbie", nameZh: "新手", min: -Infinity, color: "#808080" },
+  { name: "Pupil", nameZh: "学徒", min: 1200, color: "#008000" },
+  { name: "Specialist", nameZh: "专家", min: 1400, color: "#03A89E" },
+  { name: "Expert", nameZh: "精通", min: 1600, color: "#0000FF" },
+  { name: "Candidate Master", nameZh: "候补大师", min: 1900, color: "#AA00AA" },
+  { name: "Master", nameZh: "大师", min: 2100, color: "#FF8C00" },
+  { name: "International Master", nameZh: "国际大师", min: 2300, color: "#FF8C00" },
+  { name: "Grandmaster", nameZh: "宗师", min: 2400, color: "#FF0000" },
+  { name: "International Grandmaster", nameZh: "国际宗师", min: 2600, color: "#FF0000" },
+  { name: "Legendary Grandmaster", nameZh: "传奇宗师", min: 3000, color: "#FF0000", legendary: true },
+];
+
+/**
+ * Return the full tier info object for a given rating.
+ * Iterates RATING_TIERS in reverse (highest first) to find the matching tier.
+ */
+export function getRatingTierInfo(rating: number | null | undefined): RatingTier {
+  if (rating == null) return RATING_TIERS[0];
+  for (let i = RATING_TIERS.length - 1; i >= 0; i--) {
+    if (rating >= RATING_TIERS[i].min) {
+      return RATING_TIERS[i];
+    }
+  }
+  return RATING_TIERS[0];
+}
+
+/** Return the CF color for a given rating. */
+export function getRatingColor(rating: number | null | undefined): string {
+  return getRatingTierInfo(rating).color;
+}
+
+/** Return the CF English tier name for a given rating. */
 export function getDifficultyLabel(rating: number | null | undefined): string {
   if (rating == null) return "Unrated";
-  if (rating < 1200) return "Newbie";
-  if (rating < 1400) return "Pupil";
-  if (rating < 1600) return "Specialist";
-  if (rating < 2000) return "Expert";
-  if (rating < 2400) return "Candidate Master";
-  return "Grandmaster";
+  return getRatingTierInfo(rating).name;
 }
 
 export function formatTime(seconds: number): string {
