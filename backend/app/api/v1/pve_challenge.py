@@ -94,6 +94,7 @@ async def submit_result(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit the result of a PvE challenge."""
+    cf_service = _get_cf_service()
     result = await PvEChallengeService.submit_result(
         db=db,
         user=current_user,
@@ -102,6 +103,7 @@ async def submit_result(
         time_spent=body.time_spent,
         attempts=body.attempts,
         error_count=body.error_count,
+        cf_service=cf_service,
     )
     return success_response(
         data=result.model_dump(mode="json"),

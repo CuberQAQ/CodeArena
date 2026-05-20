@@ -36,6 +36,7 @@ from app.services.elo_service import EloReason, EloService
 from app.services.hint_service import HintService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
+from app.services.time_factor_service import TimeFactorService
 
 logger = logging.getLogger("code_arena.pve_challenge")
 
@@ -147,6 +148,7 @@ class PvEChallengeService:
         time_spent: float,
         attempts: int,
         error_count: int = 0,
+        cf_service: CFApiService | None = None,
     ) -> PvESubmitResultResponse:
         """Submit the result of a PvE challenge.
 
@@ -188,6 +190,20 @@ class PvEChallengeService:
         # Apply hint attenuation to positive gains
         hint_level = await HintService.get_max_hint_level(db, user.id, session.problem_id)
         raw_elo_change = EloService.apply_hint_attenuation(raw_elo_change, hint_level)
+
+        # Apply time factor (FR-16.4): only when solved and cf_service available
+        time_factor: float | None = None
+        if cf_service is not None and solved:
+            wa_count = max(0, error_count)
+            effective_time = TimeFactorService.compute_effective_time(time_spent, wa_count)
+            expected_time = await TimeFactorService.calculate_expected_time(
+                cf_service, session.problem_id, session.problem_rating, user.elo,
+            )
+            time_factor = TimeFactorService.calculate_time_factor(
+                effective_time, expected_time, s_value,
+            )
+            if raw_elo_change > 0 and time_factor is not None:
+                raw_elo_change *= time_factor
 
         new_elo = round(elo_before + raw_elo_change)
         elo_change = new_elo - elo_before

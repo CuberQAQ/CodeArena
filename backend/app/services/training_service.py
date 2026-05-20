@@ -45,6 +45,7 @@ from app.services.hint_service import HintService
 from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
+from app.services.time_factor_service import TimeFactorService
 
 logger = logging.getLogger("code_arena.training")
 
@@ -797,7 +798,8 @@ class TrainingService:
             elo_result = await TrainingService._calculate_training_elo(
                 db, user, problem_rating, session_id,
                 topic_id=session.topic_id, solved=True, attempts=attempts,
-                problem_id=problem_id,
+                problem_id=problem_id, time_spent=time_spent,
+                cf_service=cf_service,
             )
             elo_change = elo_result["global_elo_change"]
         else:
@@ -1288,6 +1290,8 @@ class TrainingService:
         solved: bool,
         attempts: int = 1,
         problem_id: str | None = None,
+        time_spent: float | None = None,
+        cf_service: CFApiService | None = None,
     ) -> dict:
         """Calculate and apply Elo changes for a training problem result.
 
@@ -1300,6 +1304,8 @@ class TrainingService:
           M-Elo changes by ``training_melo_coefficient`` (default 2.0).
         - **Hint Attenuation (FR-5.3)**: Positive Elo gains are attenuated
           based on the highest hint level purchased for the problem.
+        - **Time Factor (FR-16.4)**: Positive Elo gains are multiplied by
+          the time factor when the user solved the problem.
 
         Returns a dict with keys:
             global_elo_change: int | None  -- change applied to Global Elo
@@ -1383,6 +1389,27 @@ class TrainingService:
                     melo_change = round(
                         EloService.apply_hint_attenuation(float(melo_change), hint_level)
                     )
+
+        # --- Time factor on positive gains (FR-16.4) ---
+        if (
+            solved
+            and cf_service is not None
+            and problem_id is not None
+            and problem_rating > 0
+            and time_spent is not None
+        ):
+            wa_count = max(0, attempts - 1)
+            effective_time = TimeFactorService.compute_effective_time(time_spent, wa_count)
+            expected_time = await TimeFactorService.calculate_expected_time(
+                cf_service, problem_id, problem_rating, user.elo,
+            )
+            time_factor = TimeFactorService.calculate_time_factor(
+                effective_time, expected_time, s_value,
+            )
+            if global_elo_change > 0:
+                global_elo_change = round(global_elo_change * time_factor)
+            if melo_change is not None and melo_change > 0:
+                melo_change = round(melo_change * time_factor)
 
         # --- Apply Global Elo change ---
         if global_elo_change != 0:

@@ -28,6 +28,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.services import economy_service as economy_svc_module
 from app.services import training_service as training_svc_module
+from app.services.time_factor_service import TimeFactorService
 from app.services.training_service import TrainingService
 
 # ---------------------------------------------------------------------------
@@ -182,7 +183,14 @@ async def db(async_engine):
             patch.object(training_svc_module, "EloHistory", _TestEloHistory),
             patch.object(training_svc_module, "HintService", _mock_hint_service),
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
+            patch.object(training_svc_module, "TimeFactorService") as mock_tf_cls,
         ):
+            # Neutralize time factor: always return 1.0 so existing tests pass
+            mock_tf_cls.calculate_expected_time = AsyncMock(return_value=999999.0)
+            mock_tf_cls.compute_effective_time = staticmethod(TimeFactorService.compute_effective_time)
+            mock_tf_cls.calculate_time_factor = staticmethod(
+                lambda effective_time, expected_time, s_value: 1.0
+            )
             # Also patch MEloService to use test models via the melo_svc module
             from app.services import melo_service as melo_svc_module
             with (

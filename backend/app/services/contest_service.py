@@ -41,6 +41,7 @@ from app.services.elo_service import EloService
 from app.services.hint_service import HintService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
+from app.services.time_factor_service import TimeFactorService
 
 logger = logging.getLogger("code_arena.contest")
 
@@ -494,6 +495,7 @@ class ContestService:
         db: AsyncSession,
         user: User,
         contest_id: uuid.UUID,
+        cf_service: CFApiService | None = None,
     ) -> ContestResult:
         """End a contest session and calculate results."""
         session = await ContestService._get_and_validate_session(
@@ -538,6 +540,7 @@ class ContestService:
                 user=user,
                 session=session,
                 contest_id=contest_id,
+                cf_service=cf_service,
             )
             session.elo_change = elo_change
 
@@ -727,8 +730,13 @@ class ContestService:
         db: AsyncSession,
         session: ContestSession,
         user: User,
+        cf_service: CFApiService | None = None,
     ) -> None:
         """Auto-end an expired contest using PR settlement."""
+        # Create cf_service if not provided (for non-API callers)
+        if cf_service is None:
+            cf_service = CFApiService()
+
         # Stop the background simulation if running
         await ContestSimulationService.stop_simulation(session.id)
 
@@ -762,6 +770,7 @@ class ContestService:
                 user=user,
                 session=session,
                 contest_id=session.id,
+                cf_service=cf_service,
             )
             session.elo_change = elo_change
 
@@ -980,6 +989,7 @@ class ContestService:
         user: User,
         session: ContestSession,
         contest_id: uuid.UUID,
+        cf_service: CFApiService | None = None,
     ) -> int:
         """Settle contest Elo using PR (Performance Rating) calculation.
 
@@ -1030,6 +1040,40 @@ class ContestService:
                     max_hint = max(max_hint, level)
             if max_hint > 0:
                 elo_change = round(EloService.apply_hint_attenuation(float(elo_change), max_hint))
+
+        # Apply time factor to positive gains (FR-16.4)
+        # Compute average time factor across all solved problems
+        if elo_change > 0 and cf_service is not None:
+            stored_problems = session.problems or []
+            time_factors: list[float] = []
+            for p in stored_problems:
+                pid = p.get("problem_id", "")
+                prating = p.get("rating", 0)
+                if not pid or prating <= 0:
+                    continue
+                # Check if this problem was solved
+                rec_stmt = select(ContestProblemRecord).where(
+                    ContestProblemRecord.contest_id == contest_id,
+                    ContestProblemRecord.problem_id == pid,
+                    ContestProblemRecord.solved.is_(True),
+                )
+                rec_result = await db.execute(rec_stmt)
+                record = rec_result.scalar_one_or_none()
+                if record is None or record.time_spent is None:
+                    continue
+                wa_count = max(0, record.attempts - 1)
+                effective_time = TimeFactorService.compute_effective_time(record.time_spent, wa_count)
+                expected_time = await TimeFactorService.calculate_expected_time(
+                    cf_service, pid, prating, elo_before,
+                )
+                # S-value > 0 for solved problems
+                is_first_ac = record.attempts <= 1
+                s_val = EloService.calculate_s_value(True, is_first_ac, wa_count)
+                tf = TimeFactorService.calculate_time_factor(effective_time, expected_time, s_val)
+                time_factors.append(tf)
+            if time_factors:
+                avg_time_factor = sum(time_factors) / len(time_factors)
+                elo_change = round(elo_change * avg_time_factor)
 
         user.elo = elo_before + elo_change
 

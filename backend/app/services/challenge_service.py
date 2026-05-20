@@ -37,6 +37,7 @@ from app.services.elo_service import EloService
 from app.services.match_service import MatchService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
+from app.services.time_factor_service import TimeFactorService
 
 logger = logging.getLogger("code_arena.challenge")
 
@@ -447,6 +448,7 @@ class ChallengeService:
         solved: bool,
         time_spent: float,
         attempts: int,
+        cf_service: CFApiService | None = None,
     ) -> SubmitResultResponse:
         """Submit a player's challenge result.
 
@@ -486,7 +488,7 @@ class ChallengeService:
         )
 
         if both_submitted:
-            return await _settle_challenge(db, session, submitting_user_id=user.id)
+            return await _settle_challenge(db, session, submitting_user_id=user.id, cf_service=cf_service)
 
         return SubmitResultResponse(
             session_id=session.id,
@@ -864,6 +866,7 @@ async def _settle_challenge(
     db: AsyncSession,
     session: ChallengeSession,
     submitting_user_id: uuid.UUID | None = None,
+    cf_service: CFApiService | None = None,
 ) -> SubmitResultResponse:
     """Settle a challenge after both players have submitted.
 
@@ -922,6 +925,35 @@ async def _settle_challenge(
         error_count=max(0, (session.opponent_submissions or 0) - 1) if session.opponent_solved else 0,
     )
 
+    # Calculate time factors for each player (FR-16.4)
+    time_factor_challenger: float | None = None
+    time_factor_opponent: float | None = None
+    if cf_service is not None and session.problem_id and session.problem_rating > 0:
+        # Challenger time factor
+        if session.challenger_solved and session.challenger_time is not None:
+            challenger_wa = max(0, (session.challenger_submissions or 0) - 1)
+            challenger_eff_time = TimeFactorService.compute_effective_time(
+                session.challenger_time, challenger_wa,
+            )
+            challenger_exp_time = await TimeFactorService.calculate_expected_time(
+                cf_service, session.problem_id, session.problem_rating, challenger.elo,
+            )
+            time_factor_challenger = TimeFactorService.calculate_time_factor(
+                challenger_eff_time, challenger_exp_time, s_value_challenger,
+            )
+        # Opponent time factor
+        if session.opponent_solved and session.opponent_time is not None:
+            opponent_wa = max(0, (session.opponent_submissions or 0) - 1)
+            opponent_eff_time = TimeFactorService.compute_effective_time(
+                session.opponent_time, opponent_wa,
+            )
+            opponent_exp_time = await TimeFactorService.calculate_expected_time(
+                cf_service, session.problem_id, session.problem_rating, opponent.elo,
+            )
+            time_factor_opponent = TimeFactorService.calculate_time_factor(
+                opponent_eff_time, opponent_exp_time, s_value_opponent,
+            )
+
     new_challenger_elo, new_opponent_elo, challenger_elo_change, _opponent_elo_change = (
         await EloService.process_challenge_result(
             db=db,
@@ -938,6 +970,8 @@ async def _settle_challenge(
             k_factor_config=k_factor_config,
             s_value_challenger=s_value_challenger,
             s_value_opponent=s_value_opponent,
+            time_factor_challenger=time_factor_challenger,
+            time_factor_opponent=time_factor_opponent,
         )
     )
 

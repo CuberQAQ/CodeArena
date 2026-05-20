@@ -153,10 +153,12 @@ async def end_contest(
     db: AsyncSession = Depends(get_db),
 ):
     """End a contest session and calculate results."""
+    cf_service = _get_cf_service()
     result = await ContestService.end_contest(
         db=db,
         user=current_user,
         contest_id=contest_id,
+        cf_service=cf_service,
     )
     return success_response(
         data=result.model_dump(mode="json"),

@@ -439,6 +439,8 @@ class EloService:
         k_factor_config: dict | None = None,
         s_value_challenger: float | None = None,
         s_value_opponent: float | None = None,
+        time_factor_challenger: float | None = None,
+        time_factor_opponent: float | None = None,
     ) -> tuple[int, int, int, int]:
         """Process a completed challenge and record Elo history for both players.
 
@@ -466,6 +468,10 @@ class EloService:
             formula for each player independently.  The match outcome (who
             won) is still determined by ``actual_score_a``, but the Elo
             change magnitude is governed by the S-values.
+        time_factor_challenger, time_factor_opponent :
+            Optional time factors in [0.5, 1.5] for each player.  Applied
+            multiplicatively to positive Elo changes (stacks with hint
+            attenuation).  ``None`` is treated as 1.0 (neutral).
 
         Returns
         -------
@@ -504,6 +510,13 @@ class EloService:
         if raw_change_b > 0 and hint_level_opponent > 0:
             attenuation = config.hint_attenuation.get(hint_level_opponent, 0.0)
             raw_change_b *= attenuation
+
+        # Apply time factor only to positive gains (FR-16.4)
+        if raw_change_a > 0 and time_factor_challenger is not None:
+            raw_change_a *= time_factor_challenger
+
+        if raw_change_b > 0 and time_factor_opponent is not None:
+            raw_change_b *= time_factor_opponent
 
         new_a = round(challenger_rating + raw_change_a)
         new_b = round(opponent_rating + raw_change_b)

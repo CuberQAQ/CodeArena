@@ -682,21 +682,25 @@ class SubmissionTracker:
                 await SubmissionTracker._settle_pve(
                     db, tracking, is_solved, verdict,
                     attempts=attempts, error_count=error_count, time_spent=time_spent,
+                    cf_service=cf_service,
                 )
             elif tracking.session_type == "training":
                 await SubmissionTracker._settle_training(
                     db, tracking, is_solved, verdict,
                     attempts=attempts, time_spent=time_spent,
+                    cf_service=cf_service,
                 )
             elif tracking.session_type == "contest":
                 await SubmissionTracker._settle_contest(
                     db, tracking, is_solved, verdict,
                     attempts=attempts, time_spent=time_spent,
+                    cf_service=cf_service,
                 )
             elif tracking.session_type == "pvp":
                 await SubmissionTracker._settle_pvp(
                     db, tracking, is_solved, verdict,
                     attempts=attempts, time_spent=time_spent,
+                    cf_service=cf_service,
                 )
             else:
                 logger.warning(
@@ -724,6 +728,7 @@ class SubmissionTracker:
         attempts: int = 1,
         error_count: int = 0,
         time_spent: float = 0.0,
+        cf_service: "CFApiService | None" = None,
     ) -> None:
         """Settle a PvE challenge session based on CF verdict.
 
@@ -745,6 +750,7 @@ class SubmissionTracker:
             time_spent=time_spent,
             attempts=attempts,
             error_count=error_count,
+            cf_service=cf_service,
         )
 
     @staticmethod
@@ -756,6 +762,7 @@ class SubmissionTracker:
         *,
         attempts: int = 1,
         time_spent: float = 0.0,
+        cf_service: "CFApiService | None" = None,
     ) -> None:
         """Settle a training session problem record.
 
@@ -777,6 +784,7 @@ class SubmissionTracker:
             solved=is_solved,
             attempts=attempts,
             time_spent=time_spent,
+            cf_service=cf_service,
         )
 
     @staticmethod
@@ -788,6 +796,7 @@ class SubmissionTracker:
         *,
         attempts: int = 1,
         time_spent: float = 0.0,
+        cf_service: "CFApiService | None" = None,  # noqa: ARG – kept for API consistency
     ) -> None:
         """Settle a contest problem record with accurate CF API stats."""
         from app.services.contest_service import ContestService
@@ -816,6 +825,7 @@ class SubmissionTracker:
         *,
         attempts: int = 1,
         time_spent: float = 0.0,
+        cf_service: "CFApiService | None" = None,
     ) -> None:
         """Settle a PvP challenge session with accurate CF API stats."""
         from app.services.challenge_service import ChallengeService
@@ -832,4 +842,5 @@ class SubmissionTracker:
             solved=is_solved,
             time_spent=time_spent,
             attempts=attempts,
+            cf_service=cf_service,
         )
