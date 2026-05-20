@@ -185,6 +185,9 @@ async def db(async_engine):
     _mock_hint_service.get_max_hint_level = AsyncMock(return_value=0)
 
     async with session_factory() as session:
+        # Clear the bulk-fetch cache so each test starts fresh
+        TrainingService._problems_cache.clear()
+
         with (
             patch.object(training_svc_module, "User", _TestUser),
             patch.object(training_svc_module, "TopicCategory", _TestTopicCategory),

@@ -12,6 +12,7 @@ Handles the training lifecycle:
 
 import logging
 import random
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -254,6 +255,11 @@ class TrainingService:
         result = await db.execute(stmt)
         topics = result.scalars().all()
 
+        # Bulk-fetch all CF problems once (1 API call instead of N)
+        all_problems: list[dict] = []
+        if user_id is not None and cf_service is not None:
+            all_problems = await TrainingService._get_all_problems_cached(cf_service)
+
         topic_infos: list[TopicInfo] = []
         for topic in topics:
             solved_count = 0
@@ -263,9 +269,9 @@ class TrainingService:
             cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
 
             if user_id is not None:
-                # Fetch total problems from CF API (same as get_progress)
+                # Filter pre-fetched problems by topic tags (in-memory)
                 if cf_service is not None:
-                    problems = await TrainingService._fetch_topic_problems(cf_service, cf_tags)
+                    problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
                     total_problems = len(problems)
 
                 # Count distinct solved problems for this user and topic
@@ -316,8 +322,9 @@ class TrainingService:
 
         cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
 
-        # Fetch problems from CF API
-        problems = await TrainingService._fetch_topic_problems(cf_service, cf_tags)
+        # Fetch all problems once, then filter by tags in-memory
+        all_problems = await TrainingService._get_all_problems_cached(cf_service)
+        problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
 
         # Sort by rating
         problems.sort(key=lambda p: p.get("rating") or 0)
@@ -425,8 +432,9 @@ class TrainingService:
         melo_record = await MEloService.get_or_create_melo(db, user.id, primary_tag)
         melo = melo_record.elo
 
-        # 2. Fetch problems from CF API for this topic
-        problems = await TrainingService._fetch_topic_problems(cf_service, cf_tags)
+        # 2. Fetch all problems once, then filter by tags in-memory
+        all_problems = await TrainingService._get_all_problems_cached(cf_service)
+        problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
         if not problems:
             return None
 
@@ -513,9 +521,10 @@ class TrainingService:
         if active_session is not None:
             raise BadRequestException(message="Already have an active training session for this topic")
 
-        # Fetch problems from CF API to get total count
+        # Fetch all problems once, then filter by tags in-memory
         cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
-        problems = await TrainingService._fetch_topic_problems(cf_service, cf_tags)
+        all_problems = await TrainingService._get_all_problems_cached(cf_service)
+        problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
         total_problems = len(problems)
 
         session = TrainingSession(
@@ -925,6 +934,9 @@ class TrainingService:
         result = await db.execute(stmt)
         topics = result.scalars().all()
 
+        # Bulk-fetch all CF problems once (1 API call instead of N)
+        all_problems = await TrainingService._get_all_problems_cached(cf_service)
+
         topic_progress_list: list[TopicProgress] = []
         total_solved = 0
         total_problems = 0
@@ -932,8 +944,8 @@ class TrainingService:
         for topic in topics:
             cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
 
-            # Get total problems from CF API
-            problems = await TrainingService._fetch_topic_problems(cf_service, cf_tags)
+            # Filter pre-fetched problems by topic tags (in-memory)
+            problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
             topic_total = len(problems)
 
             # Get solved count
@@ -1005,8 +1017,9 @@ class TrainingService:
 
         cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
 
-        # Get total problems from CF API
-        problems = await TrainingService._fetch_topic_problems(cf_service, cf_tags)
+        # Fetch all problems once, then filter by tags in-memory
+        all_problems = await TrainingService._get_all_problems_cached(cf_service)
+        problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
         topic_total = len(problems)
 
         # Get solved count
@@ -1055,12 +1068,76 @@ class TrainingService:
     # Helpers
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # CF API optimisation: bulk fetch + in-memory filtering
+    # ------------------------------------------------------------------
+
+    # Module-level cache for the full problemset.  Shared across all
+    # instances of TrainingService (which is stateless).  Keyed by a
+    # fixed sentinel string so there is only ever one entry.
+    _problems_cache: dict[str, tuple[float, list[dict]]] = {}
+    _CACHE_TTL = 30 * 60  # 30 minutes
+
+    @staticmethod
+    async def _get_all_problems_cached(cf_service: CFApiService) -> list[dict]:
+        """Fetch the *entire* CF problemset (no tag filter) and cache it.
+
+        Returns a list of problem dicts.  The result is cached in-memory
+        for ``_CACHE_TTL`` seconds so that repeated calls within the same
+        process (e.g. ``list_topics`` + ``get_progress`` in quick
+        succession) hit the cache instead of calling the CF API again.
+        """
+        cache_key = "__all__"
+        entry = TrainingService._problems_cache.get(cache_key)
+        if entry is not None:
+            cached_at, problems = entry
+            if time.monotonic() - cached_at < TrainingService._CACHE_TTL:
+                return problems
+
+        try:
+            data = await cf_service.get_problemset_problems(tags=None)
+            problems = data.get("problems", [])
+        except Exception:
+            logger.warning("CF API bulk fetch failed, returning cached or empty list")
+            # Return stale cache if available, otherwise empty
+            if entry is not None:
+                return entry[1]
+            return []
+
+        TrainingService._problems_cache[cache_key] = (time.monotonic(), problems)
+        return problems
+
+    @staticmethod
+    def _filter_problems_by_tags(
+        all_problems: list[dict],
+        cf_tags: list[str],
+    ) -> list[dict]:
+        """Filter a list of problem dicts to those matching **all** given tags.
+
+        This is the in-memory equivalent of calling the CF API with a
+        ``tags`` parameter.  A problem matches if every tag in *cf_tags*
+        appears in the problem's ``tags`` list.
+        """
+        if not cf_tags:
+            return all_problems
+        result = []
+        for p in all_problems:
+            p_tags = p.get("tags", [])
+            if all(tag in p_tags for tag in cf_tags):
+                result.append(p)
+        return result
+
     @staticmethod
     async def _fetch_topic_problems(
         cf_service: CFApiService,
         cf_tags: list[str],
     ) -> list[dict]:
         """Fetch problems for a topic from CF API.
+
+        .. deprecated::
+            Retained as a fallback.  The main code paths now use
+            ``_get_all_problems_cached`` + ``_filter_problems_by_tags``
+            instead, which reduces CF API calls from 12 to 1.
 
         Returns a list of problem dicts with keys:
         contestId, index, name, rating, tags
@@ -1094,11 +1171,11 @@ class TrainingService:
         if existing_rating is not None:
             return existing_rating
 
-        # Try CF API
+        # Try CF API via bulk-cached fetch
         if cf_service is not None:
             try:
-                data = await cf_service.get_problemset_problems()
-                for p in data.get("problems", []):
+                all_problems = await TrainingService._get_all_problems_cached(cf_service)
+                for p in all_problems:
                     pid = f"{p.get('contestId', '')}{p.get('index', '')}"
                     if pid == problem_id:
                         return p.get("rating", 1000)

@@ -1444,3 +1444,150 @@ P_i = base(rating) × f(wa, t)
 3. 中英文翻译文件完整，切换即时生效，偏好持久化
 4. Rating 段位名称随语言切换
 5. 现有功能无回归
+
+---
+
+## 阶段 24: Bug 修复 — 训练性能/进度/比赛布局/Radar (2026-05-20)
+
+### Task 24.1: 训练页面 CF API 调用优化
+**状态**: 🔵 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### 根因分析
+`list_topics` 对 12 个 topic 逐个串行调用 CF API（每次 2 秒 rate limit），冷启动需 24+ 秒。`get_progress` 和 `get_topic_detail` 有同类问题。
+
+#### 任务描述
+将 CF API 调用从"按 topic 逐个查询"改为"一次性获取全量题目，内存按 tags 分组"，将 12 次 CF API 调用降为 1 次。
+
+**需要修改的文件**:
+- `backend/app/services/training_service.py` — `list_topics`、`get_progress`、`get_topic_detail` 中的 `_fetch_topic_problems` 调用，改为一次性获取
+- `backend/app/services/cf_service.py` — 确认 `get_problemset_problems` 不传 tags 时返回全量题目的行为
+
+**关键实现细节**:
+1. 新增缓存方法 `_fetch_all_problems(cf_service)` — 调用 `get_problemset_problems()` 不传 tags，缓存整个结果（key 为 `"all"`），TTL 30 分钟
+2. `list_topics` 改为先获取全量题目，然后在内存中按 `PREDEFINED_TOPICS` 的 tags 过滤分组
+3. `get_progress` 和 `get_topic_detail` 同理
+4. 确保缓存 key 与旧的按 tag 缓存不冲突
+
+#### 测试要点
+- [ ] **冷启动性能**: 首次加载 training 页面，API 响应 < 5 秒
+- [ ] **缓存命中**: 第二次加载走缓存，< 1 秒
+- [ ] **题目数量正确**: 各专题的 total_problems 与之前一致
+- [ ] **进度计算正确**: solved_count / completion_rate 与之前一致
+
+---
+
+### Task 24.2: 连胜(streak)改为连续 AC 数 + 显示修复
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 根因分析
+1. streak 定义为"rating 递增连胜"，用户做题顺序不严格递增导致始终为 0
+2. 前端 `StreakEffect` 在 `streak < 1` 时返回 null，连 "0" 都不显示
+
+#### 任务描述
+将连胜定义改为"连续 AC 数"，并修复 streak=0 时的显示问题。
+
+**需要修改的文件**:
+- `backend/app/services/training_service.py` — `streak_count` 更新逻辑（约 700-729 行），移除 rating 递增判断，改为"每次 AC 时 +1，非 AC 时重置为 0"
+- `frontend/src/components/animations/StreakEffect.tsx` — 修改条件，streak=0 时也显示（显示 "0 streak" 或最低显示值）
+
+**关键实现细节**:
+1. 后端：将 `if problem_rating > last_solved_rating` 条件移除，改为"只要本次是 AC，streak_count += 1；否则 streak_count = 0"
+2. 前端：`StreakEffect` 在 `streak >= 0` 时都渲染（而非 `streak < 1` 返回 null）
+
+#### 测试要点
+- [ ] **连续 AC 触发 streak**: 连续做对 3 题，streak=3
+- [ ] **失败重置 streak**: streak=3 后做错 1 题，streak=0
+- [ ] **streak=0 显示**: 训练详情页显示 "0" 或空 streak 状态（不隐藏组件）
+- [ ] **streak=5 显示**: 连续 5 题 AC 后正确显示火焰效果
+
+---
+
+### Task 24.3: 专题进度改为 M-Elo 展示
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 根因分析
+进度分母使用 CF 全量题数（单专题上千道），用户做 10 题只有 0.x%。需改用 M-Elo 值作为专题掌握度指标。
+
+#### 任务描述
+将专题列表的进度展示从"solved_count / total_problems 百分比"改为基于 M-Elo 的掌握度展示。
+
+**需要修改的文件**:
+- `frontend/src/pages/TrainingPage.tsx` — 进度条/星星/百分比的展示逻辑
+- `backend/app/services/training_service.py` — `list_topics` 返回数据中增加 M-Elo 信息
+- `backend/app/api/v1/training.py` — 确认 list_topics 返回结构
+
+**关键实现细节**:
+1. 后端 `list_topics` 中增加 M-Elo 查询：对每个 topic 的 primary tag，查询 `user_tag_elo` 表获取 M-Elo 值和 shield 状态
+2. 返回数据中增加 `melo`、`shield_active` 字段
+3. 前端进度条改为 M-Elo 展示：
+   - 进度 = `(melo - 800) / (2200 - 800) * 100`，以 800 为基线，2200 为满（或用当前 global elo 作为参考线）
+   - 星星改为基于 M-Elo 区间：800-1000 → 1星, 1000-1200 → 2星, ...每 200 Elo 一星
+   - 保留 solved_count 作为辅助信息展示（如 "已做 15 题"）
+4. 未开始过的专题：M-Elo 为 null，显示为"未开始"状态（灰色进度条）
+
+#### 测试要点
+- [ ] **有 M-Elo 的专题**: 进度条基于 M-Elo 值正确展示
+- [ ] **未开始的专题**: 显示"未开始"状态，灰色进度条
+- [ ] **星星正确**: M-Elo 区间对应正确星数
+- [ ] **solved_count 仍展示**: 作为辅助信息可见
+
+---
+
+### Task 24.4: 比赛卡片布局对齐
+**状态**: 🔵 待开始
+**优先级**: P2
+**依赖**: 无
+
+#### 根因分析
+三个卡片（Beginner/Advanced/Master）信息行数量不同（beginner 无 min_elo 行），且无 `flex flex-col` + `mt-auto`，导致按钮高度不一致。
+
+#### 任务描述
+修复 ContestPage 三个比赛卡片的布局对齐问题。
+
+**需要修改的文件**:
+- `frontend/src/pages/ContestPage.tsx` — 卡片容器添加 flex 布局，按钮贴底
+
+**关键实现细节**:
+1. 卡片容器添加 `flex flex-col`，Button 添加 `mt-auto`
+2. 标题区域添加 `min-h` 或 `whitespace-nowrap` 防止换行不一致
+3. 统一信息行数量：beginner 也显示 "No minimum Elo" 或对应文案，保持三卡片等高
+
+#### 测试要点
+- [ ] **按钮对齐**: 三个卡片的按钮在同一水平线
+- [ ] **图标对齐**: 三个卡片的图标在同一水平线
+- [ ] **窄屏兼容**: sm 断点附近不出现布局错乱
+
+---
+
+### Task 24.5: Skill Radar 显示所有专题
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 根因分析
+后端 `get_melo` 端点只返回 `user_tag_elo` 表中已存在的记录，未练习过的专题不显示。应返回所有预定义专题的 M-Elo（未练习过的显示初始值）。
+
+#### 任务描述
+修改后端 `get_melo` 端点，确保返回所有预定义专题的 M-Elo 数据。
+
+**需要修改的文件**:
+- `backend/app/api/v1/training.py` — `get_melo` 端点（约 240-266 行）
+- `backend/app/services/melo_service.py` — 可选：新增批量 get_or_create 方法
+
+**关键实现细节**:
+1. 在 `get_melo` 中，获取 `PREDEFINED_TOPICS` 的所有 primary tag 列表
+2. 对每个 tag，调用 `MEloService.get_or_create_melo` 确保记录存在（未练习过的继承 Global Elo，shield_active=True）
+3. 返回所有专题的 M-Elo 数据
+4. 前端无需修改，已有处理 shield_active 的逻辑
+
+#### 测试要点
+- [ ] **新用户**: 只做过 1 个专题，radar 显示所有 12 个专题（11 个为初始值）
+- [ ] **有数据用户**: 所有专题显示正确的 M-Elo 值
+- [ ] **shield 状态**: 未练习过的专题 shield_active=True
+- [ ] **性能**: 不会因创建过多记录而变慢
