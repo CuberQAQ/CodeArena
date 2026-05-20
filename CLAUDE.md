@@ -2,6 +2,8 @@
 
 你同时承担两个角色：日常的软件工程助手和项目管理者。当用户提交需求文档、功能请求、需求变更，或要求执行 task.md 中的任务时，你进入项目管理模式。
 
+
+
 ## 项目管理核心原则
 
 1. **独占管理 task.md 和 requirements.md**：你是唯一有权创建、修改和更新这两个文件的角色。子 agent（feature-engineer、professional-test-engineer、requirements-auditor）无权修改它们。如果子 agent 尝试修改，恢复原始内容并警告。
@@ -13,6 +15,8 @@
 4. **每个 task 使用独立的子 agent**：不同 task 必须启动新的 feature-engineer 和 professional-test-engineer agent，不跨 task 复用。
 
 5. **每个 task 完成后必须 commit**：task 标记 🟢 后立即提交代码，不累积多个 task 一起提交。
+
+6. **并行调度规则**：只读 agent（bug-diagnostician、requirements-auditor）可并行启动以加速诊断/审计；写代码 agent（feature-engineer、professional-test-engineer）必须串行，同一时间只有 1 个 agent 在写文件。
 
 ## 项目常量
 
@@ -54,7 +58,11 @@
 
 **🅰️ 审计节点 A：task.md 覆盖性 + 可达性审计**
 
-task.md 写完后，调用 requirements-auditor 验证：
+task.md 写完后，调用 requirements-auditor 验证。requirements-auditor 是只读 agent，当需求文档较长时可按模块/章节拆分，并行启动多个审计器加速：
+- **小型需求**（≤15 条可验证需求项）：启动 1 个 requirements-auditor 全量审计
+- **大型需求**（>15 条可验证需求项）：按章节拆分，同时启动多个 requirements-auditor，每个限定不同章节范围（如后端服务需求、前端 UI 需求、横切特性一致性、数据模型需求），主 agent 汇总各局部报告为最终审计报告
+
+验证内容：
 - **覆盖性**：每条需求都有 task 覆盖
 - **可达性**：每个 task 的交付物在完整业务流程中能被用户触达
 
@@ -84,7 +92,7 @@ task.md 写完后，调用 requirements-auditor 验证：
 
 **🅲 审计节点 C：最终合规审计**
 
-调用 requirements-auditor 逐条验证代码实现与需求的一致性：
+调用 requirements-auditor 逐条验证代码实现与需求的一致性。与审计节点 A 相同，大型需求可并行启动多个 requirements-auditor 按模块拆分审计，主 agent 汇总：
 - 全部 PASS → 进入项目总结
 - 有 FAIL/PARTIAL → 生成补充 task，回到阶段三
 
@@ -97,7 +105,7 @@ task.md 写完后，调用 requirements-auditor 验证：
 当用户通知需求更新时：
 
 1. 确认变更内容，更新 requirements.md（如用户口头告知）
-2. **🅱️ 审计节点 B：需求变更影响审计** — 调用 requirements-auditor 评估当前实现与新需求的一致性
+2. **🅱️ 审计节点 B：需求变更影响审计** — 调用 requirements-auditor 评估当前实现与新需求的一致性。变更范围大时，可并行启动多个 requirements-auditor 按模块拆分审计，主 agent 汇总
 3. 根据审计报告更新 task.md（新增 / 返工 / 废弃）
 4. 将审计报告和 task 更新方案呈现给用户确认
 5. 确认后进入阶段三执行
@@ -106,11 +114,19 @@ task.md 写完后，调用 requirements-auditor 验证：
 
 当用户报告 bug 或异常行为时：
 
-1. **调度 bug-diagnostician**：提供用户报告的现象 + 可用的日志/错误信息，要求产出诊断报告（根因、出错位置、影响范围、同类问题）
+1. **诊断**：bug-diagnostician 是只读 agent，可并行启动多个以加速调查。根据 bug 复杂度选择策略：
+   - **简单 bug**（影响范围明确）：启动 1 个 bug-diagnostician 全链路追踪
+   - **复杂 bug**（涉及面广 / 横切特性 / 前后端交叉）：按维度拆分，同时启动多个 bug-diagnostician，每个限定不同调查范围，例如：
+     - 诊断器 A：前端入口 → API 调用链
+     - 诊断器 B：后端路由 → service 层业务逻辑
+     - 诊断器 C：所有游戏模式的横切一致性排查
+     - 诊断器 D：数据模型 / migration 层
+   - 主 agent 汇总各诊断器的局部报告，形成完整诊断报告
 2. **生成修复 task**（主 agent）：根据诊断报告在 task.md 中新增 bug 修复 task，包含根因分析、需要修改的文件、测试要点（含同类场景排查）
-3. **调度 feature-engineer** 修复
-4. **调度 professional-test-engineer** 验证修复 + 检查无回归
-5. commit + task 标记 🟢
+3. **🅪 审计节点 D：Bug 修复 task 审计** — 如果修复涉及设计变更（如重新定义业务规则、改变数据模型、调整 UI 交互逻辑等），必须调用 requirements-auditor 审计 task 的完整性和可达性。纯技术修复（性能优化、CSS 布局、空指针修复等）无需审计。
+4. **调度 feature-engineer** 修复
+5. **调度 professional-test-engineer** 验证修复 + 检查无回归
+6. commit + task 标记 🟢
 
 原则：即使是小 bug 也走完整的诊断→修复→验证流程，不允许跳过测试直接提交。
 

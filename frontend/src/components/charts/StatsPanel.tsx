@@ -6,6 +6,7 @@ import {
   Pie,
 } from "recharts";
 import { TrendingUp, Swords, Coins, Target } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { DashboardStats, DifficultyDistribution } from "@/types";
 
 interface StatsPanelProps {
@@ -51,17 +52,19 @@ function DifficultyTooltip({
   active?: boolean;
   payload?: Array<{ value: number; payload: DifficultyDistribution }>;
 }) {
+  const { t } = useTranslation("dashboard");
   if (!active || !payload?.length) return null;
   const item = payload[0].payload;
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
       <p className="text-sm font-semibold text-foreground">{item.difficulty}</p>
-      <p className="text-xs text-muted-foreground">{item.count} solved</p>
+      <p className="text-xs text-muted-foreground">{t("charts.solved", { count: item.count })}</p>
     </div>
   );
 }
 
 export function StatsPanel({ stats }: StatsPanelProps) {
+  const { t } = useTranslation("dashboard");
   const hasDistribution = stats.difficulty_distribution.length > 0;
   const hasChallenges = stats.challenge_total > 0;
 
@@ -71,26 +74,26 @@ export function StatsPanel({ stats }: StatsPanelProps) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={Target}
-          label="Total Solved"
+          label={t("charts.totalSolved")}
           value={stats.total_solved}
           color="#6366f1"
         />
         <StatCard
           icon={Swords}
-          label="Challenge Win Rate"
+          label={t("charts.challengeWinRate")}
           value={hasChallenges ? `${stats.challenge_win_rate.toFixed(1)}%` : "-"}
-          sub={hasChallenges ? `${stats.challenge_wins}W / ${stats.challenge_total} total` : undefined}
+          sub={hasChallenges ? t("charts.winRateSub", { wins: stats.challenge_wins, total: stats.challenge_total }) : undefined}
           color="#ef4444"
         />
         <StatCard
           icon={TrendingUp}
-          label="Tokens Earned"
+          label={t("charts.tokensEarned")}
           value={stats.total_tokens_earned}
           color="#22c55e"
         />
         <StatCard
           icon={Coins}
-          label="Tokens Spent"
+          label={t("charts.tokensSpent")}
           value={stats.total_tokens_spent}
           color="#f59e0b"
         />
@@ -99,7 +102,7 @@ export function StatsPanel({ stats }: StatsPanelProps) {
       {/* Difficulty distribution chart */}
       {hasDistribution && (
         <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Difficulty Distribution</h3>
+          <h3 className="mb-4 text-sm font-semibold text-foreground">{t("charts.difficultyDistribution")}</h3>
           <div className="flex flex-col items-center gap-4 sm:flex-row">
             <div className="w-full sm:w-1/2">
               <ResponsiveContainer width="100%" height={180}>
@@ -144,7 +147,7 @@ export function StatsPanel({ stats }: StatsPanelProps) {
       {/* Empty state when no data at all */}
       {!hasDistribution && !hasChallenges && stats.total_solved === 0 && (
         <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          No statistics yet. Start solving problems to see your progress!
+          {t("charts.noStats")}
         </div>
       )}
     </div>

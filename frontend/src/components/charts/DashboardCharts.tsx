@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import api from "@/services/api";
 import { getMElo } from "@/services/trainingApi";
@@ -13,7 +14,7 @@ import type {
   DashboardStats,
   DifficultyDistribution,
 } from "@/types";
-import { getRatingColor, getDifficultyLabel } from "@/utils";
+import { getRatingColor, getDifficultyLabelKey } from "@/utils";
 import { EloChart } from "./EloChart";
 import { RadarChart } from "./RadarChart";
 import { PPChart } from "./PPChart";
@@ -23,11 +24,6 @@ import { StatsPanel } from "./StatsPanel";
 // Data transformation helpers
 // ---------------------------------------------------------------------------
 
-/** Build radar data from M-Elo API response.
- *
- * Each tag becomes a radar dimension with its elo value.
- * Tags with shield_active (no first AC yet) show the inherited global_elo.
- */
 function buildRadarDataFromMElo(
   melos: { tag: string; elo: number; shield_active: boolean }[],
   globalElo: number,
@@ -49,6 +45,7 @@ function buildStatsFromTransactions(
   transactions: TransactionItem[],
   userSolved: number,
   radarData: RadarDataPoint[],
+  t: (key: string) => string,
 ): DashboardStats {
   let totalEarned = 0;
   let totalSpent = 0;
@@ -58,24 +55,18 @@ function buildStatsFromTransactions(
     else totalSpent += Math.abs(tx.amount);
   }
 
-  // Estimate difficulty distribution from radar data (training solved per topic)
-  // We do not have per-problem rating data from the transaction list, so we show a
-  // simplified view based on total solved. A richer API endpoint would provide
-  // actual per-difficulty counts.
-  // Distribution weights for chart display (sum to 1.0).
-  // Each entry uses a representative rating that maps to a CF tier via getDifficultyLabel.
   const _DIST_WEIGHTS = [
-    { rating: 800, weight: 0.35 },   // Newbie
-    { rating: 1300, weight: 0.25 },  // Pupil
-    { rating: 1500, weight: 0.20 },  // Specialist
-    { rating: 1800, weight: 0.12 },  // Expert
-    { rating: 2000, weight: 0.06 },  // Candidate Master
-    { rating: 2600, weight: 0.02 },  // International Grandmaster
+    { rating: 800, weight: 0.35 },
+    { rating: 1300, weight: 0.25 },
+    { rating: 1500, weight: 0.20 },
+    { rating: 1800, weight: 0.12 },
+    { rating: 2000, weight: 0.06 },
+    { rating: 2600, weight: 0.02 },
   ];
 
   const difficultyDistribution: DifficultyDistribution[] = radarData.length > 0
     ? _DIST_WEIGHTS.map(({ rating, weight }) => ({
-        difficulty: getDifficultyLabel(rating),
+        difficulty: t(getDifficultyLabelKey(rating)),
         count: Math.round(userSolved * weight),
         color: getRatingColor(rating),
       }))
@@ -98,6 +89,7 @@ function buildStatsFromTransactions(
 
 export function DashboardCharts() {
   const { user } = useAuthStore();
+  const { t } = useTranslation("dashboard");
   const [loading, setLoading] = useState(true);
   const [eloData, setEloData] = useState<EloHistoryPoint[]>([]);
   const [radarData, setRadarData] = useState<RadarDataPoint[]>([]);
@@ -137,12 +129,12 @@ export function DashboardCharts() {
         const transactions = txResult?.items ?? [];
         // Estimate total solved from M-Elo submissions
         const totalSolved = meloResult.melos.reduce((sum, m) => sum + m.total_submissions, 0);
-        setStats(buildStatsFromTransactions(transactions, totalSolved, radar));
+        setStats(buildStatsFromTransactions(transactions, totalSolved, radar, t));
       } else {
         // No M-Elo data - use transactions-only stats
         const transactions = txResult?.items ?? [];
         setRadarData([]);
-        setStats(buildStatsFromTransactions(transactions, 0, []));
+        setStats(buildStatsFromTransactions(transactions, 0, [], t));
       }
 
       // Elo history
@@ -163,7 +155,7 @@ export function DashboardCharts() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, t]);
 
   useEffect(() => {
     fetchAllData();
@@ -172,7 +164,7 @@ export function DashboardCharts() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">Analytics</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t("analytics")}</h2>
         <Button
           variant="ghost"
           size="xs"

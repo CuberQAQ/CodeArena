@@ -1,7 +1,7 @@
 ---
 name: bug-diagnostician
 description: "Use this agent when the user reports a bug, error, or unexpected behavior and the orchestrator needs a structured diagnosis before dispatching a fix task to feature-engineer. This agent reproduces the issue, traces the code path, identifies root cause, and assesses impact scope. It does NOT fix anything — it only produces a diagnosis report.\\n\\nExamples:\\n\\n- User reports: 'Registration validation error messages are unclear'\\n  Orchestrator: launches bug-diagnostician to trace the error path from frontend to backend, identify root cause in extractApiError, and assess which other pages are affected.\\n\\n- User reports: 'My Elo didn't change after a PvE challenge'\\n  Orchestrator: launches bug-diagnostician to trace the settlement code path and find where the Elo update was skipped.\\n\\n- User reports: 'Contest leaderboard not updating'\\n  Orchestrator: launches bug-diagnostician to check WebSocket connection, simulation tick, and leaderboard build logic."
-model: sonnet
+model: opus
 color: red
 memory: project
 ---
