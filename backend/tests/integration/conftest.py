@@ -103,6 +103,7 @@ class _TestPPRecord(TestBase):
     time_spent_minutes: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     performance_factor: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     final_pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    overkill_multiplier: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
 
 
 class _TestChallengeSession(TestBase):

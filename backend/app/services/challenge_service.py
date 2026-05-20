@@ -732,6 +732,10 @@ async def _settle_challenge(
         )
     )
 
+    # Save pre-settlement Elo for PP overkill calculation
+    challenger_elo_original = challenger.elo
+    opponent_elo_original = opponent.elo
+
     # Update user Elo
     challenger.elo = new_challenger_elo
     opponent.elo = new_opponent_elo
@@ -836,7 +840,7 @@ async def _settle_challenge(
             problem_rating=session.problem_rating,
             wa_count=challenger_wa,
             time_spent=challenger_time_min,
-            user_elo=new_challenger_elo,
+            user_elo=challenger_elo_original,
         )
 
     if session.opponent_solved and session.problem_rating > 0:
@@ -849,7 +853,7 @@ async def _settle_challenge(
             problem_rating=session.problem_rating,
             wa_count=opponent_wa,
             time_spent=opponent_time_min,
-            user_elo=new_opponent_elo,
+            user_elo=opponent_elo_original,
         )
 
     # Update session
