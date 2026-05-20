@@ -55,31 +55,56 @@ def postgres_container():
 @pytest.fixture(scope="session")
 def postgres_url(postgres_container):
     """Build an asyncpg-compatible connection URL from the container."""
-    # PostgresContainer gives us a psycopg2-style URL like:
-    #   postgresql://test:test@localhost:54321/test
+    # PostgresContainer gives us a URL like one of:
+    #   postgresql://test:test@localhost:54321/test           (older versions)
+    #   postgresql+psycopg2://test:test@localhost:54321/test  (newer versions)
     # We need asyncpg: postgresql+asyncpg://...
     raw = postgres_container.get_connection_url()
-    # Replace the driver: postgresql:// -> postgresql+asyncpg://
-    return raw.replace("postgresql://", "postgresql+asyncpg://", 1) if raw.startswith("postgresql://") else raw
+    # Strip any existing driver, then add asyncpg
+    if "+asyncpg://" in raw:
+        return raw
+    scheme_end = raw.index("://")
+    return "postgresql+asyncpg://" + raw[scheme_end + 3:]
 
 
 @pytest.fixture(scope="session")
 def _run_migrations(postgres_url):
     """Run Alembic migrations against the test PostgreSQL container.
 
-    Uses the synchronous psycopg2 driver because Alembic's default migration
-    runner is synchronous.  The URL is rewritten from +asyncpg to +psycopg2.
+    The migration env.py uses async_engine_from_config which requires an async
+    driver, so we keep the +asyncpg URL as-is.
+
+    Two issues must be handled:
+    1. env.py overrides sqlalchemy.url with settings.DATABASE_URL, so we must
+       patch settings to use the testcontainer URL.
+    2. The testcontainer PG does not support SSL, but asyncpg 0.31 defaults
+       ssl='prefer' for TCP connections.  We patch asyncpg.connect to inject
+       ssl=None so the migration engine can connect.
     """
-    # Convert async URL to sync for Alembic
-    sync_url = postgres_url.replace("+asyncpg", "+psycopg2")
+    import asyncpg as _asyncpg
+    from unittest.mock import patch as _patch
 
-    from alembic import command
-    from alembic.config import Config as AlembicConfig
+    _orig_connect = _asyncpg.connect
 
-    alembic_cfg = AlembicConfig()
-    alembic_cfg.set_main_option("script_location", "migrations")
-    alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
-    command.upgrade(alembic_cfg, "head")
+    async def _patched_connect(*args, **kwargs):
+        kwargs.setdefault("ssl", None)
+        return await _orig_connect(*args, **kwargs)
+
+    # Patch settings.DATABASE_URL so env.py's config.set_main_option uses the
+    # testcontainer URL instead of the production default.
+    from app.core import config as _config_mod
+
+    with (
+        _patch.object(_config_mod.settings, "DATABASE_URL", postgres_url),
+        _patch.object(_asyncpg, "connect", _patched_connect),
+    ):
+        from alembic import command
+        from alembic.config import Config as AlembicConfig
+
+        alembic_cfg = AlembicConfig()
+        alembic_cfg.set_main_option("script_location", "migrations")
+        alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
+        command.upgrade(alembic_cfg, "head")
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +115,13 @@ def _run_migrations(postgres_url):
 @pytest_asyncio.fixture
 async def db_engine(postgres_url, _run_migrations):
     """Create an async engine connected to the real PostgreSQL test container."""
-    engine = create_async_engine(postgres_url, echo=False, pool_size=5, max_overflow=0)
+    engine = create_async_engine(
+        postgres_url,
+        echo=False,
+        pool_size=5,
+        max_overflow=0,
+        connect_args={"ssl": None},  # testcontainers PG does not support SSL
+    )
     yield engine
     await engine.dispose()
 
