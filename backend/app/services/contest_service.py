@@ -38,6 +38,7 @@ from app.services.cf_api_service import CFApiService
 from app.services.config_service import ConfigService
 from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
+from app.services.hint_service import HintService
 from app.services.pp_service import PPService
 
 logger = logging.getLogger("code_arena.contest")
@@ -971,6 +972,20 @@ class ContestService:
         # Elo change = K * (PR - current_elo) / 400
         elo_before = user.elo
         elo_change = round(k * (pr - elo_before) / 400)
+
+        # Apply hint attenuation to positive gains (FR-5.3)
+        # Check max hint level across all problems attempted in this contest
+        if elo_change > 0:
+            stored_problems = session.problems or []
+            max_hint = 0
+            for p in stored_problems:
+                pid = p.get("problem_id", "")
+                if pid:
+                    level = await HintService.get_max_hint_level(db, user.id, pid)
+                    max_hint = max(max_hint, level)
+            if max_hint > 0:
+                elo_change = round(EloService.apply_hint_attenuation(float(elo_change), max_hint))
+
         user.elo = elo_before + elo_change
 
         # Record Elo history with reason "contest_pr"

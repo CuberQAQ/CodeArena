@@ -180,6 +180,10 @@ async def db(async_engine):
         return_value=_FakeMEloRecord(elo=1200, tag="dp"),
     )
 
+    # Mock HintService so _calculate_training_elo doesn't query hint_purchases
+    _mock_hint_service = AsyncMock()
+    _mock_hint_service.get_max_hint_level = AsyncMock(return_value=0)
+
     async with session_factory() as session:
         with (
             patch.object(training_svc_module, "User", _TestUser),
@@ -189,6 +193,7 @@ async def db(async_engine):
             patch.object(training_svc_module, "TokenTransaction", _TestTokenTransaction),
             patch.object(training_svc_module, "EloHistory", _TestEloHistory),
             patch.object(training_svc_module, "MEloService", _mock_melo_service),
+            patch.object(training_svc_module, "HintService", _mock_hint_service),
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
         ):
             yield session

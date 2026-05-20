@@ -18,6 +18,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.services import economy_service as economy_svc_module
 from app.services import pve_challenge_service as pve_svc_module
+from app.services.hint_service import HintService as _RealHintService
 from app.services.pp_service import PPService as _RealPPService
 from app.services.pve_challenge_service import PvEChallengeService
 
@@ -168,6 +169,10 @@ async def db(async_engine):
         """No-op Elo history recording for tests."""
         pass
 
+    async def _mock_get_max_hint_level(db, user_id, problem_id):
+        """No hints purchased in tests -- return 0."""
+        return 0
+
     async with session_factory() as session:
         with (
             patch.object(pve_svc_module, "PvEChallengeSession", _TestPvESession),
@@ -177,6 +182,7 @@ async def db(async_engine):
             patch.object(pve_svc_module, "ConfigService") as mock_config_cls,
             patch.object(pve_svc_module, "EloService") as mock_elo_cls,
             patch.object(pve_svc_module, "PPService") as mock_pp_cls,
+            patch.object(pve_svc_module, "HintService") as mock_hint_cls,
         ):
             mock_config_cls.get_config = _mock_get_config
             mock_elo_cls.get_submission_count = _mock_get_submission_count
@@ -191,10 +197,14 @@ async def db(async_engine):
             )
             mock_elo_cls.calculate_k_factor = staticmethod(lambda *args, **kwargs: 32.0)
             mock_elo_cls.record_elo_history = _mock_record_elo_history
+            mock_elo_cls.apply_hint_attenuation = staticmethod(
+                lambda elo_change, hint_level, config=None: elo_change
+            )
             mock_pp_cls.record_pp = _mock_record_pp
             mock_pp_cls.calculate_overkill_multiplier = staticmethod(
                 _RealPPService.calculate_overkill_multiplier
             )
+            mock_hint_cls.get_max_hint_level = _mock_get_max_hint_level
 
             yield session
 

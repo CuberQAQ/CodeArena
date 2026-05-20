@@ -957,3 +957,121 @@ P_i = base(rating) × f(wa, t)
 
 #### 修复方式
 统一 `_TAG_HINTS` 的键名格式，使其与 `generate_hint` 的查找逻辑一致（空格替换为下划线后的格式）。
+
+---
+
+## 阶段 22: 审计节点 C 修复（第二轮）
+
+> 审计发现 4 个 FAIL + 3 个 PARTIAL 问题，以下为补充修复任务。
+
+### Task 22.1: Elo 衰减串联到 PvE/训练/比赛模式
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+需求 FR-5.3 要求购买提示后 AC 的 Elo 涨幅按提示深度衰减（Level 1: ×0.75, Level 2: ×0.50, Level 3: ×0.25）。当前只有 PvP 挑战模式（`challenge_service.py`）正确串联了提示衰减。PvE 挑战、训练、比赛三个模式结算时完全忽略提示使用情况。
+
+**需要修改的文件**:
+- `backend/app/services/pve_challenge_service.py` — `submit_result` 方法：在计算 Elo 变化后，查询 `HintService.get_max_hint_level(db, user.id, session.problem_id)`，然后对正向 Elo 变化调用 `EloService.apply_hint_attenuation(elo_change, hint_level)`
+- `backend/app/services/training_service.py` — `_calculate_training_elo` 方法：同样查询提示层级，对正向 `global_elo_change` 和 `melo_change` 分别应用衰减
+- `backend/app/services/contest_service.py` — `_settle_with_pr` 方法：查询提示层级并应用衰减。需先确定如何追踪比赛中每道题的提示使用（当前比赛模型无 hint 字段，可通过 `HintService.get_max_hint_level` 按题目查询）
+
+**关键实现细节**:
+1. `EloService.apply_hint_attenuation(elo_change, hint_level)` 是现有的静态方法，仅对正向变化应用衰减
+2. `HintService.get_max_hint_level(db, user_id, problem_id)` 查询 hint_purchases 表获取最高提示层级
+3. 衰减系数从 `EloConfig.hint_attenuation` 读取：`{1: 0.75, 2: 0.50, 3: 0.25}`
+4. PP 不受影响（已在各模式的 PP 计算中验证独立）
+5. 负向 Elo 变化不受衰减影响
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **PvE - 1 级提示衰减**: 使用 1 级提示 AC，Elo 增益 ×0.75
+- [ ] **PvE - 2 级提示衰减**: 使用 2 级提示 AC，Elo 增益 ×0.50
+- [ ] **PvE - 3 级提示衰减**: 使用 3 级提示 AC，Elo 增益 ×0.25
+- [ ] **PvE - 无提示**: 不使用提示 AC，Elo 正常计算
+- [ ] **PvE - 负值不衰减**: 失败时 Elo 扣分不受提示影响
+- [ ] **训练 - 提示衰减**: 训练中使用提示 AC，Global Elo 和 M-Elo 的正向变化均受衰减
+- [ ] **训练 - 护盾优先**: 护盾激活时失败不扣分（衰减逻辑不影响护盾保护）
+- [ ] **比赛 - 提示衰减**: 比赛中 AC 使用了提示的题目，正向 Elo 变化受衰减
+- [ ] **比赛 - PR 公式正确**: 衰减后 Elo 变化仍为 K × (PR - elo) / 400 × 衰减系数
+- [ ] **所有模式 PP 不受影响**: 提示使用不影响 PP 计算
+
+#### 验收标准
+1. PvE、训练、比赛三个模式均正确应用提示 Elo 衰减
+2. 仅正向 Elo 变化受衰减
+3. PP 不受影响
+4. 护盾逻辑不受衰减干扰
+
+---
+
+### Task 22.2: PvE 非 AC 尝试代币发放
+**状态**: 🔲 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+需求 FR-5.1 要求"所有有效尝试均需产出一定比例的系统代币"。当前 PvE 挑战模式 `submit_result` 中代币奖励被 `if solved` 条件包裹，非 AC 的有效尝试不获得任何代币。其他模式（PvP 挑战、训练、比赛）已正确发放尝试代币。
+
+**需要修改的文件**:
+- `backend/app/services/pve_challenge_service.py` — `submit_result` 方法中代币发放逻辑
+
+**关键实现细节**:
+1. 当前代币逻辑在 `if solved and session.problem_rating > 0:` 块内
+2. 需增加 `else` 分支：非 AC 时调用 `economy_svc.attempt_tokens_for_rating(session.problem_rating)` 获取尝试代币
+3. 通过 `economy_svc.award_tokens` 发放（自动受每日上限约束）
+4. 交易类型建议用 `"pve_attempt_reward"`
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **非 AC 尝试代币**: PvE 挑战未 AC 但有提交，获得对应难度尝试代币（灰2/绿3/蓝4/紫5/黄红6）
+- [ ] **AC 代币不变**: AC 时代币奖励（含时间加成）不变
+- [ ] **0 提交退出不发放**: quit_challenge 中 0 提交退出不获得代币
+- [ ] **每日上限生效**: 尝试代币受每日 120 上限约束
+- [ ] **交易记录**: 尝试代币记录到 token_transactions
+
+#### 验收标准
+1. PvE 非 AC 有效尝试正确发放尝试代币
+2. 分级精确值与需求一致
+3. 每日上限生效
+
+---
+
+### Task 22.3: 比赛超时自动结束阶梯惩罚 + 成就 Elo 基准修复
+**状态**: 🔲 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+两个中等问题合并修复：
+
+**问题 A — 比赛超时缺少阶梯惩罚**: `contest_service.py` 的 `end_contest`（手动结束）正确实现了 0 提交/1-2 提交/3+ 提交的分支逻辑，但 `_auto_end_expired`（超时自动结束）对所有 `submissions > 0` 统一走 PR 结算，缺少 1-2 次提交的惩罚分支（-5 到 -10）。
+
+**问题 B — 成就检测使用结算后 Elo**: PvE `submit_result` 和 PvP `_settle_challenge` 中，成就检测（`AchievementService.check_overkill`）在 `user.elo` 已被更新后调用，传入的是结算后的 Elo 值而非原始 Elo。这导致越级检测的基准 Elo 不一致。
+
+**需要修改的文件**:
+- `backend/app/services/contest_service.py` — `_auto_end_expired` 增加阶梯惩罚分支
+- `backend/app/services/pve_challenge_service.py` — 成就检测使用原始 Elo
+- `backend/app/services/challenge_service.py` — 成就检测使用原始 Elo
+
+**关键实现细节**:
+
+问题 A：
+- `_auto_end_expired` 中 `if session.submissions == 0: elo_change = 0` 已存在
+- 需增加 `elif session.submissions <= 2: elo_change = random.randint(-10, -5)` 并记录 EloHistory
+- `else:` 保持现有 PR 结算
+
+问题 B：
+- PvE: 在 `user.elo = new_elo` 之前保存 `original_elo = user.elo`，将 `original_elo` 传给 `check_overkill`
+- PvP: 在 `_settle_challenge` 中保存 `original_challenger_elo = challenger.elo`，将原始值传给 `check_overkill`
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **超时 0 提交**: 比赛超时且 0 提交，Elo 不变
+- [ ] **超时 1-2 提交**: 比赛超时且 1-2 次提交，Elo 降 5~10
+- [ ] **超时 3+ 提交**: 比赛超时且 3+ 次提交，走 PR 结算
+- [ ] **手动结束不受影响**: `end_contest` 逻辑不变
+- [ ] **PvE 成就原始 Elo**: 越级检测使用结算前 Elo
+- [ ] **PvP 成就原始 Elo**: 越级检测使用结算前 Elo
+
+#### 验收标准
+1. 比赛超时自动结束的阶梯惩罚与手动结束一致
+2. 成就检测使用原始 Elo 值
+3. 现有功能无回归

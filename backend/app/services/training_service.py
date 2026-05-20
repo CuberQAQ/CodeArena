@@ -40,6 +40,7 @@ from app.services import config_service as config_svc
 from app.services import economy_service as economy_svc
 from app.services.achievement_service import AchievementService
 from app.services.cf_api_service import CFApiService
+from app.services.hint_service import HintService
 from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
 
@@ -740,6 +741,7 @@ class TrainingService:
             elo_result = await TrainingService._calculate_training_elo(
                 db, user, problem_rating, session_id,
                 topic_id=session.topic_id, solved=True, attempts=attempts,
+                problem_id=problem_id,
             )
             elo_change = elo_result["global_elo_change"]
         else:
@@ -751,6 +753,7 @@ class TrainingService:
             elo_result = await TrainingService._calculate_training_elo(
                 db, user, problem_rating, session_id,
                 topic_id=session.topic_id, solved=False, attempts=attempts,
+                problem_id=problem_id,
             )
             elo_change = elo_result["global_elo_change"]
 
@@ -1126,6 +1129,7 @@ class TrainingService:
         topic_id: uuid.UUID,
         solved: bool,
         attempts: int = 1,
+        problem_id: str | None = None,
     ) -> dict:
         """Calculate and apply Elo changes for a training problem result.
 
@@ -1136,6 +1140,8 @@ class TrainingService:
         - **Weight Polarization (Task 16.3)**: On AC, Global Elo changes are
           multiplied by ``training_global_coefficient`` (default 0.5) and
           M-Elo changes by ``training_melo_coefficient`` (default 2.0).
+        - **Hint Attenuation (FR-5.3)**: Positive Elo gains are attenuated
+          based on the highest hint level purchased for the problem.
 
         Returns a dict with keys:
             global_elo_change: int | None  -- change applied to Global Elo
@@ -1200,6 +1206,27 @@ class TrainingService:
         global_expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - user.elo) / 400.0))
         global_elo_change = round(k_train * (s_value - global_expected) * global_coeff)
 
+        # --- M-Elo calculation ---
+        melo_change: int | None = None
+        if primary_tag:
+            melo_record = await MEloService.get_or_create_melo(db, user.id, primary_tag)
+            melo_expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - melo_record.elo) / 400.0))
+            melo_change = round(k_train * (s_value - melo_expected) * melo_coeff)
+
+        # --- Hint attenuation on positive gains (FR-5.3) ---
+        if problem_id is not None:
+            hint_level = await HintService.get_max_hint_level(db, user.id, problem_id)
+            if hint_level > 0:
+                if global_elo_change > 0:
+                    global_elo_change = round(
+                        EloService.apply_hint_attenuation(float(global_elo_change), hint_level)
+                    )
+                if melo_change is not None and melo_change > 0:
+                    melo_change = round(
+                        EloService.apply_hint_attenuation(float(melo_change), hint_level)
+                    )
+
+        # --- Apply Global Elo change ---
         if global_elo_change != 0:
             elo_before = user.elo
             user.elo += global_elo_change
@@ -1214,15 +1241,9 @@ class TrainingService:
             )
             db.add(history)
 
-        # --- M-Elo calculation ---
-        melo_change: int | None = None
-        if primary_tag:
-            melo_record = await MEloService.get_or_create_melo(db, user.id, primary_tag)
-            melo_expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - melo_record.elo) / 400.0))
-            melo_change = round(k_train * (s_value - melo_expected) * melo_coeff)
-
-            if melo_change != 0:
-                await MEloService.update_melo(db, user.id, primary_tag, melo_change)
+        # --- Apply M-Elo change ---
+        if melo_change is not None and melo_change != 0:
+            await MEloService.update_melo(db, user.id, primary_tag, melo_change)
 
         return {
             "global_elo_change": global_elo_change,

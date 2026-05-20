@@ -19,6 +19,7 @@ from app.core.exceptions import BadRequestException, ForbiddenException, NotFoun
 from app.services import contest_service as contest_svc_module
 from app.services import economy_service as economy_svc_module
 from app.services import elo_service as elo_svc_module
+from app.services import hint_service as hint_svc_module
 from app.services import pp_service as pp_svc_module
 from app.services.config_service import ConfigService
 from app.services.contest_service import TIER_CONFIGS, ContestService, _tokens_for_rating
@@ -175,6 +176,10 @@ async def db(async_engine):
         """Return 0 submissions for tests (no PP records table)."""
         return 0
 
+    async def _mock_get_max_hint_level(db, user_id, problem_id):
+        """No hints purchased in tests -- return 0."""
+        return 0
+
     async with session_factory() as session:
         # Patch all model references in contest_service module
         with (
@@ -194,6 +199,8 @@ async def db(async_engine):
             # Patch ConfigService and EloService.get_submission_count for K-factor
             patch.object(ConfigService, "get_config", _mock_get_config),
             patch.object(EloService, "get_submission_count", _mock_get_submission_count),
+            # Patch HintService.get_max_hint_level for hint attenuation
+            patch.object(hint_svc_module.HintService, "get_max_hint_level", _mock_get_max_hint_level),
             # Patch ContestSimulationService to avoid DB operations on contest_bots table
             patch.object(ContestSimulationService, "generate_bots", AsyncMock(return_value=[])),
             patch.object(ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),

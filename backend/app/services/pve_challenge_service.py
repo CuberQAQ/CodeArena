@@ -33,6 +33,7 @@ from app.services.achievement_service import AchievementService
 from app.services.cf_api_service import CFApiService
 from app.services.config_service import ConfigService
 from app.services.elo_service import EloReason, EloService
+from app.services.hint_service import HintService
 from app.services.pp_service import PPService
 
 logger = logging.getLogger("code_arena.pve_challenge")
@@ -169,8 +170,15 @@ class PvEChallengeService:
         expected_score = EloService.calculate_expected_score(user.elo, session.problem_rating)
 
         # Elo change: R_new = R_old + K * (S - E)
-        new_elo = round(user.elo + k_factor * (s_value - expected_score))
-        elo_change = new_elo - user.elo
+        elo_before = user.elo
+        raw_elo_change = k_factor * (s_value - expected_score)
+
+        # Apply hint attenuation to positive gains
+        hint_level = await HintService.get_max_hint_level(db, user.id, session.problem_id)
+        raw_elo_change = EloService.apply_hint_attenuation(raw_elo_change, hint_level)
+
+        new_elo = round(elo_before + raw_elo_change)
+        elo_change = new_elo - elo_before
 
         # PP calculation and recording (only on solve)
         pp_change = None
