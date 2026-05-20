@@ -700,8 +700,8 @@ class TestSubmitProblem:
 
 class TestStreakMechanism:
     @patch.object(training_svc_module, "PPService")
-    async def test_streak_increases_on_higher_rating(self, mock_pp_cls, db, cf_mock):
-        """Solving a harder problem after an easier one triggers a streak."""
+    async def test_streak_increases_on_every_ac(self, mock_pp_cls, db, cf_mock):
+        """Every AC increments the consecutive AC count (streak)."""
         mock_pp_cls.record_pp = AsyncMock()
         mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
@@ -719,26 +719,26 @@ class TestStreakMechanism:
         db.add(session)
         await db.flush()
 
-        # Solve 800 rating problem
+        # Solve 800 rating problem -> streak = 1 (first AC)
         result1 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="100A", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
-        assert result1.streak_count == 0  # First solve, no streak yet
+        assert result1.streak_count == 1  # First AC
 
-        # Solve 1200 rating problem (higher) -> streak
+        # Solve 1200 rating problem -> streak = 2 (consecutive AC)
         result2 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="200B", solved=True, attempts=1, time_spent=120.0,
             cf_service=cf_mock,
         )
-        assert result2.streak_count == 1  # Streak = 1
-        assert result2.streak_tokens == 1 * 5  # 1 * 5 = 5 tokens
+        assert result2.streak_count == 2  # Second consecutive AC
+        assert result2.streak_tokens == 2 * 5  # 2 * 5 = 10 tokens
 
     @patch.object(training_svc_module, "PPService")
-    async def test_streak_resets_on_lower_rating(self, mock_pp_cls, db, cf_mock):
-        """Solving an easier problem after a harder one breaks the streak."""
+    async def test_streak_resets_on_failure(self, mock_pp_cls, db, cf_mock):
+        """Failing a problem resets the streak to 0."""
         mock_pp_cls.record_pp = AsyncMock()
         mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
@@ -756,24 +756,25 @@ class TestStreakMechanism:
         db.add(session)
         await db.flush()
 
-        # Solve 1200 rating problem
-        await TrainingService.submit_problem(
+        # Solve 1200 rating problem -> streak = 1
+        r1 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="200B", solved=True, attempts=1, time_spent=120.0,
             cf_service=cf_mock,
         )
+        assert r1.streak_count == 1
 
-        # Solve 800 rating problem (lower) -> streak breaks
-        result = await TrainingService.submit_problem(
+        # Fail 800 rating problem -> streak resets to 0
+        r2 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+            problem_id="100A", solved=False, attempts=3, time_spent=60.0,
             cf_service=cf_mock,
         )
-        assert result.streak_count == 0
+        assert r2.streak_count == 0
 
     @patch.object(training_svc_module, "PPService")
-    async def test_streak_resets_on_same_rating(self, mock_pp_cls, db, cf_mock):
-        """Solving same rating problem breaks the streak (not >)."""
+    async def test_streak_continues_on_same_rating(self, mock_pp_cls, db, cf_mock):
+        """Solving same rating problem continues the streak (every AC counts)."""
         mock_pp_cls.record_pp = AsyncMock()
         mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
@@ -799,20 +800,21 @@ class TestStreakMechanism:
             ],
         }
 
-        # Solve first 800
-        await TrainingService.submit_problem(
+        # Solve first 800 -> streak = 1
+        r1 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="100A", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
+        assert r1.streak_count == 1
 
-        # Solve another 800 (same rating) -> streak breaks
-        result = await TrainingService.submit_problem(
+        # Solve another 800 (same rating) -> streak continues = 2
+        r2 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="100B", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
-        assert result.streak_count == 0
+        assert r2.streak_count == 2
 
     @patch.object(training_svc_module, "PPService")
     async def test_streak_token_cap(self, mock_pp_cls, db, cf_mock):
@@ -834,7 +836,7 @@ class TestStreakMechanism:
         db.add(session)
         await db.flush()
 
-        # Solve in increasing order: 800 -> 1200 -> 1600 -> 2000 -> 2400
+        # Solve all 5 problems -> streak = 5 (every AC counts)
         problems = [
             ("100A", 800), ("200B", 1200), ("300C", 1600), ("400D", 2000), ("500E", 2400),
         ]
@@ -847,15 +849,13 @@ class TestStreakMechanism:
             )
             total_streak_tokens = result.total_streak_tokens
 
-        # Maximum streak = 4 (4 increases: 1200>800, 1600>1200, 2000>1600, 2400>2000)
-        # Streak bonus at streak=4 would be 4*5=20, which is under the 50 cap
-        # Total accumulated should not exceed 50
+        # Streak goes 1, 2, 3, 4, 5. Bonuses: 5, 10, 15, 20, 25 = 75 potential
+        # But capped at 50 per session
         assert total_streak_tokens <= 50
 
     @patch.object(training_svc_module, "PPService")
-    async def test_streak_interrupted_by_unsolved(self, mock_pp_cls, db, cf_mock):
-        """Submitting an unsolved result doesn't affect streak directly,
-        but the next solved with non-increasing rating breaks it."""
+    async def test_streak_interrupted_by_failure_resets_and_rebuilds(self, mock_pp_cls, db, cf_mock):
+        """A failure resets streak to 0, next AC starts a new streak at 1."""
         mock_pp_cls.record_pp = AsyncMock()
         mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
@@ -873,28 +873,29 @@ class TestStreakMechanism:
         db.add(session)
         await db.flush()
 
-        # Solve 800
-        await TrainingService.submit_problem(
+        # Solve 800 -> streak = 1
+        r1 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="100A", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
+        assert r1.streak_count == 1
 
-        # Fail on 1200
-        await TrainingService.submit_problem(
+        # Fail on 1200 -> streak resets to 0
+        r2 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="200B", solved=False, attempts=3, time_spent=120.0,
             cf_service=cf_mock,
         )
+        assert r2.streak_count == 0
 
-        # Now solve 1200 (same as failed) - streak should still check last solved
+        # Now solve 1200 (same as failed) -> new streak starts at 1
         result = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="200B", solved=True, attempts=5, time_spent=180.0,
             cf_service=cf_mock,
         )
-        # 1200 > 800 (last solved rating) so streak should continue
-        assert result.streak_count >= 1
+        assert result.streak_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -1220,35 +1221,36 @@ class TestTokenRewards:
         db.add(session)
         await db.flush()
 
-        # Solve 800 -> no streak
+        # Solve 800 -> streak=1, bonus=5
         r1 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="100A", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
-        assert r1.streak_tokens == 0
+        assert r1.streak_tokens == 5
+        assert r1.streak_count == 1
 
-        # Solve 1200 -> streak=1, bonus=5
+        # Solve 1200 -> streak=2, bonus=10
         r2 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="200B", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
-        assert r2.streak_tokens == 5
-        assert r2.streak_count == 1
+        assert r2.streak_tokens == 10
+        assert r2.streak_count == 2
 
-        # Solve 1600 -> streak=2, bonus=10
+        # Solve 1600 -> streak=3, bonus=15
         r3 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="300C", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
-        assert r3.streak_tokens == 10
-        assert r3.streak_count == 2
+        assert r3.streak_tokens == 15
+        assert r3.streak_count == 3
 
-        # Total: 10 + 20 + 35 + 5 + 10 = 80 tokens (AC: 10+20+35=65, streak: 5+10=15)
+        # Total: AC tokens (10+20+35=65) + streak (5+10+15=30) = 95 tokens
         await db.refresh(user)
-        assert user.tokens == 10 + 20 + 35 + 5 + 10
+        assert user.tokens == 10 + 20 + 35 + 5 + 10 + 15
 
 
 # ---------------------------------------------------------------------------
@@ -1361,34 +1363,35 @@ class TestFullTrainingFlow:
         session_id = session_info.id
 
         # Step 5: Solve problems in increasing difficulty
-        # Solve 800 rating
+        # Solve 800 rating -> streak=1
         r1 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session_id,
             problem_id="100A", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r1.solved is True
+        assert r1.streak_count == 1
 
-        # Solve 1200 rating (streak)
+        # Solve 1200 rating -> streak=2
         r2 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session_id,
             problem_id="200B", solved=True, attempts=1, time_spent=120.0,
             cf_service=cf_mock,
         )
-        assert r2.streak_count == 1
+        assert r2.streak_count == 2
 
-        # Solve 1600 rating (streak continues)
+        # Solve 1600 rating -> streak=3
         r3 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session_id,
             problem_id="300C", solved=True, attempts=1, time_spent=180.0,
             cf_service=cf_mock,
         )
-        assert r3.streak_count == 2
+        assert r3.streak_count == 3
 
         # Step 6: Check session status
         status = await TrainingService.get_session_status(db, user, session_id)
         assert status.problems_solved == 3
-        assert status.streak_count == 2
+        assert status.streak_count == 3
 
         # Step 7: Abandon
         abandon_result = await TrainingService.abandon_training(db, user, session_id)
@@ -1546,15 +1549,16 @@ class TestEdgeCases:
             cf_service=cf_mock,
         )
         assert r1.solved is True
+        assert r1.streak_count == 1  # First AC
 
-        # Solve 800 after 2000 (decreasing) -> streak breaks
+        # Solve 800 after 2000 (decreasing) -> streak continues (every AC counts)
         r2 = await TrainingService.submit_problem(
             db=db, user=user, session_id=session.id,
             problem_id="100A", solved=True, attempts=1, time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r2.solved is True
-        assert r2.streak_count == 0  # Streak broken (800 < 2000)
+        assert r2.streak_count == 2  # Second consecutive AC
 
 
 # ---------------------------------------------------------------------------

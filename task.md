@@ -1450,7 +1450,7 @@ P_i = base(rating) × f(wa, t)
 ## 阶段 24: Bug 修复 — 训练性能/进度/比赛布局/Radar (2026-05-20)
 
 ### Task 24.1: 训练页面 CF API 调用优化
-**状态**: 🔵 待开始
+**状态**: 🟢 已完成
 **优先级**: P0
 **依赖**: 无
 
@@ -1495,8 +1495,10 @@ P_i = base(rating) × f(wa, t)
 - `frontend/src/components/animations/StreakEffect.tsx` — 修改条件，streak=0 时也显示（显示 "0 streak" 或最低显示值）
 
 **关键实现细节**:
-1. 后端：将 `if problem_rating > last_solved_rating` 条件移除，改为"只要本次是 AC，streak_count += 1；否则 streak_count = 0"
-2. 前端：`StreakEffect` 在 `streak >= 0` 时都渲染（而非 `streak < 1` 返回 null）
+1. 后端：在 `solved=True` 分支内移除 `problem_rating > last_solved_rating` 条件，改为 `session.streak_count += 1`
+2. 后端：在 `solved=False` 分支内新增 `session.streak_count = 0`（当前代码未在失败时重置 streak）
+3. 前端：`StreakEffect` 在 `streak >= 0` 时都渲染（而非 `streak < 1` 返回 null）
+4. 此 streak 变更仅影响专题训练模式，其他模式无 streak 概念
 
 #### 测试要点
 - [ ] **连续 AC 触发 streak**: 连续做对 3 题，streak=3
@@ -1519,17 +1521,19 @@ P_i = base(rating) × f(wa, t)
 
 **需要修改的文件**:
 - `frontend/src/pages/TrainingPage.tsx` — 进度条/星星/百分比的展示逻辑
-- `backend/app/services/training_service.py` — `list_topics` 返回数据中增加 M-Elo 信息
+- `backend/app/services/training_service.py` — `list_topics` 返回数据中增加 M-Elo 信息，修改 `calculate_stars` 函数
+- `backend/app/schemas/training.py` — TopicInfo schema 增加 M-Elo 字段
 - `backend/app/api/v1/training.py` — 确认 list_topics 返回结构
 
 **关键实现细节**:
-1. 后端 `list_topics` 中增加 M-Elo 查询：对每个 topic 的 primary tag，查询 `user_tag_elo` 表获取 M-Elo 值和 shield 状态
+1. 后端 `list_topics` 中增加 M-Elo 查询：使用批量查询 `get_all_melos` 一次获取所有 M-Elo 记录，然后在内存中按 tag 映射到各 topic（避免 12 次单独查询）
 2. 返回数据中增加 `melo`、`shield_active` 字段
-3. 前端进度条改为 M-Elo 展示：
-   - 进度 = `(melo - 800) / (2200 - 800) * 100`，以 800 为基线，2200 为满（或用当前 global elo 作为参考线）
-   - 星星改为基于 M-Elo 区间：800-1000 → 1星, 1000-1200 → 2星, ...每 200 Elo 一星
+3. 新增 `calculate_stars_from_melo(melo)` 函数替代旧的 `calculate_stars(completion_rate)`，星星基于 M-Elo 区间：800-1000 → 1星, 1000-1200 → 2星, ...每 200 Elo 一星，共 7 星上限 (≥2200)
+4. **所有 4 处 `calculate_stars` 调用点**均需切换到 `calculate_stars_from_melo`：`list_topics`(291行)、`get_topic_detail`(377行)、`get_progress`(988行)、`get_topic_progress`(1062行)
+5. 前端进度条改为 M-Elo 展示：
+   - 进度 = `max(0, min(100, (melo - 800) / (2200 - 800) * 100))`，以 800 为基线，2200 为满
    - 保留 solved_count 作为辅助信息展示（如 "已做 15 题"）
-4. 未开始过的专题：M-Elo 为 null，显示为"未开始"状态（灰色进度条）
+6. `shield_active=True` 的专题：M-Elo 等于继承的 Global Elo，显示为"未开始"状态（灰色进度条）
 
 #### 测试要点
 - [ ] **有 M-Elo 的专题**: 进度条基于 M-Elo 值正确展示

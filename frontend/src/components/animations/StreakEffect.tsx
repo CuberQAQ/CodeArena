@@ -11,10 +11,28 @@ interface StreakEffectProps {
 
 /**
  * Streak counter with escalation effects.
- * - Shows "x2", "x3", "x4" etc with increasing visual intensity.
+ * - Shows flame icon + streak count (including 0).
+ * - Increasing visual intensity at higher streaks.
  * - Screen edge glow at higher streaks.
+ * - Flame icon is grey when streak is 0.
  * - Respects prefers-reduced-motion.
  */
+
+/** Inline SVG flame icon. */
+function FlameIcon({ color }: { color: string }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      style={{ color }}
+    >
+      <path d="M12 23c-3.866 0-7-2.686-7-6 0-2.418 1.272-4.336 2.38-5.843a1 1 0 0 1 1.74.265C9.674 12.91 10.664 14 12 14c-1.05-1.5-.5-3.5.5-5 1-1.5 2-2.5 2-4.5 0-.5-.1-1-.3-1.5a1 1 0 0 1 1.3-1.2C18.7 3.3 22 7.3 22 11.5 22 19 17 23 12 23z" />
+    </svg>
+  );
+}
+
 export function StreakEffect({ streak, className = "" }: StreakEffectProps) {
   const [prevStreak, setPrevStreak] = useState(0);
   const [pulsing, setPulsing] = useState(false);
@@ -28,8 +46,6 @@ export function StreakEffect({ streak, className = "" }: StreakEffectProps) {
     }
     setPrevStreak(streak);
   }, [streak, prevStreak]);
-
-  if (streak < 1) return null;
 
   const intensity = Math.min(streak, 6);
   const glowColor =
@@ -71,8 +87,19 @@ export function StreakEffect({ streak, className = "" }: StreakEffectProps) {
                   opacity: { duration: 0.2 },
                 }
           }
-          className={`flex items-center justify-center gap-2 ${className}`}
+          className={`flex items-center justify-center gap-1 ${className}`}
         >
+          <FlameIcon
+            color={
+              streak < 2
+                ? "#888"
+                : intensity <= 2
+                  ? "#FFBB00"
+                  : intensity <= 4
+                    ? "#FF8C00"
+                    : "#FF3C00"
+            }
+          />
           <span
             className="text-xl font-black tabular-nums"
             style={{

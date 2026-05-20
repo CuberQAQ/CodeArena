@@ -692,50 +692,31 @@ class TrainingService:
             # Update session solved count
             session.problems_solved += 1
 
-            # Streak logic: check if this problem's rating > last solved rating
-            last_rating_stmt = (
-                select(TrainingProblemRecord.problem_rating)
-                .where(
-                    TrainingProblemRecord.session_id == session_id,
-                    TrainingProblemRecord.solved.is_(True),
-                    TrainingProblemRecord.problem_id != problem_id,
-                )
-                .order_by(TrainingProblemRecord.solved_at.desc())
-                .limit(1)
+            # Streak logic: every AC increments streak (consecutive AC count)
+            session.streak_count += 1
+            streak_count = session.streak_count
+            # Calculate new streak bonus
+            # Streak bonus = streak_count * 5, but capped at 50 per session
+            # We need to check how much streak bonus has already been given
+            streak_tokens_stmt = select(
+                func.coalesce(func.sum(TokenTransaction.amount), 0)
+            ).where(
+                TokenTransaction.user_id == user.id,
+                TokenTransaction.type == "streak_bonus",
+                TokenTransaction.reference_id == session_id,
             )
-            last_rating_result = await db.execute(last_rating_stmt)
-            last_solved_rating = last_rating_result.scalar_one_or_none()
+            prev_streak_result = await db.execute(streak_tokens_stmt)
+            prev_streak_tokens = prev_streak_result.scalar_one()
 
-            if last_solved_rating is not None and problem_rating > last_solved_rating:
-                # Streak continues
-                session.streak_count += 1
-                streak_count = session.streak_count
-                # Calculate new streak bonus
-                # Streak bonus = streak_count * 5, but capped at 50 per session
-                # We need to check how much streak bonus has already been given
-                streak_tokens_stmt = select(
-                    func.coalesce(func.sum(TokenTransaction.amount), 0)
-                ).where(
-                    TokenTransaction.user_id == user.id,
-                    TokenTransaction.type == "streak_bonus",
-                    TokenTransaction.reference_id == session_id,
-                )
-                prev_streak_result = await db.execute(streak_tokens_stmt)
-                prev_streak_tokens = prev_streak_result.scalar_one()
+            potential_bonus = streak_count * _STREAK_BONUS_PER_COUNT
+            remaining_cap = max(0, _STREAK_TOKEN_CAP - prev_streak_tokens)
+            streak_tokens = min(potential_bonus, remaining_cap)
 
-                potential_bonus = streak_count * _STREAK_BONUS_PER_COUNT
-                remaining_cap = max(0, _STREAK_TOKEN_CAP - prev_streak_tokens)
-                streak_tokens = min(potential_bonus, remaining_cap)
-
-                if streak_tokens > 0:
-                    tokens_earned += streak_tokens
-                    total_streak_tokens = prev_streak_tokens + streak_tokens
-                else:
-                    total_streak_tokens = prev_streak_tokens
+            if streak_tokens > 0:
+                tokens_earned += streak_tokens
+                total_streak_tokens = prev_streak_tokens + streak_tokens
             else:
-                # Streak broken
-                session.streak_count = 0
-                streak_count = 0
+                total_streak_tokens = prev_streak_tokens
 
             # Record PP
             wa_count = max(0, attempts - 1)
@@ -761,6 +742,10 @@ class TrainingService:
             # Attempt reward (smaller than AC)
             attempt_tokens = _attempt_tokens_for_rating(problem_rating)
             tokens_earned += attempt_tokens
+
+            # Reset streak on non-AC (consecutive AC count broken)
+            session.streak_count = 0
+            streak_count = 0
 
             # Check shield for failure -- no Elo deduction if shield is active
             elo_result = await TrainingService._calculate_training_elo(
