@@ -702,6 +702,12 @@ class SubmissionTracker:
                     attempts=attempts, time_spent=time_spent,
                     cf_service=cf_service,
                 )
+            elif tracking.session_type == "free_play":
+                await SubmissionTracker._settle_free_play(
+                    db, tracking, is_solved, verdict,
+                    attempts=attempts, error_count=error_count, time_spent=time_spent,
+                    cf_service=cf_service,
+                )
             else:
                 logger.warning(
                     "Unknown session type %s for tracking %s",
@@ -842,5 +848,36 @@ class SubmissionTracker:
             solved=is_solved,
             time_spent=time_spent,
             attempts=attempts,
+            cf_service=cf_service,
+        )
+
+    @staticmethod
+    async def _settle_free_play(
+        db: AsyncSession,
+        tracking: SubmissionTracking,
+        is_solved: bool,
+        verdict: str,
+        *,
+        attempts: int = 1,
+        error_count: int = 0,
+        time_spent: float = 0.0,
+        cf_service: "CFApiService | None" = None,
+    ) -> None:
+        """Settle a Free Play session based on CF verdict."""
+        from app.services.free_play_service import FreePlayService
+
+        user = await db.get(User, tracking.user_id)
+        if user is None:
+            logger.error("User %s not found for Free Play settlement", tracking.user_id)
+            return
+
+        await FreePlayService.submit_result(
+            db=db,
+            user=user,
+            session_id=tracking.session_id,
+            solved=is_solved,
+            time_spent=time_spent,
+            attempts=attempts,
+            error_count=error_count,
             cf_service=cf_service,
         )

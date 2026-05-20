@@ -4,6 +4,7 @@ from app.models.contest_bot import ContestBot
 from app.models.contest_problem_record import ContestProblemRecord
 from app.models.contest_session import ContestSession
 from app.models.elo_history import EloHistory
+from app.models.free_play_session import FreePlaySession
 from app.models.hint_purchase import HintPurchase
 from app.models.pve_challenge_session import PvEChallengeSession
 from app.models.pp_record import PPRecord
@@ -33,5 +34,6 @@ __all__ = [
     "SystemConfig",
     "UserTagElo",
     "PvEChallengeSession",
+    "FreePlaySession",
     "SubmissionTracking",
 ]

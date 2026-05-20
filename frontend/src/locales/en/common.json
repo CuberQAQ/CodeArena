@@ -39,5 +39,12 @@
   "waitingForCFResult": "Waiting for Codeforces result...",
   "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result.",
   "unsavedChanges_one": "{{count}} unsaved change",
-  "unsavedChanges_other": "{{count}} unsaved changes"
+  "unsavedChanges_other": "{{count}} unsaved changes",
+  "problemViewer": {
+    "loadingProblem": "Loading problem...",
+    "loadFailed": "Failed to load problem. You can open it on Codeforces instead.",
+    "openOnCodeforces": "Open problem on Codeforces",
+    "openInNewTab": "Open problem in a new tab",
+    "iframeNote": "If the problem does not display correctly, please open it on Codeforces."
+  }
 }
