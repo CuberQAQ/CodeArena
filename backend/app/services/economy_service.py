@@ -282,8 +282,8 @@ async def get_daily_status(db: AsyncSession, user: User) -> dict:
     """Return detailed daily earning status."""
     await check_and_reset_daily(db, user)
 
-    # Summarise today's transactions by type
-    today = date.today()
+    # Summarise today's transactions by type (UTC date to match DB timestamps)
+    today = datetime.now(UTC).date()
     today_start = datetime(today.year, today.month, today.day, tzinfo=UTC)
 
     stmt = (

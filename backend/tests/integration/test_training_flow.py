@@ -64,7 +64,7 @@ class TestTrainingStart:
 
         result = await TrainingService.start_training(db_session, user, topic.id, cf)
         assert result.status == "active"
-        assert str(result.topic_id) == topic.id
+        assert result.topic_id == topic.id
         assert result.topic_name == topic.name
         assert result.problems_solved == 0
 

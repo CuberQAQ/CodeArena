@@ -264,7 +264,7 @@ class TestDailyReset:
 
     async def test_reset_with_naive_datetime(self, db):
         """Handle naive datetime (treated as UTC)."""
-        yesterday_naive = datetime.now() - timedelta(days=1)
+        yesterday_naive = datetime.now(UTC) - timedelta(days=1)
         user = _make_user(daily_tokens_earned=80, daily_tokens_reset_at=yesterday_naive)
         db.add(user)
         await db.flush()
@@ -594,7 +594,7 @@ class TestGetDailyStatus:
         assert data["daily_tokens_earned"] == 0
         assert data["daily_cap"] == DAILY_TOKEN_CAP
         assert data["daily_remaining"] == DAILY_TOKEN_CAP
-        assert data["date"] == date.today().isoformat()
+        assert data["date"] == datetime.now(UTC).date().isoformat()
 
     async def test_daily_status_with_earnings(self, db):
         now = datetime.now(UTC)
