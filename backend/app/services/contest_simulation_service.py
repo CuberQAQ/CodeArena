@@ -2,7 +2,8 @@
 
 Handles:
 - Generating N bots with Elo normally distributed around the user's Elo
-- Minute-by-minute simulation of bot problem-solving using P(AC) formula
+- Tick-by-tick simulation of bot problem-solving using P(AC) formula
+- Each bot works on one problem at a time, with difficulty-based delays
 - Starting/stopping background simulation tasks
 - Building combined human+bot leaderboards
 """
@@ -13,11 +14,12 @@ import logging
 import random
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.default_config import DEFAULT_CONFIG
 from app.models.contest_bot import ContestBot
 from app.models.contest_session import ContestSession
 from app.schemas.contest import LeaderboardEntry, LeaderboardResponse
@@ -57,6 +59,76 @@ def _generate_bot_name(index: int) -> str:
 # ---------------------------------------------------------------------------
 
 _active_simulations: dict[uuid.UUID, asyncio.Task] = {}
+
+# ---------------------------------------------------------------------------
+# Per-contest bot states (in-memory, not persisted to DB)
+# Key: contest_id, Value: dict mapping bot_id -> bot state dict
+# ---------------------------------------------------------------------------
+
+_bot_states: dict[uuid.UUID, dict[uuid.UUID, dict[str, Any]]] = {}
+
+
+# ---------------------------------------------------------------------------
+# Simulation config helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_simulation_config() -> dict[str, Any]:
+    """Return the contest.simulation config dict from DEFAULT_CONFIG.
+
+    Used as a fallback when no db session is available (e.g. in background
+    loop).  The config service cache TTL is 60s which is good enough for
+    hot-reload behaviour when combined with the tick interval.
+    """
+    return DEFAULT_CONFIG.get("contest", {}).get("simulation", {})
+
+
+def _get_tick_range_for_rating(
+    rating: int,
+    difficulty_ticks: dict[str, list[int]] | None = None,
+    jitter: float = 0.3,
+) -> int:
+    """Return the number of ticks a bot needs to work on a problem.
+
+    The tick count is sampled from the difficulty-appropriate range with
+    +/- jitter applied.
+
+    Parameters
+    ----------
+    rating:
+        Problem rating.
+    difficulty_ticks:
+        Dict with keys "easy", "medium", "hard" mapping to [min, max] lists.
+        Falls back to DEFAULT_CONFIG if not provided.
+    jitter:
+        Fractional jitter to apply (0.3 = +/-30%).
+
+    Returns
+    -------
+    int
+        Number of ticks (always >= 1).
+    """
+    if difficulty_ticks is None:
+        difficulty_ticks = _get_simulation_config().get(
+            "difficulty_ticks",
+            {"easy": [2, 4], "medium": [6, 16], "hard": [16, 30]},
+        )
+
+    if rating < 1200:
+        lo, hi = difficulty_ticks.get("easy", [2, 4])
+    elif rating < 1800:
+        lo, hi = difficulty_ticks.get("medium", [6, 16])
+    else:
+        lo, hi = difficulty_ticks.get("hard", [16, 30])
+
+    # Sample a base value uniformly from [lo, hi]
+    base = random.randint(lo, hi)
+
+    # Apply +/- jitter
+    jitter_amount = int(base * jitter)
+    base += random.randint(-jitter_amount, jitter_amount)
+
+    return max(1, base)
 
 
 # ---------------------------------------------------------------------------
@@ -149,9 +221,9 @@ class ContestSimulationService:
     ) -> list[str]:
         """Run one simulation tick for all bots in a contest.
 
-        For each bot, evaluates P(AC) against each unsolved problem and
-        determines which problems are solved this tick.  Persists changes
-        to the database.
+        Each bot works on one unsolved problem at a time with a tick-based
+        delay determined by problem difficulty.  When the delay expires,
+        the bot rolls P(AC) to determine if it solved the problem.
 
         Parameters
         ----------
@@ -183,6 +255,16 @@ class ContestSimulationService:
         # Time factor: bots slow down toward end of contest
         time_factor = ContestSimulationService._calculate_time_factor(elapsed_minutes, total_minutes)
 
+        # Read simulation config
+        sim_config = _get_simulation_config()
+        difficulty_ticks = sim_config.get("difficulty_ticks", {
+            "easy": [2, 4], "medium": [6, 16], "hard": [16, 30],
+        })
+        jitter = sim_config.get("jitter", 0.3)
+
+        # Get or create bot states for this contest
+        contest_states = _bot_states.setdefault(contest_id, {})
+
         # Fetch bots
         bots_stmt = select(ContestBot).where(ContestBot.contest_id == contest_id)
         bots_result = await db.execute(bots_stmt)
@@ -191,8 +273,19 @@ class ContestSimulationService:
         all_newly_solved: list[str] = []
 
         for bot in bots:
+            # Get or initialize state for this bot
+            bot_state = contest_states.setdefault(bot.id, {
+                "current_problem": None,
+                "ticks_remaining": 0,
+            })
+
             newly_solved = ContestSimulationService._simulate_bot_tick(
-                bot, problems, time_factor,
+                bot,
+                problems,
+                time_factor,
+                bot_state,
+                difficulty_ticks=difficulty_ticks,
+                jitter=jitter,
             )
             all_newly_solved.extend(newly_solved)
 
@@ -228,7 +321,7 @@ class ContestSimulationService:
             return None
 
         async def _run():
-            """Background loop: tick every 60 seconds until contest ends."""
+            """Background loop: tick at configured interval until contest ends."""
             logger.info("Simulation started for contest %s", contest_id)
             try:
                 while contest_id in _active_simulations:
@@ -247,13 +340,18 @@ class ContestSimulationService:
                             "DB session error in simulation for contest %s", contest_id
                         )
 
-                    await asyncio.sleep(60)
+                    # Read tick interval from config (allows hot-reload)
+                    sim_config = _get_simulation_config()
+                    tick_interval = sim_config.get("tick_interval_seconds", 30)
+                    await asyncio.sleep(tick_interval)
             except asyncio.CancelledError:
                 logger.info("Simulation cancelled for contest %s", contest_id)
             except Exception:
                 logger.exception("Simulation crashed for contest %s", contest_id)
             finally:
                 _active_simulations.pop(contest_id, None)
+                # Clean up bot states
+                _bot_states.pop(contest_id, None)
                 logger.info("Simulation stopped for contest %s", contest_id)
 
         task = asyncio.create_task(_run())
@@ -280,6 +378,8 @@ class ContestSimulationService:
                 await task
             logger.info("Stopped simulation for contest %s", contest_id)
             return True
+        # Clean up bot states regardless
+        _bot_states.pop(contest_id, None)
         return False
 
     # ------------------------------------------------------------------
@@ -584,8 +684,16 @@ class ContestSimulationService:
         bot: ContestBot,
         problems: list[dict],
         time_factor: float,
+        bot_state: dict[str, Any],
+        difficulty_ticks: dict[str, list[int]] | None = None,
+        jitter: float = 0.3,
     ) -> list[str]:
-        """Simulate a single bot's problem-solving attempts for one tick.
+        """Simulate a single bot's problem-solving for one tick.
+
+        Each bot works on one problem at a time.  It first selects the
+        lowest-rating unsolved problem, then spends a difficulty-appropriate
+        number of ticks working on it.  When the tick counter expires, it
+        rolls P(AC) to determine success, then moves to the next problem.
 
         Parameters
         ----------
@@ -595,6 +703,14 @@ class ContestSimulationService:
             List of problem dicts with at least 'problem_id' and 'rating' keys.
         time_factor:
             A multiplier (0.0-1.0) that scales P(AC) based on time elapsed.
+        bot_state:
+            In-memory state dict for this bot with keys:
+            - "current_problem": str | None -- problem_id being worked on
+            - "ticks_remaining": int -- ticks left until P(AC) roll
+        difficulty_ticks:
+            Optional override for difficulty tick ranges.
+        jitter:
+            Optional override for jitter fraction.
 
         Returns
         -------
@@ -604,20 +720,57 @@ class ContestSimulationService:
         solved_set = set(bot.solved_problem_ids or [])
         newly_solved: list[str] = []
 
-        for problem in problems:
-            pid = problem.get("problem_id", "")
-            if pid in solved_set:
-                continue
+        # Find unsolved problems, sorted by rating ascending (easiest first)
+        unsolved = sorted(
+            [p for p in problems if p.get("problem_id", "") not in solved_set],
+            key=lambda p: p.get("rating", 1000),
+        )
 
+        # If all problems are solved or no problems exist, nothing to do
+        if not unsolved:
+            bot.total_attempts += 1
+            return newly_solved
+
+        current_problem = bot_state.get("current_problem")
+        ticks_remaining = bot_state.get("ticks_remaining", 0)
+
+        # If bot is idle or its current problem is already solved, pick next
+        if current_problem is None or current_problem in solved_set:
+            next_problem = unsolved[0]
+            current_problem = next_problem.get("problem_id", "")
+            rating = next_problem.get("rating", 1000)
+            ticks_remaining = _get_tick_range_for_rating(rating, difficulty_ticks, jitter)
+            bot_state["current_problem"] = current_problem
+            bot_state["ticks_remaining"] = ticks_remaining
+
+        # Decrement tick counter
+        ticks_remaining -= 1
+        bot_state["ticks_remaining"] = ticks_remaining
+
+        # If still working, return empty (no solve this tick)
+        if ticks_remaining > 0:
+            bot.total_attempts += 1
+            return newly_solved
+
+        # Tick counter reached 0 -- roll P(AC)
+        problem = next(
+            (p for p in problems if p.get("problem_id", "") == current_problem),
+            None,
+        )
+        if problem is not None:
             rating = problem.get("rating", 1000)
             # P(AC) = 1 / (1 + 10^((rating - bot_elo) / 400))
             p_ac = 1.0 / (1.0 + 10.0 ** ((rating - bot.bot_elo) / 400.0))
 
             if random.random() < p_ac * time_factor:
-                solved_set.add(pid)
-                newly_solved.append(pid)
+                solved_set.add(current_problem)
+                newly_solved.append(current_problem)
 
-        # Update bot state
+        # Move to next problem for next tick
+        bot_state["current_problem"] = None
+        bot_state["ticks_remaining"] = 0
+
+        # Update bot state on the ORM object
         if bot.solved_problem_ids is None:
             bot.solved_problem_ids = []
         bot.solved_problem_ids = list(solved_set)

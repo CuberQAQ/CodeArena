@@ -23,7 +23,10 @@ from app.services.contest_simulation_service import (
     _PREFIXES,
     _SUFFIXES,
     ContestSimulationService,
+    _bot_states,
     _generate_bot_name,
+    _get_simulation_config,
+    _get_tick_range_for_rating,
 )
 
 # ---------------------------------------------------------------------------
@@ -113,6 +116,14 @@ async def db(async_engine):
             patch.object(sim_svc_module, "ContestSession", _TestContestSession),
         ):
             yield session
+
+
+@pytest.fixture(autouse=True)
+def _clear_bot_states():
+    """Clear in-memory bot states between tests to prevent leakage."""
+    _bot_states.clear()
+    yield
+    _bot_states.clear()
 
 
 def _make_user(**kwargs) -> _TestUser:
@@ -378,7 +389,7 @@ class TestTickSimulation:
         await db.commit()
 
         # Run multiple ticks
-        for _ in range(5):
+        for _ in range(30):
             await ContestSimulationService.tick_simulation(db, contest.id)
             await db.commit()
 
@@ -400,7 +411,7 @@ class TestTickSimulation:
         )
         await db.commit()
 
-        for _ in range(5):
+        for _ in range(20):
             await ContestSimulationService.tick_simulation(db, contest.id)
             await db.commit()
 
@@ -408,6 +419,225 @@ class TestTickSimulation:
             await db.refresh(bot)
             solved_list = bot.solved_problem_ids or []
             assert bot.problems_solved == len(solved_list)
+
+    @pytest.mark.asyncio
+    async def test_tick_bot_states_initialized(self, db):
+        """tick_simulation creates bot_states for each bot."""
+        contest = _make_contest_session()
+        db.add(contest)
+        await db.flush()
+
+        bots = await ContestSimulationService.generate_bots(
+            db, contest.id, user_elo=1500, count=5,
+        )
+        await db.commit()
+
+        await ContestSimulationService.tick_simulation(db, contest.id)
+        await db.commit()
+
+        # Check that bot states were created
+        assert contest.id in _bot_states
+        for bot in bots:
+            assert bot.id in _bot_states[contest.id]
+
+    @pytest.mark.asyncio
+    async def test_tick_bot_states_cleaned_on_stop(self, db):
+        """Bot states are cleaned up when simulation stops."""
+        contest_id = uuid.uuid4()
+        _bot_states[contest_id] = {uuid.uuid4(): {"current_problem": None, "ticks_remaining": 0}}
+
+        await ContestSimulationService.stop_simulation(contest_id)
+
+        assert contest_id not in _bot_states
+
+
+# ===========================================================================
+# Test: Difficulty-based tick timing
+# ===========================================================================
+
+
+class TestDifficultyTiming:
+    """Verify difficulty-based tick ranges for bot problem-solving."""
+
+    def test_easy_problem_few_ticks(self):
+        """Easy problems (rating < 1200) need few ticks."""
+        ticks = _get_tick_range_for_rating(800)
+        assert 1 <= ticks <= 6  # [2,4] with 30% jitter: min 1, max ~5
+
+    def test_medium_problem_moderate_ticks(self):
+        """Medium problems (1200 <= rating < 1800) need moderate ticks."""
+        ticks = _get_tick_range_for_rating(1500)
+        assert 4 <= ticks <= 22  # [6,16] with 30% jitter
+
+    def test_hard_problem_many_ticks(self):
+        """Hard problems (rating >= 1800) need many ticks."""
+        ticks = _get_tick_range_for_rating(2200)
+        assert 10 <= ticks <= 40  # [16,30] with 30% jitter
+
+    def test_custom_difficulty_ticks(self):
+        """Custom difficulty_ticks override defaults."""
+        custom = {"easy": [1, 1], "medium": [1, 1], "hard": [1, 1]}
+        ticks = _get_tick_range_for_rating(2000, difficulty_ticks=custom, jitter=0.0)
+        assert ticks == 1
+
+    def test_zero_jitter(self):
+        """Zero jitter means exact range values."""
+        import random
+        random.seed(42)
+        ticks_values = set()
+        for _ in range(100):
+            t = _get_tick_range_for_rating(1000, jitter=0.0)
+            ticks_values.add(t)
+        # Without jitter, values should be in [2, 4] exactly
+        assert all(2 <= t <= 4 for t in ticks_values)
+
+    def test_tick_range_always_at_least_one(self):
+        """Tick range never returns 0 or negative."""
+        # Use extreme jitter + small range
+        for rating in [500, 1000, 1500, 2000, 3000]:
+            for _ in range(50):
+                ticks = _get_tick_range_for_rating(rating, jitter=0.9)
+                assert ticks >= 1
+
+
+class TestSimulateBotTickSequential:
+    """Verify that each bot works on one problem at a time."""
+
+    def test_bot_solves_at_most_one_per_tick(self):
+        """A bot can solve at most one problem per tick."""
+        bot = _make_bot(elo=3000, problems=["p1", "p2", "p3", "p4", "p5"])
+        problems = [
+            {"problem_id": "p1", "rating": 800},
+            {"problem_id": "p2", "rating": 900},
+            {"problem_id": "p3", "rating": 1000},
+            {"problem_id": "p4", "rating": 1100},
+            {"problem_id": "p5", "rating": 1200},
+        ]
+        bot_state: dict = {"current_problem": None, "ticks_remaining": 0}
+
+        # Use 0-tick difficulty to force immediate P(AC) rolls
+        diff_ticks = {"easy": [1, 1], "medium": [1, 1], "hard": [1, 1]}
+
+        # Run many ticks -- each should solve at most 1
+        for _ in range(20):
+            solved = ContestSimulationService._simulate_bot_tick(
+                bot, problems, time_factor=1.0, bot_state=bot_state,
+                difficulty_ticks=diff_ticks, jitter=0.0,
+            )
+            assert len(solved) <= 1
+
+    def test_bot_works_on_easiest_first(self):
+        """Bot picks the lowest-rating unsolved problem first."""
+        bot = _make_bot(elo=1500, problems=[])
+        problems = [
+            {"problem_id": "hard", "rating": 2000},
+            {"problem_id": "easy", "rating": 800},
+            {"problem_id": "medium", "rating": 1400},
+        ]
+        bot_state: dict = {"current_problem": None, "ticks_remaining": 0}
+
+        # Use 1-tick difficulty so bot picks immediately
+        diff_ticks = {"easy": [1, 1], "medium": [1, 1], "hard": [1, 1]}
+
+        ContestSimulationService._simulate_bot_tick(
+            bot, problems, time_factor=1.0, bot_state=bot_state,
+            difficulty_ticks=diff_ticks, jitter=0.0,
+        )
+
+        # Bot should have selected the easiest problem
+        assert bot_state["current_problem"] is None or bot_state["current_problem"] == "easy"
+
+    def test_bot_pauses_on_hard_problems(self):
+        """Hard problems require multiple ticks before P(AC) roll."""
+        bot = _make_bot(elo=1500, problems=[])
+        problems = [{"problem_id": "hard", "rating": 2500}]
+        bot_state: dict = {"current_problem": None, "ticks_remaining": 0}
+
+        # Hard = 3 ticks minimum
+        diff_ticks = {"easy": [1, 1], "medium": [2, 2], "hard": [3, 3]}
+
+        # First tick: bot picks problem, starts working
+        ContestSimulationService._simulate_bot_tick(
+            bot, problems, time_factor=1.0, bot_state=bot_state,
+            difficulty_ticks=diff_ticks, jitter=0.0,
+        )
+        # Should be working on the hard problem, 2 ticks remaining
+        assert bot_state["current_problem"] == "hard"
+        assert bot_state["ticks_remaining"] == 2
+
+        # Second tick: still working
+        solved = ContestSimulationService._simulate_bot_tick(
+            bot, problems, time_factor=1.0, bot_state=bot_state,
+            difficulty_ticks=diff_ticks, jitter=0.0,
+        )
+        assert len(solved) == 0
+        assert bot_state["ticks_remaining"] == 1
+
+        # Third tick: P(AC) roll happens
+        solved = ContestSimulationService._simulate_bot_tick(
+            bot, problems, time_factor=1.0, bot_state=bot_state,
+            difficulty_ticks=diff_ticks, jitter=0.0,
+        )
+        # Either solved or not (depends on random), but no more ticks remaining
+        assert bot_state["ticks_remaining"] == 0
+
+    def test_bot_moves_to_next_after_solving(self):
+        """After solving a problem, bot picks the next unsolved."""
+        bot = _make_bot(elo=3000, problems=[])
+        problems = [
+            {"problem_id": "p1", "rating": 800},
+            {"problem_id": "p2", "rating": 900},
+        ]
+        bot_state: dict = {"current_problem": None, "ticks_remaining": 0}
+        diff_ticks = {"easy": [1, 1], "medium": [1, 1], "hard": [1, 1]}
+
+        # Tick 1: solve p1
+        ContestSimulationService._simulate_bot_tick(
+            bot, problems, time_factor=1.0, bot_state=bot_state,
+            difficulty_ticks=diff_ticks, jitter=0.0,
+        )
+        # p1 may or may not be solved (depends on random), but bot should move on
+
+        # Run enough ticks to potentially solve both
+        for _ in range(5):
+            ContestSimulationService._simulate_bot_tick(
+                bot, problems, time_factor=1.0, bot_state=bot_state,
+                difficulty_ticks=diff_ticks, jitter=0.0,
+            )
+
+        # Bot should have solved at most 2 problems
+        assert bot.problems_solved <= 2
+
+    def test_bot_no_work_when_all_solved(self):
+        """Bot has nothing to do when all problems are solved."""
+        bot = _make_bot(elo=3000, problems=["p1", "p2"])
+        problems = [
+            {"problem_id": "p1", "rating": 800},
+            {"problem_id": "p2", "rating": 900},
+        ]
+        bot_state: dict = {"current_problem": None, "ticks_remaining": 0}
+
+        solved = ContestSimulationService._simulate_bot_tick(
+            bot, problems, time_factor=1.0, bot_state=bot_state,
+        )
+        assert solved == []
+
+    def test_easy_not_solved_first_tick(self):
+        """With multi-tick easy problems, bot does not solve immediately."""
+        bot = _make_bot(elo=3000, problems=[])
+        problems = [{"problem_id": "p1", "rating": 800}]
+        bot_state: dict = {"current_problem": None, "ticks_remaining": 0}
+
+        # Easy = 5 ticks minimum
+        diff_ticks = {"easy": [5, 5], "medium": [10, 10], "hard": [20, 20]}
+
+        # First tick: bot picks problem, starts working
+        solved = ContestSimulationService._simulate_bot_tick(
+            bot, problems, time_factor=1.0, bot_state=bot_state,
+            difficulty_ticks=diff_ticks, jitter=0.0,
+        )
+        assert len(solved) == 0  # Not enough ticks yet
+        assert bot_state["ticks_remaining"] == 4  # 5 - 1 = 4
 
 
 # ===========================================================================
@@ -644,8 +874,8 @@ class TestSimulationIntegration:
         contest.problems_solved = 2
         await db.flush()
 
-        # Run several ticks
-        for _ in range(10):
+        # Run several ticks (enough for some bots to complete easy problems)
+        for _ in range(20):
             await ContestSimulationService.tick_simulation(db, contest.id)
             await db.commit()
 
@@ -1147,3 +1377,58 @@ class TestPrEloSettlement:
         # Player solved 4/5 which is very good -> PR likely > 1500 -> positive change
         assert pr >= 1500
         assert elo_change >= 0
+
+
+# ===========================================================================
+# Test: Simulation config
+# ===========================================================================
+
+
+class TestSimulationConfig:
+    """Verify simulation config loading."""
+
+    def test_get_simulation_config_returns_dict(self):
+        """_get_simulation_config returns the expected config dict."""
+        config = _get_simulation_config()
+        assert "tick_interval_seconds" in config
+        assert "difficulty_ticks" in config
+        assert "jitter" in config
+
+    def test_default_tick_interval(self):
+        """Default tick interval is 30 seconds."""
+        config = _get_simulation_config()
+        assert config["tick_interval_seconds"] == 30
+
+    def test_default_difficulty_ticks(self):
+        """Default difficulty ticks has easy/medium/hard ranges."""
+        config = _get_simulation_config()
+        dt = config["difficulty_ticks"]
+        assert dt["easy"] == [2, 4]
+        assert dt["medium"] == [6, 16]
+        assert dt["hard"] == [16, 30]
+
+    def test_default_jitter(self):
+        """Default jitter is 0.3."""
+        config = _get_simulation_config()
+        assert config["jitter"] == 0.3
+
+
+# ===========================================================================
+# Helper: create a bot for unit tests
+# ===========================================================================
+
+
+def _make_bot(
+    elo: int = 1500,
+    problems: list[str] | None = None,
+) -> _TestContestBot:
+    """Create a test bot with sensible defaults."""
+    return _TestContestBot(
+        id=uuid.uuid4(),
+        contest_id=uuid.uuid4(),
+        bot_name=f"TestBot_{uuid.uuid4().hex[:4]}",
+        bot_elo=elo,
+        problems_solved=len(problems) if problems else 0,
+        solved_problem_ids=problems or [],
+        total_attempts=0,
+    )

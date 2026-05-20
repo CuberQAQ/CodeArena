@@ -73,7 +73,16 @@ DEFAULT_CONFIG: dict = {
                 "rating_range": [1200, 2000],
             },
             "master": {"min_elo": 1800, "duration_minutes": 150, "problems": 6, "rating_range": [1600, 2600]},
-        }
+        },
+        "simulation": {
+            "tick_interval_seconds": 30,
+            "difficulty_ticks": {
+                "easy": [2, 4],       # rating < 1200
+                "medium": [6, 16],    # 1200 <= rating < 1800
+                "hard": [16, 30],     # rating >= 1800
+            },
+            "jitter": 0.3,           # +/-30% random jitter
+        },
     },
     "cf_api": {
         "base_url": "https://codeforces.com/api",
@@ -124,4 +133,6 @@ VALIDATION_RULES: dict[str, dict] = {
     "melo.initial_elo_inherit_global": {"type": bool},
     "melo.training_global_coefficient": {"type": (int, float), "min": 0.0, "max": 10.0},
     "melo.training_melo_coefficient": {"type": (int, float), "min": 0.0, "max": 10.0},
+    "contest.simulation.tick_interval_seconds": {"type": (int, float), "min": 5, "max": 300},
+    "contest.simulation.jitter": {"type": (int, float), "min": 0.0, "max": 1.0},
 }
