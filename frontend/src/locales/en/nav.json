@@ -1,0 +1,17 @@
+{
+  "brand": "Code Arena",
+  "dashboard": "Dashboard",
+  "challenge": "Challenge",
+  "training": "Training",
+  "contest": "Contest",
+  "leaderboard": "Leaderboard",
+  "profile": "Profile",
+  "logout": "Logout",
+  "eloTokens": "Elo: {{elo}} | Tokens: {{tokens}}",
+  "adminPanel": "Admin Panel",
+  "overview": "Overview",
+  "configuration": "Configuration",
+  "backToApp": "Back to App",
+  "administrator": "Administrator",
+  "unauthorized": "Unauthorized"
+}

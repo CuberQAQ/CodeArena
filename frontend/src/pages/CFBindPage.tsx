@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Unlink,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { extractApiError } from "@/utils";
@@ -19,6 +20,7 @@ type BindStep = "idle" | "pending" | "success";
 export default function CFBindPage() {
   const navigate = useNavigate();
   const { user, fetchUser } = useAuthStore();
+  const { t } = useTranslation("auth");
 
   const [cfHandle, setCfHandle] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
@@ -71,7 +73,7 @@ export default function CFBindPage() {
       setStep("pending");
       await fetchUser();
     } catch (err) {
-      setError(extractApiError(err, "Failed to bind Codeforces handle"));
+      setError(extractApiError(err, t("cfBind.failedBind")));
     } finally {
       setLoading(false);
     }
@@ -89,7 +91,7 @@ export default function CFBindPage() {
       setVerificationCode("");
       await fetchUser();
     } catch (err) {
-      setError(extractApiError(err, "Verification failed"));
+      setError(extractApiError(err, t("cfBind.verificationFailed")));
     } finally {
       setLoading(false);
     }
@@ -105,7 +107,7 @@ export default function CFBindPage() {
       setVerificationCode("");
       await fetchUser();
     } catch (err) {
-      setError(extractApiError(err, "Failed to unbind Codeforces handle"));
+      setError(extractApiError(err, t("cfBind.failedUnbind")));
     } finally {
       setLoading(false);
     }
@@ -120,7 +122,7 @@ export default function CFBindPage() {
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to Profile
+          {t("cfBind.backToProfile")}
         </button>
 
         <div className="text-center">
@@ -128,17 +130,17 @@ export default function CFBindPage() {
             <CheckCircle2 className="size-8 text-green-400" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">
-            Codeforces Handle Bound
+            {t("cfBind.cfHandleBound")}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Your Codeforces account is linked and verified.
+            {t("cfBind.cfHandleBoundDesc")}
           </p>
         </div>
 
         <div className="flex items-center justify-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
           <ShieldCheck className="size-4 shrink-0" />
           <span>
-            Bound handle: <strong>{user.cf_handle}</strong> (verified)
+            {t("cfBind.boundHandle", { handle: user.cf_handle })}
           </span>
         </div>
 
@@ -158,12 +160,12 @@ export default function CFBindPage() {
             {loading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
-                Unbinding...
+                {t("cfBind.unbinding")}
               </>
             ) : (
               <>
                 <Unlink className="mr-2 size-4" />
-                Unbind Handle
+                {t("cfBind.unbindHandle")}
               </>
             )}
           </Button>
@@ -179,7 +181,7 @@ export default function CFBindPage() {
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        Back to Profile
+        {t("cfBind.backToProfile")}
       </button>
 
       <div className="text-center">
@@ -187,11 +189,10 @@ export default function CFBindPage() {
           <ExternalLink className="size-8 text-primary" />
         </div>
         <h1 className="text-2xl font-bold text-foreground">
-          Bind Codeforces Handle
+          {t("cfBind.bindCFHandle")}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Link your Codeforces account to track your submissions and get
-          personalized problems.
+          {t("cfBind.bindCFHandleDesc")}
         </p>
       </div>
 
@@ -204,9 +205,7 @@ export default function CFBindPage() {
       {/* Pending state info from server (user previously bound but didn't verify) */}
       {hasPendingBinding && step === "idle" && (
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-400">
-          Handle <strong>{user.cf_handle}</strong> is pending verification.
-          Enter the handle below and click "Bind" to get a new verification
-          code, or provide the code if you still have it.
+          {t("cfBind.pendingVerification", { handle: user.cf_handle })}
         </div>
       )}
 
@@ -221,7 +220,7 @@ export default function CFBindPage() {
               htmlFor="cfHandle"
               className="block text-sm font-medium text-foreground"
             >
-              Codeforces Handle
+              {t("cfBind.codeforcesHandle")}
             </label>
             <input
               id="cfHandle"
@@ -230,7 +229,7 @@ export default function CFBindPage() {
               value={cfHandle}
               onChange={(e) => setCfHandle(e.target.value)}
               className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/30"
-              placeholder="Enter your CF handle"
+              placeholder={t("cfBind.enterCFHandle")}
             />
           </div>
 
@@ -242,10 +241,10 @@ export default function CFBindPage() {
             {loading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
-                Binding...
+                {t("cfBind.binding")}
               </>
             ) : (
-              "Bind Handle"
+              t("cfBind.bindHandle")
             )}
           </Button>
         </form>
@@ -256,12 +255,10 @@ export default function CFBindPage() {
         <div className="rounded-xl border border-border bg-card p-6 space-y-5">
           <div className="space-y-3">
             <h2 className="text-lg font-semibold text-foreground">
-              Verify Your Handle
+              {t("cfBind.verifyYourHandle")}
             </h2>
             <p className="text-sm text-muted-foreground">
-              Copy the verification code below and add it to your Codeforces
-              profile{" "}
-              <strong className="text-foreground">Organization</strong> field.
+              {t("cfBind.verifyInstructions")}
             </p>
           </div>
 
@@ -274,13 +271,13 @@ export default function CFBindPage() {
               variant="outline"
               size="icon-sm"
               onClick={handleCopy}
-              title="Copy verification code"
+              title={t("cfBind.copyVerificationCode")}
             >
               <Copy className="size-4" />
             </Button>
           </div>
           {copied && (
-            <p className="text-xs text-green-400">Copied to clipboard!</p>
+            <p className="text-xs text-green-400">{t("common:copied", { ns: "common" })}</p>
           )}
 
           {/* Instructions */}
@@ -289,29 +286,31 @@ export default function CFBindPage() {
               <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                 1
               </span>
-              Go to your{" "}
-              <a
-                href="https://codeforces.com/settings"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline underline-offset-2 hover:text-primary/80"
-              >
-                Codeforces Settings
-              </a>{" "}
-              page.
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: t("cfBind.step1", {
+                    a: '<a href="https://codeforces.com/settings" target="_blank" rel="noopener noreferrer" class="text-primary underline underline-offset-2 hover:text-primary/80">Codeforces Settings</a>',
+                  }),
+                }}
+              />
             </li>
             <li className="flex gap-2">
               <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                 2
               </span>
-              Paste the code into the <strong>Organization</strong> field and
-              save.
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: t("cfBind.step2", {
+                    strong: "<strong>Organization</strong>",
+                  }),
+                }}
+              />
             </li>
             <li className="flex gap-2">
               <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                 3
               </span>
-              Come back here and click "Verify" below.
+              {t("cfBind.step3")}
             </li>
           </ol>
 
@@ -324,12 +323,12 @@ export default function CFBindPage() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
-                  Verifying...
+                  {t("cfBind.verifying")}
                 </>
               ) : (
                 <>
                   <ShieldCheck className="mr-2 size-4" />
-                  Verify
+                  {t("cfBind.verify")}
                 </>
               )}
             </Button>
@@ -341,7 +340,7 @@ export default function CFBindPage() {
                 setVerificationCode("");
               }}
             >
-              Back
+              {t("common:back", { ns: "common" })}
             </Button>
           </div>
         </div>
@@ -350,13 +349,13 @@ export default function CFBindPage() {
       {/* Info section */}
       <div className="rounded-xl border border-border bg-card p-5">
         <h3 className="text-sm font-semibold text-foreground">
-          Why bind your CF handle?
+          {t("cfBind.whyBindCF")}
         </h3>
         <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-          <li>Track your submission history automatically</li>
-          <li>Get problems matched to your skill level</li>
-          <li>Earn PP (Performance Points) from CF activity</li>
-          <li>Verify solves for challenges and contests</li>
+          <li>{t("cfBind.trackSubmissions")}</li>
+          <li>{t("cfBind.getMatchedProblems")}</li>
+          <li>{t("cfBind.earnPPFromCF")}</li>
+          <li>{t("cfBind.verifySolves")}</li>
         </ul>
       </div>
     </div>

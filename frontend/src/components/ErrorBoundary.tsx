@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import i18n from "@/i18n";
 
 interface Props {
   children: ReactNode;
@@ -36,15 +37,17 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
+      const t = (key: string) => i18n.t(key);
+
       return (
         <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-8">
           <AlertTriangle className="size-12 text-destructive" />
-          <h2 className="text-xl font-semibold text-foreground">Something went wrong</h2>
+          <h2 className="text-xl font-semibold text-foreground">{t("auth:errorBoundary.title")}</h2>
           <p className="max-w-md text-center text-sm text-muted-foreground">
-            {this.state.error?.message ?? "An unexpected error occurred."}
+            {this.state.error?.message ?? t("auth:errorBoundary.title")}
           </p>
           <Button variant="outline" onClick={this.handleReload}>
-            Reload page
+            {t("auth:errorBoundary.reloadPage")}
           </Button>
         </div>
       );

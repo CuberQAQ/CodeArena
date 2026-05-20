@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { BarChart3, TrendingUp, Medal } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { getRatingColor, getDifficultyLabel } from "@/utils";
+import { getRatingColor, getDifficultyLabelKey } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, UserInfo } from "@/types";
 
 type SortKey = "elo" | "pp";
 
 export default function LeaderboardPage() {
+  const { t } = useTranslation("leaderboard");
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortKey>("elo");
@@ -16,14 +18,10 @@ export default function LeaderboardPage() {
   useEffect(() => {
     if (hasFetchedRef.current) return;
     hasFetchedRef.current = true;
-    // Use the auth/me endpoint approach; for leaderboard we need a dedicated endpoint
-    // Since no /leaderboard endpoint exists, we show a placeholder with empty data
-    // that will be replaced when the backend endpoint is available
     api
       .get<ApiResponse<UserInfo[]>>("/auth/leaderboard")
       .then((res) => setUsers(res.data.data ?? []))
       .catch(() => {
-        // No leaderboard endpoint yet - show empty state
         setUsers([]);
       })
       .finally(() => setLoading(false));
@@ -36,9 +34,9 @@ export default function LeaderboardPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Leaderboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("leaderboard")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Top players ranked by their competitive performance.
+          {t("leaderboardDesc")}
         </p>
       </div>
 
@@ -53,7 +51,7 @@ export default function LeaderboardPage() {
           }`}
         >
           <TrendingUp className="size-4" />
-          By Elo
+          {t("byElo")}
         </button>
         <button
           onClick={() => setSortBy("pp")}
@@ -64,17 +62,17 @@ export default function LeaderboardPage() {
           }`}
         >
           <Medal className="size-4" />
-          By PP
+          {t("byPP")}
         </button>
       </div>
 
       {loading ? (
-        <LoadingSpinner text="Loading leaderboard..." className="py-20" />
+        <LoadingSpinner text={t("loadingLeaderboard")} className="py-20" />
       ) : sorted.length === 0 ? (
         <div className="rounded-xl border border-border bg-card px-4 py-12 text-center">
           <BarChart3 className="mx-auto size-10 text-muted-foreground" />
           <p className="mt-3 text-sm text-muted-foreground">
-            No leaderboard data available yet. Be the first to compete!
+            {t("noData")}
           </p>
         </div>
       ) : (
@@ -82,10 +80,10 @@ export default function LeaderboardPage() {
           {/* Header row */}
           <div className="grid grid-cols-[3rem_1fr_7rem_5rem_5rem] items-center border-b border-border px-5 py-2.5 text-xs font-medium text-muted-foreground">
             <span>#</span>
-            <span>Player</span>
-            <span className="text-right">Elo</span>
-            <span className="text-right">PP</span>
-            <span className="text-right">Tokens</span>
+            <span>{t("player")}</span>
+            <span className="text-right">{t("elo")}</span>
+            <span className="text-right">{t("pp")}</span>
+            <span className="text-right">{t("tokens")}</span>
           </div>
           <div className="divide-y divide-border">
             {sorted.map((user, index) => (
@@ -100,7 +98,7 @@ export default function LeaderboardPage() {
                   <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
                   {user.cf_handle && (
                     <p className="truncate text-xs text-muted-foreground">
-                      CF: {user.cf_handle}
+                      {t("cfHandle", { handle: user.cf_handle })}
                     </p>
                   )}
                 </div>
@@ -108,7 +106,7 @@ export default function LeaderboardPage() {
                   className="text-right text-sm font-bold"
                   style={{ color: getRatingColor(user.elo) }}
                 >
-                  {user.elo} <span className="text-xs font-medium">/ {getDifficultyLabel(user.elo)}</span>
+                  {user.elo} <span className="text-xs font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
                 </span>
                 <span className="text-right text-sm font-semibold text-yellow-400">
                   {user.pp}

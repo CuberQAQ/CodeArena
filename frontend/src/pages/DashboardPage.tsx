@@ -12,18 +12,19 @@ import {
   RefreshCw,
   Play,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { DashboardCharts } from "@/components/charts/DashboardCharts";
-import { getRatingColor, getDifficultyLabel } from "@/utils";
+import { getRatingColor, getDifficultyLabelKey } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, TransactionItem, ContestSessionInfo } from "@/types";
 
 interface QuickAction {
   to: string;
-  label: string;
-  description: string;
+  labelKey: string;
+  descKey: string;
   icon: React.ElementType;
   color: string;
 }
@@ -31,29 +32,29 @@ interface QuickAction {
 const quickActions: QuickAction[] = [
   {
     to: "/challenge",
-    label: "Random Challenge",
-    description: "Match with an opponent",
+    labelKey: "dashboard:randomChallenge",
+    descKey: "dashboard:matchWithOpponent",
     icon: Swords,
     color: "text-red-400",
   },
   {
     to: "/training",
-    label: "Topic Training",
-    description: "Practice by category",
+    labelKey: "dashboard:topicTraining",
+    descKey: "dashboard:practiceByCategory",
     icon: Dumbbell,
     color: "text-green-400",
   },
   {
     to: "/contest",
-    label: "Virtual Contest",
-    description: "Timed competition",
+    labelKey: "dashboard:virtualContest",
+    descKey: "dashboard:timedCompetition",
     icon: Trophy,
     color: "text-yellow-400",
   },
   {
     to: "/leaderboard",
-    label: "Leaderboard",
-    description: "See top players",
+    labelKey: "dashboard:leaderboard",
+    descKey: "dashboard:seeTopPlayers",
     icon: TrendingUp,
     color: "text-blue-400",
   },
@@ -62,6 +63,7 @@ const quickActions: QuickAction[] = [
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user, fetchUser } = useAuthStore();
+  const { t } = useTranslation(["dashboard", "common"]);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [loadingTx, setLoadingTx] = useState(true);
   const [activeContest, setActiveContest] = useState<ContestSessionInfo | null>(null);
@@ -80,7 +82,7 @@ export default function DashboardPage() {
   }, [fetchUser]);
 
   if (!user) {
-    return <LoadingSpinner text="Loading dashboard..." className="py-20" />;
+    return <LoadingSpinner text={t("dashboard:loadingDashboard")} className="py-20" />;
   }
 
   return (
@@ -88,10 +90,10 @@ export default function DashboardPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">
-          Welcome back, {user.username}
+          {t("dashboard:welcomeBack", { username: user.username })}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ready for your next challenge?
+          {t("dashboard:readyForChallenge")}
         </p>
       </div>
 
@@ -104,12 +106,12 @@ export default function DashboardPage() {
               <TrendingUp className="size-5 text-primary" />
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Elo Rating</p>
+              <p className="text-xs font-medium text-muted-foreground">{t("dashboard:eloRating")}</p>
               <p
                 className="text-2xl font-bold"
                 style={{ color: getRatingColor(user.elo) }}
               >
-                {user.elo} <span className="text-sm font-medium">/ {getDifficultyLabel(user.elo)}</span>
+                {user.elo} <span className="text-sm font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
               </p>
             </div>
           </div>
@@ -122,7 +124,7 @@ export default function DashboardPage() {
               <Star className="size-5 text-yellow-400" />
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Performance Points</p>
+              <p className="text-xs font-medium text-muted-foreground">{t("dashboard:performancePoints")}</p>
               <p className="text-2xl font-bold text-yellow-400">{user.pp}</p>
             </div>
           </div>
@@ -135,7 +137,7 @@ export default function DashboardPage() {
               <Coins className="size-5 text-amber-400" />
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Tokens</p>
+              <p className="text-xs font-medium text-muted-foreground">{t("common:tokens")}</p>
               <p className="text-2xl font-bold text-amber-400">{user.tokens}</p>
             </div>
           </div>
@@ -151,15 +153,19 @@ export default function DashboardPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-foreground">
-                You have an active contest!
+                {t("dashboard:activeContest")}
               </p>
               <p className="text-xs text-muted-foreground capitalize">
-                {activeContest.tier} tier &middot; {activeContest.problems_solved}/{activeContest.total_problems} solved
+                {t("dashboard:activeContestDetail", {
+                  tier: activeContest.tier,
+                  solved: activeContest.problems_solved,
+                  total: activeContest.total_problems,
+                })}
               </p>
             </div>
           </div>
           <Button onClick={() => navigate(`/contest/${activeContest.id}`)}>
-            Resume Contest
+            {t("dashboard:resumeContest")}
           </Button>
         </div>
       )}
@@ -170,21 +176,21 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <Zap className="size-5 text-muted-foreground" />
             <div>
-              <p className="text-sm font-medium text-foreground">Link your Codeforces account</p>
+              <p className="text-sm font-medium text-foreground">{t("dashboard:linkCF")}</p>
               <p className="text-xs text-muted-foreground">
-                Connect your CF handle to track submissions and get personalized problems
+                {t("dashboard:linkCFDesc")}
               </p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={() => navigate("/profile/cf-bind")}>
-            Bind Handle
+            {t("dashboard:bindHandle")}
           </Button>
         </div>
       )}
 
       {/* Quick Actions */}
       <div>
-        <h2 className="mb-3 text-lg font-semibold text-foreground">Quick Actions</h2>
+        <h2 className="mb-3 text-lg font-semibold text-foreground">{t("dashboard:quickActions")}</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {quickActions.map((action) => (
             <Link
@@ -198,8 +204,8 @@ export default function DashboardPage() {
                 <action.icon className="size-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">{action.label}</p>
-                <p className="truncate text-xs text-muted-foreground">{action.description}</p>
+                <p className="text-sm font-medium text-foreground">{t(action.labelKey)}</p>
+                <p className="truncate text-xs text-muted-foreground">{t(action.descKey)}</p>
               </div>
               <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </Link>
@@ -210,7 +216,7 @@ export default function DashboardPage() {
       {/* Recent Activity */}
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Recent Token Activity</h2>
+          <h2 className="text-lg font-semibold text-foreground">{t("dashboard:recentTokenActivity")}</h2>
           <Button
             variant="ghost"
             size="xs"
@@ -231,7 +237,7 @@ export default function DashboardPage() {
             <LoadingSpinner size="sm" className="py-8" />
           ) : transactions.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-              No recent activity. Start a challenge or training session!
+              {t("dashboard:noRecentActivity")}
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -242,7 +248,7 @@ export default function DashboardPage() {
                       {tx.type.replace(/_/g, " ")}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Balance: {tx.balance_after}
+                      {t("common:balance")}: {tx.balance_after}
                     </p>
                   </div>
                   <span

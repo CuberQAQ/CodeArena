@@ -1,0 +1,13 @@
+{
+  "leaderboard": "Leaderboard",
+  "leaderboardDesc": "Top players ranked by their competitive performance.",
+  "byElo": "By Elo",
+  "byPP": "By PP",
+  "loadingLeaderboard": "Loading leaderboard...",
+  "noData": "No leaderboard data available yet. Be the first to compete!",
+  "player": "Player",
+  "elo": "Elo",
+  "pp": "PP",
+  "tokens": "Tokens",
+  "cfHandle": "CF: {{handle}}"
+}

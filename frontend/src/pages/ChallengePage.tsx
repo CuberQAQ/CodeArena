@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle, Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { MatchWaiting } from "@/components/animations/MatchWaiting";
@@ -23,6 +24,7 @@ type Phase = "idle" | "queuing" | "matched" | "in_progress" | "result";
 
 export default function ChallengePage() {
   const navigate = useNavigate();
+  const { t } = useTranslation("challenge");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -89,7 +91,7 @@ export default function ChallengePage() {
         startPolling();
       }
     } catch (err) {
-      setError(extractApiError(err, "Failed to join queue"));
+      setError(extractApiError(err, t("failedJoinQueue")));
     } finally {
       setLoading(false);
     }
@@ -125,7 +127,7 @@ export default function ChallengePage() {
       );
       setChallenge(detailRes.data.data);
     } catch (err) {
-      setError(extractApiError(err, "Failed to start challenge"));
+      setError(extractApiError(err, t("failedStartChallenge")));
     } finally {
       setLoading(false);
     }
@@ -178,7 +180,7 @@ export default function ChallengePage() {
         }, 3000);
       }
     } catch (err) {
-      setError(extractApiError(err, "Failed to submit result"));
+      setError(extractApiError(err, t("failedSubmit")));
     } finally {
       setLoading(false);
     }
@@ -201,7 +203,7 @@ export default function ChallengePage() {
       setEloTriggerKey((k) => k + 1);
       setPhase("result");
     } catch (err) {
-      setError(extractApiError(err, "Failed to quit challenge"));
+      setError(extractApiError(err, t("failedQuit")));
     } finally {
       setLoading(false);
     }
@@ -221,7 +223,7 @@ export default function ChallengePage() {
     setShowAchievements(false);
   };
 
-  // ── IDLE ────────────────────────────────────────────────────────
+  // -- IDLE --
   if (phase === "idle") {
     return (
       <div className="mx-auto max-w-2xl">
@@ -229,10 +231,9 @@ export default function ChallengePage() {
           <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-primary/10">
             <Swords className="size-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Random Challenge</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("randomChallenge")}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Get matched with an opponent of similar skill and solve a problem head-to-head.
-            The faster solver wins Elo and tokens!
+            {t("randomChallengeDesc")}
           </p>
         </div>
 
@@ -247,12 +248,12 @@ export default function ChallengePage() {
             {loading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
-                Joining...
+                {t("joining")}
               </>
             ) : (
               <>
                 <Swords className="mr-2 size-4" />
-                Find Opponent
+                {t("findOpponent")}
               </>
             )}
           </Button>
@@ -263,51 +264,51 @@ export default function ChallengePage() {
             disabled={loading}
           >
             <Sparkles className="mr-2 size-4 text-purple-400" />
-            Solo Challenge
+            {t("soloChallenge")}
           </Button>
         </div>
 
         <div className="mt-8 rounded-xl border border-border bg-card p-5">
-          <h3 className="text-sm font-semibold text-foreground">How it works</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t("howItWorks")}</h3>
           <ol className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <li>1. Click "Find Opponent" to enter the matchmaking queue</li>
-            <li>2. Once matched, both players receive the same problem</li>
-            <li>3. Solve the problem on Codeforces as fast as you can</li>
-            <li>4. Report your result -- first to solve wins more tokens</li>
-            <li>5. Both players&apos; Elo ratings are updated based on the outcome</li>
+            <li>{t("step1")}</li>
+            <li>{t("step2")}</li>
+            <li>{t("step3")}</li>
+            <li>{t("step4")}</li>
+            <li>{t("step5")}</li>
           </ol>
         </div>
       </div>
     );
   }
 
-  // ── QUEUING ─────────────────────────────────────────────────────
+  // -- QUEUING --
   if (phase === "queuing") {
     return (
       <div className="mx-auto max-w-2xl text-center">
         <MatchWaiting className="mb-6" />
-        <h1 className="text-2xl font-bold text-foreground">Finding Opponent...</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("findingOpponent")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Waiting for a suitable opponent. This may take a moment.
+          {t("findingOpponentDesc")}
         </p>
         <Button variant="outline" className="mt-8" onClick={handleLeaveQueue}>
           <X className="mr-2 size-4" />
-          Cancel
+          {t("common:cancel", { ns: "common" })}
         </Button>
       </div>
     );
   }
 
-  // ── MATCHED ─────────────────────────────────────────────────────
+  // -- MATCHED --
   if (phase === "matched") {
     return (
       <div className="mx-auto max-w-2xl text-center">
         <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-green-500/10">
           <Trophy className="size-10 text-green-400" />
         </div>
-        <h1 className="text-2xl font-bold text-foreground">Opponent Found!</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("opponentFound")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Your match is ready. Click start to reveal the problem!
+          {t("opponentFoundDesc")}
         </p>
 
         {error && (
@@ -321,10 +322,10 @@ export default function ChallengePage() {
             {loading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
-                Starting...
+                {t("starting")}
               </>
             ) : (
-              "Start Challenge"
+              t("startChallenge")
             )}
           </Button>
         </div>
@@ -332,7 +333,7 @@ export default function ChallengePage() {
     );
   }
 
-  // ── IN PROGRESS ─────────────────────────────────────────────────
+  // -- IN PROGRESS --
   if (phase === "in_progress") {
     const problem = challenge?.problem;
     return (
@@ -345,7 +346,7 @@ export default function ChallengePage() {
               {formatTime(elapsed)}
             </span>
           </div>
-          <span className="text-sm font-medium text-muted-foreground">Challenge in progress</span>
+          <span className="text-sm font-medium text-muted-foreground">{t("challengeInProgress")}</span>
         </div>
 
         {error && (
@@ -397,24 +398,24 @@ export default function ChallengePage() {
               onClick={() => window.open(problem.url, "_blank")}
             >
               <ExternalLink className="mr-2 size-4" />
-              Open on Codeforces
+              {t("openOnCodeforces")}
             </Button>
           </div>
         )}
 
         {/* Submit result */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">Report Your Result</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t("reportYourResult")}</h3>
 
           <div className="flex items-center gap-3">
-            <label className="text-sm text-muted-foreground">Did you solve it?</label>
+            <label className="text-sm text-muted-foreground">{t("didYouSolve")}</label>
             <Button
               size="sm"
               variant={solved ? "default" : "outline"}
               onClick={() => setSolved(true)}
             >
               <CheckCircle2 className="mr-1.5 size-3.5" />
-              Yes
+              {t("common:yes", { ns: "common" })}
             </Button>
             <Button
               size="sm"
@@ -422,13 +423,13 @@ export default function ChallengePage() {
               onClick={() => setSolved(false)}
             >
               <XCircle className="mr-1.5 size-3.5" />
-              No
+              {t("common:no", { ns: "common" })}
             </Button>
           </div>
 
           {solved && (
             <div className="flex items-center gap-3">
-              <label className="text-sm text-muted-foreground">Attempts:</label>
+              <label className="text-sm text-muted-foreground">{t("common:attempts", { ns: "common" })}:</label>
               <input
                 type="number"
                 min={1}
@@ -448,11 +449,11 @@ export default function ChallengePage() {
           <div className="flex gap-3">
             <Button onClick={handleSubmit} disabled={loading}>
               {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-              Submit Result
+              {t("submitResult")}
             </Button>
             <Button variant="destructive" onClick={handleQuit} disabled={loading}>
               {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
-              Quit
+              {t("quit")}
             </Button>
           </div>
         </div>
@@ -460,7 +461,7 @@ export default function ChallengePage() {
     );
   }
 
-  // ── RESULT ──────────────────────────────────────────────────────
+  // -- RESULT --
   if (phase === "result" && challenge) {
     const isWin = challenge.result === "win";
     const isDraw = challenge.result === "draw";
@@ -500,7 +501,7 @@ export default function ChallengePage() {
             )}
           </div>
           <h1 className="text-2xl font-bold text-foreground">
-            {isWin ? "Victory!" : isDraw ? "Draw" : isQuit ? "Challenge Abandoned" : "Defeat"}
+            {isWin ? t("victory") : isDraw ? t("draw") : isQuit ? t("challengeAbandoned") : t("defeat")}
           </h1>
           {challenge.elo_change != null && (
             <div className="mt-2">
@@ -512,7 +513,7 @@ export default function ChallengePage() {
         {/* Problem summary */}
         {challenge.problem && (
           <div className="rounded-xl border border-border bg-card p-5">
-            <h3 className="text-sm font-semibold text-foreground">Problem</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t("problem")}</h3>
             <div className="mt-2 flex items-center justify-between">
               <span className="text-sm text-foreground">{challenge.problem.name}</span>
               {challenge.problem.rating && (
@@ -531,7 +532,7 @@ export default function ChallengePage() {
               className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
               <ExternalLink className="size-3" />
-              View on Codeforces
+              {t("viewOnCodeforces")}
             </a>
           </div>
         )}
@@ -539,13 +540,13 @@ export default function ChallengePage() {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">Your Time</p>
+            <p className="text-xs text-muted-foreground">{t("yourTime")}</p>
             <p className="mt-1 text-lg font-bold text-foreground">
               {challenge.challenger_time != null ? formatTime(challenge.challenger_time) : "-"}
             </p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">Submissions</p>
+            <p className="text-xs text-muted-foreground">{t("submissions")}</p>
             <p className="mt-1 text-lg font-bold text-foreground">
               {challenge.challenger_submissions}
             </p>
@@ -553,9 +554,9 @@ export default function ChallengePage() {
         </div>
 
         <div className="flex justify-center gap-3">
-          <Button onClick={handleReset}>New Challenge</Button>
+          <Button onClick={handleReset}>{t("newChallenge")}</Button>
           <Button variant="outline" onClick={() => navigate("/dashboard")}>
-            Back to Dashboard
+            {t("backToDashboard")}
           </Button>
         </div>
       </div>
@@ -565,9 +566,9 @@ export default function ChallengePage() {
   // Fallback for result without challenge data
   return (
     <div className="mx-auto max-w-2xl text-center">
-      <LoadingSpinner text="Loading result..." className="py-20" />
+      <LoadingSpinner text={t("common:loadingResult", { ns: "common" })} className="py-20" />
       <Button variant="outline" className="mt-4" onClick={handleReset}>
-        Back
+        {t("common:back", { ns: "common" })}
       </Button>
     </div>
   );

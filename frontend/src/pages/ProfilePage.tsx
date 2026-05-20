@@ -11,11 +11,12 @@ import {
   Loader2,
   Save,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EloChart } from "@/components/charts/EloChart";
-import { extractApiError, getRatingColor, getDifficultyLabel, formatDate } from "@/utils";
+import { extractApiError, getRatingColor, getDifficultyLabelKey, formatDate } from "@/utils";
 import api from "@/services/api";
 import type { EloHistoryPoint, ApiResponse } from "@/types";
 
@@ -30,6 +31,7 @@ function ProfileForm({
   user: NonNullable<ReturnType<typeof useAuthStore.getState>["user"]>;
   onSave: (username: string, email: string) => Promise<void>;
 }) {
+  const { t } = useTranslation(["profile", "common"]);
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(user.username);
   const [email, setEmail] = useState(user.email);
@@ -43,10 +45,10 @@ function ProfileForm({
     setLoading(true);
     try {
       await onSave(username, email);
-      setSuccess("Profile updated successfully.");
+      setSuccess(t("profile:profileUpdated"));
       setEditing(false);
     } catch (err) {
-      setError(extractApiError(err, "Failed to update profile"));
+      setError(extractApiError(err, t("profile:failedUpdate")));
     } finally {
       setLoading(false);
     }
@@ -55,10 +57,10 @@ function ProfileForm({
   return (
     <>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Profile</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("profile:profile")}</h1>
         {!editing && (
           <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-            Edit Profile
+            {t("profile:editProfile")}
           </Button>
         )}
       </div>
@@ -84,7 +86,7 @@ function ProfileForm({
               <div className="space-y-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    Username
+                    {t("profile:username")}
                   </label>
                   <input
                     value={username}
@@ -94,7 +96,7 @@ function ProfileForm({
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    Email
+                    {t("profile:email")}
                   </label>
                   <input
                     type="email"
@@ -110,10 +112,10 @@ function ProfileForm({
                     ) : (
                       <Save className="mr-1.5 size-3.5" />
                     )}
-                    Save
+                    {t("common:save")}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-                    Cancel
+                    {t("common:cancel")}
                   </Button>
                 </div>
               </div>
@@ -128,15 +130,15 @@ function ProfileForm({
                 </div>
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                   <Calendar className="size-3.5" />
-                  Joined {formatDate(user.created_at)}
+                  {t("profile:joined", { date: formatDate(user.created_at) })}
                 </div>
                 {user.cf_handle && (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">CF Handle:</span>
+                    <span className="text-sm text-muted-foreground">{t("profile:cfHandleLabel")}</span>
                     <span className="text-sm font-medium text-foreground">{user.cf_handle}</span>
                     {user.cf_handle_verified && (
                       <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-400">
-                        Verified
+                        {t("profile:verified")}
                       </span>
                     )}
                   </div>
@@ -157,6 +159,7 @@ function ProfileForm({
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, fetchUser } = useAuthStore();
+  const { t } = useTranslation(["profile", "common"]);
 
   const handleSave = async (username: string, email: string) => {
     const body: Record<string, string> = {};
@@ -193,7 +196,7 @@ export default function ProfilePage() {
   }, []);
 
   if (!user) {
-    return <LoadingSpinner text="Loading profile..." className="py-20" />;
+    return <LoadingSpinner text={t("profile:loadingProfile")} className="py-20" />;
   }
 
   return (
@@ -204,14 +207,14 @@ export default function ProfilePage() {
       {!user.cf_handle && (
         <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4">
           <div>
-            <p className="text-sm font-medium text-foreground">Link your Codeforces account</p>
+            <p className="text-sm font-medium text-foreground">{t("profile:linkCF")}</p>
             <p className="text-xs text-muted-foreground">
-              Connect your CF handle to track submissions and get personalized problems
+              {t("profile:linkCFDesc")}
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => navigate("/profile/cf-bind")}>
             <ExternalLink className="mr-1.5 size-3.5" />
-            Bind Handle
+            {t("profile:bindHandle")}
           </Button>
         </div>
       )}
@@ -224,9 +227,9 @@ export default function ProfilePage() {
               <Trophy className="size-5 text-primary" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Elo Rating</p>
+              <p className="text-xs text-muted-foreground">{t("profile:eloRating")}</p>
               <p className="text-2xl font-bold" style={{ color: getRatingColor(user.elo) }}>
-                {user.elo} <span className="text-sm font-medium">/ {getDifficultyLabel(user.elo)}</span>
+                {user.elo} <span className="text-sm font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
               </p>
             </div>
           </div>
@@ -237,7 +240,7 @@ export default function ProfilePage() {
               <Star className="size-5 text-yellow-400" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Performance Points</p>
+              <p className="text-xs text-muted-foreground">{t("profile:performancePoints")}</p>
               <p className="text-2xl font-bold text-yellow-400">{user.pp}</p>
             </div>
           </div>
@@ -248,7 +251,7 @@ export default function ProfilePage() {
               <Coins className="size-5 text-amber-400" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Tokens</p>
+              <p className="text-xs text-muted-foreground">{t("common:tokens")}</p>
               <p className="text-2xl font-bold text-amber-400">{user.tokens}</p>
             </div>
           </div>
@@ -258,16 +261,16 @@ export default function ProfilePage() {
       {/* Elo History */}
       {eloLoading ? (
         <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Elo Trend</h3>
+          <h3 className="mb-4 text-sm font-semibold text-foreground">{t("profile:eloTrend")}</h3>
           <div className="flex h-[220px] items-center justify-center">
             <LoadingSpinner />
           </div>
         </div>
       ) : eloError ? (
         <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Elo Trend</h3>
+          <h3 className="mb-4 text-sm font-semibold text-foreground">{t("profile:eloTrend")}</h3>
           <div className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">
-            Failed to load Elo history. Please try again later.
+            {t("profile:failedLoadElo")}
           </div>
         </div>
       ) : (
@@ -276,9 +279,9 @@ export default function ProfilePage() {
 
       {/* PP Ranking Placeholder */}
       <div className="rounded-xl border border-border bg-card p-5">
-        <h3 className="text-sm font-semibold text-foreground">PP Ranking</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t("profile:ppRanking")}</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          PP ranking will be available on the leaderboard page.
+          {t("profile:ppRankingDesc")}
         </p>
         <Button
           variant="outline"
@@ -286,7 +289,7 @@ export default function ProfilePage() {
           className="mt-3"
           onClick={() => navigate("/leaderboard")}
         >
-          View Leaderboard
+          {t("profile:viewLeaderboard")}
         </Button>
       </div>
     </div>

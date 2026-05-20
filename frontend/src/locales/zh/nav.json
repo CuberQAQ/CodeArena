@@ -1,0 +1,17 @@
+{
+  "brand": "Code Arena",
+  "dashboard": "仪表盘",
+  "challenge": "对战",
+  "training": "训练",
+  "contest": "比赛",
+  "leaderboard": "排行榜",
+  "profile": "个人资料",
+  "logout": "登出",
+  "eloTokens": "Elo: {{elo}} | 代币: {{tokens}}",
+  "adminPanel": "管理面板",
+  "overview": "概览",
+  "configuration": "配置",
+  "backToApp": "返回应用",
+  "administrator": "管理员",
+  "unauthorized": "未授权"
+}

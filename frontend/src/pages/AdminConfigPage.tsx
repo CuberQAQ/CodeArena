@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ArrowLeft,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { extractApiError } from "@/utils";
@@ -37,6 +38,7 @@ interface ConfigSection {
 // ---------------------------------------------------------------------------
 
 export default function AdminConfigPage() {
+  const { t } = useTranslation(["admin", "common"]);
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [metadata, setMetadata] = useState<ConfigSection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +86,7 @@ export default function AdminConfigPage() {
       }
       setDirtyKeys(new Set());
     } catch (err) {
-      setError(extractApiError(err, "Failed to load configuration"));
+      setError(extractApiError(err, t("admin:failedLoadConfig")));
     } finally {
       setLoading(false);
     }
@@ -119,7 +121,7 @@ export default function AdminConfigPage() {
     setSuccess((prev) => ({ ...prev, [key]: "" }));
     try {
       await api.put(`/admin/config/${key}`, { value: config[key] });
-      setSuccess((prev) => ({ ...prev, [key]: "Saved" }));
+      setSuccess((prev) => ({ ...prev, [key]: t("admin:saved") }));
       setOriginalConfig((prev) => ({ ...prev, [key]: config[key] }));
       setDirtyKeys((prev) => {
         const next = new Set(prev);
@@ -132,7 +134,7 @@ export default function AdminConfigPage() {
       }, 3000);
     } catch (err) {
       setSuccess((prev) => ({ ...prev, [key]: "" }));
-      setError(extractApiError(err, `Failed to save ${key}`));
+      setError(extractApiError(err, t("failedSaveField", { key })));
     } finally {
       setSaving((prev) => ({ ...prev, [key]: false }));
     }
@@ -146,7 +148,7 @@ export default function AdminConfigPage() {
       const defaultValue = res.data.data.value;
       setConfig((prev) => ({ ...prev, [key]: defaultValue }));
       setOriginalConfig((prev) => ({ ...prev, [key]: defaultValue }));
-      setSuccess((prev) => ({ ...prev, [key]: "Reset to default" }));
+      setSuccess((prev) => ({ ...prev, [key]: t("admin:resetToDefaultMsg") }));
       setDirtyKeys((prev) => {
         const next = new Set(prev);
         next.delete(key);
@@ -156,7 +158,7 @@ export default function AdminConfigPage() {
         setSuccess((prev) => ({ ...prev, [key]: "" }));
       }, 3000);
     } catch (err) {
-      setError(extractApiError(err, `Failed to reset ${key}`));
+      setError(extractApiError(err, t("failedResetField", { key })));
     } finally {
       setSaving((prev) => ({ ...prev, [key]: false }));
     }
@@ -191,7 +193,9 @@ export default function AdminConfigPage() {
               }`}
             />
           </button>
-          <span className="text-xs text-muted-foreground">{value ? "Enabled" : "Disabled"}</span>
+          <span className="text-xs text-muted-foreground">
+            {value ? t("common:enabled", { ns: "common" }) : t("common:disabled", { ns: "common" })}
+          </span>
         </div>
       );
     }
@@ -223,7 +227,7 @@ export default function AdminConfigPage() {
   };
 
   if (loading) {
-    return <LoadingSpinner text="Loading configuration..." className="py-20" />;
+    return <LoadingSpinner text={t("admin:loadingConfig")} className="py-20" />;
   }
 
   return (
@@ -236,9 +240,9 @@ export default function AdminConfigPage() {
           <ArrowLeft className="size-4 text-muted-foreground" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Configuration</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("admin:configPage")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage system configuration parameters.
+            {t("admin:configPageDesc")}
           </p>
         </div>
       </div>
@@ -250,14 +254,14 @@ export default function AdminConfigPage() {
             onClick={() => setError("")}
             className="ml-2 underline hover:no-underline"
           >
-            dismiss
+            {t("common:dismiss", { ns: "common" })}
           </button>
         </div>
       )}
 
       {dirtyKeys.size > 0 && (
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-400">
-          {dirtyKeys.size} unsaved change{dirtyKeys.size > 1 ? "s" : ""}
+          {t("common:unsavedChanges", { ns: "common", count: dirtyKeys.size })}
         </div>
       )}
 
@@ -287,7 +291,7 @@ export default function AdminConfigPage() {
                 )}
               </div>
               <span className="text-xs text-muted-foreground">
-                {section.fields.length} fields
+                {t("admin:fields", { count: section.fields.length })}
               </span>
             </button>
 
@@ -331,7 +335,7 @@ export default function AdminConfigPage() {
                               size="sm"
                               onClick={() => handleResetField(field.key)}
                               disabled={isSaving}
-                              title="Reset to default"
+                              title={t("admin:resetToDefault")}
                               className="h-7 px-2"
                             >
                               <RotateCcw className="size-3 text-muted-foreground" />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Trophy, Loader2, Target, ShieldCheck, Crown, Play } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { extractApiError } from "@/utils";
@@ -27,6 +28,7 @@ const TIER_BG: Record<string, string> = {
 
 export default function ContestPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation("contest");
   const [tiers, setTiers] = useState<TierInfo[]>([]);
   const [history, setHistory] = useState<ContestHistoryItem[]>([]);
   const [activeContest, setActiveContest] = useState<ContestSessionInfo | null>(null);
@@ -60,13 +62,13 @@ export default function ContestPage() {
       const contestId = res.data.data.id ?? (res.data.data as Record<string, string>).id;
       navigate(`/contest/${contestId}`);
     } catch (err) {
-      setError(extractApiError(err, "Failed to start contest"));
+      setError(extractApiError(err, t("failedStart")));
       setStarting(null);
     }
   };
 
   if (loading) {
-    return <LoadingSpinner text="Loading contests..." className="py-20" />;
+    return <LoadingSpinner text={t("loadingContests")} className="py-20" />;
   }
 
   const hasActiveContest = activeContest !== null;
@@ -74,9 +76,9 @@ export default function ContestPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Virtual Contest</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("virtualContest")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Choose your tier and compete against the clock. Solve as many problems as you can!
+          {t("virtualContestDesc")}
         </p>
       </div>
 
@@ -95,15 +97,19 @@ export default function ContestPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-foreground">
-                You have an active contest in progress!
+                {t("activeContestRunning")}
               </p>
               <p className="text-xs text-muted-foreground capitalize">
-                {activeContest.tier} tier &middot; {activeContest.problems_solved}/{activeContest.total_problems} solved
+                {t("activeContestDetail", {
+                  tier: activeContest.tier,
+                  solved: activeContest.problems_solved,
+                  total: activeContest.total_problems,
+                })}
               </p>
             </div>
           </div>
           <Button onClick={() => navigate(`/contest/${activeContest.id}`)}>
-            Resume Contest
+            {t("resumeContest")}
           </Button>
         </div>
       )}
@@ -112,7 +118,7 @@ export default function ContestPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         {tiers.length === 0 ? (
           <div className="col-span-full rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-            No contest tiers available.
+            {t("noTiers")}
           </div>
         ) : (
           tiers.map((tier) => {
@@ -138,22 +144,22 @@ export default function ContestPage() {
 
                 <div className="mt-4 space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Duration</span>
+                    <span className="text-muted-foreground">{t("duration")}</span>
                     <span className="text-foreground">{tier.duration_minutes} min</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Problems</span>
+                    <span className="text-muted-foreground">{t("problemsCount")}</span>
                     <span className="text-foreground">{tier.problem_count}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Rating Range</span>
+                    <span className="text-muted-foreground">{t("ratingRange")}</span>
                     <span className="text-foreground">
                       {tier.rating_range[0]} - {tier.rating_range[1]}
                     </span>
                   </div>
                   {tier.min_elo != null && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Min Elo</span>
+                      <span className="text-muted-foreground">{t("minElo")}</span>
                       <span className="text-foreground">{tier.min_elo}</span>
                     </div>
                   )}
@@ -167,14 +173,14 @@ export default function ContestPage() {
                   {isStarting ? (
                     <>
                       <Loader2 className="mr-2 size-4 animate-spin" />
-                      Starting...
+                      {t("starting")}
                     </>
                   ) : hasActiveContest ? (
-                    "Active Contest Running"
+                    t("activeContestBtn")
                   ) : !tier.eligible ? (
-                    "Elo Required"
+                    t("eloRequired")
                   ) : (
-                    "Start Contest"
+                    t("startContest")
                   )}
                 </Button>
               </div>
@@ -186,7 +192,7 @@ export default function ContestPage() {
       {/* Recent contest history */}
       {history.length > 0 && (
         <div>
-          <h2 className="mb-3 text-lg font-semibold text-foreground">Recent Contests</h2>
+          <h2 className="mb-3 text-lg font-semibold text-foreground">{t("recentContests")}</h2>
           <div className="rounded-xl border border-border bg-card">
             <div className="divide-y divide-border">
               {history.map((item) => (
@@ -199,12 +205,15 @@ export default function ContestPage() {
                     <p className="text-sm font-medium capitalize text-foreground">{item.tier}</p>
                     <p className="text-xs text-muted-foreground">
                       {item.started_at
-                        ? new Date(item.started_at).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
+                        ? new Date(item.started_at).toLocaleDateString(
+                            localStorage.getItem("i18nextLng")?.startsWith("zh") ? "zh-CN" : "en-US",
+                            {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )
                         : "-"}
                     </p>
                   </div>
@@ -223,7 +232,7 @@ export default function ContestPage() {
                         }`}
                       >
                         {item.elo_change > 0 ? "+" : ""}
-                        {item.elo_change} Elo
+                        {item.elo_change} {t("elo")}
                       </p>
                     )}
                   </div>

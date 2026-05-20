@@ -1262,7 +1262,7 @@ P_i = base(rating) × f(wa, t)
 ---
 
 ### Task 23.2: Profile 页 Elo Chart 接入
-**状态**: 🔵 进行中
+**状态**: 🟢 已完成
 **优先级**: P1
 **依赖**: 无
 

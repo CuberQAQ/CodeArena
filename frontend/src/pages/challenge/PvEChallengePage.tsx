@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Zap,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EloChange, CoinAnimation, AcceptedCelebration, AchievementPopup } from "@/components/animations";
@@ -58,6 +59,7 @@ function IdlePhase() {
   const phase = usePvEChallengeStore((s) => s.phase);
   const error = usePvEChallengeStore((s) => s.error);
   const loading = phase === "loading";
+  const { t } = useTranslation("challenge");
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -65,10 +67,9 @@ function IdlePhase() {
         <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-purple-500/10">
           <HelpCircle className="size-8 text-purple-400" />
         </div>
-        <h1 className="text-2xl font-bold text-foreground">Random Challenge (Solo)</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("pve.title")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Face a mystery problem with hidden difficulty and tags. Solve it to earn Elo,
-          PP, and tokens -- with bonus rewards for beating problems above your level!
+          {t("pve.description")}
         </p>
       </div>
 
@@ -83,25 +84,25 @@ function IdlePhase() {
           {loading ? (
             <>
               <Loader2 className="mr-2 size-4 animate-spin" />
-              Loading Problem...
+              {t("pve.loadingProblem")}
             </>
           ) : (
             <>
               <Sparkles className="mr-2 size-4" />
-              Start Solo Challenge
+              {t("pve.startSoloChallenge")}
             </>
           )}
         </Button>
       </div>
 
       <div className="mt-8 rounded-xl border border-border bg-card p-5">
-        <h3 className="text-sm font-semibold text-foreground">How it works</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t("pve.howItWorks")}</h3>
         <ol className="mt-3 space-y-2 text-sm text-muted-foreground">
-          <li>1. Click "Start Solo Challenge" to receive a mystery problem</li>
-          <li>2. Problem rating and tags are hidden -- shown as "???"</li>
-          <li>3. Solve the problem on Codeforces, then report your result</li>
-          <li>4. Rating and tags are revealed after you submit or quit</li>
-          <li>5. Beat problems above your Elo level for bonus overkill rewards!</li>
+          <li>{t("pve.step1")}</li>
+          <li>{t("pve.step2")}</li>
+          <li>{t("pve.step3")}</li>
+          <li>{t("pve.step4")}</li>
+          <li>{t("pve.step5")}</li>
         </ol>
       </div>
     </div>
@@ -118,6 +119,7 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
   const quitChallengeAction = usePvEChallengeStore((s) => s.quitChallengeAction);
   const error = usePvEChallengeStore((s) => s.error);
   const phase = usePvEChallengeStore((s) => s.phase);
+  const { t } = useTranslation(["challenge", "common"]);
 
   const elapsed = useElapsedTime(phase === "in_progress");
   const [solved, setSolved] = useState(false);
@@ -142,9 +144,9 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
   if (!problem) {
     return (
       <div className="mx-auto max-w-2xl text-center">
-        <LoadingSpinner text="Loading problem..." className="py-20" />
+        <LoadingSpinner text={t("common:loadingProblem")} className="py-20" />
         <Button variant="outline" className="mt-4" onClick={onNavigateBack}>
-          Back
+          {t("common:back")}
         </Button>
       </div>
     );
@@ -162,7 +164,7 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
         </div>
         <span className="flex items-center gap-1.5 text-sm font-medium text-purple-400">
           <HelpCircle className="size-4" />
-          Mystery Challenge
+          {t("challenge:pve.mysteryChallenge")}
         </span>
       </div>
 
@@ -214,24 +216,24 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
             onClick={() => window.open(problem.url, "_blank")}
           >
             <ExternalLink className="mr-2 size-4" />
-            Open on Codeforces
+            {t("challenge:openOnCodeforces")}
           </Button>
         </div>
       </motion.div>
 
       {/* Submit result panel */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground">Report Your Result</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t("challenge:pve.reportYourResult")}</h3>
 
         <div className="flex items-center gap-3">
-          <label className="text-sm text-muted-foreground">Did you solve it?</label>
+          <label className="text-sm text-muted-foreground">{t("challenge:pve.didYouSolve")}</label>
           <Button
             size="sm"
             variant={solved ? "default" : "outline"}
             onClick={() => setSolved(true)}
           >
             <CheckCircle2 className="mr-1.5 size-3.5" />
-            Yes
+            {t("common:yes")}
           </Button>
           <Button
             size="sm"
@@ -239,14 +241,14 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
             onClick={() => setSolved(false)}
           >
             <XCircle className="mr-1.5 size-3.5" />
-            No
+            {t("common:no")}
           </Button>
         </div>
 
         {solved && (
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
-              <label className="text-sm text-muted-foreground">Attempts:</label>
+              <label className="text-sm text-muted-foreground">{t("common:attempts")}:</label>
               <input
                 type="number"
                 min={1}
@@ -262,7 +264,7 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
               />
             </div>
             <div className="flex items-center gap-3">
-              <label className="text-sm text-muted-foreground">Errors (WA/TLE/RE):</label>
+              <label className="text-sm text-muted-foreground">{t("challenge:pve.errorsLabel")}</label>
               <input
                 type="number"
                 min={0}
@@ -283,11 +285,11 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
         <div className="flex gap-3">
           <Button onClick={handleSubmit} disabled={submitting}>
             {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-            Submit Result
+            {t("challenge:pve.submitResult")}
           </Button>
           <Button variant="destructive" onClick={handleQuit} disabled={submitting}>
             {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
-            Quit
+            {t("challenge:pve.quit")}
           </Button>
         </div>
       </div>
@@ -305,6 +307,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
   const startResponse = usePvEChallengeStore((s) => s.startResponse);
   const submitResult = usePvEChallengeStore((s) => s.submitResult);
   const quitResult = usePvEChallengeStore((s) => s.quitResult);
+  const { t } = useTranslation(["challenge", "common"]);
   const [eloTriggerKey] = useState(() => Date.now());
   const [showCelebration, setShowCelebration] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
@@ -377,7 +380,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
           )}
         </div>
         <h1 className="text-2xl font-bold text-foreground">
-          {isQuit ? "Challenge Abandoned" : isSolved ? "Challenge Complete!" : "Not Solved"}
+          {isQuit ? t("challenge:pve.challengeAbandoned") : isSolved ? t("challenge:pve.challengeComplete") : t("challenge:pve.notSolved")}
         </h1>
 
         {eloChange != null && (
@@ -394,7 +397,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
         transition={{ delay: 0.2 }}
         className="rounded-xl border-2 border-border bg-card p-5"
       >
-        <h3 className="text-sm font-semibold text-foreground">Problem Revealed</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t("challenge:pve.problemRevealed")}</h3>
         {problem && (
           <div className="mt-3 space-y-3">
             <div className="flex items-start justify-between gap-4">
@@ -453,7 +456,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
               className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
               <ExternalLink className="size-3" />
-              View on Codeforces
+              {t("challenge:viewOnCodeforces")}
             </a>
           </div>
         )}
@@ -468,7 +471,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
       >
         {/* Elo change */}
         <div className="rounded-xl border border-border bg-card p-4 text-center">
-          <p className="text-xs text-muted-foreground">Elo</p>
+          <p className="text-xs text-muted-foreground">{t("common:elo")}</p>
           <p
             className={`mt-1 text-lg font-bold ${
               eloChange == null
@@ -486,7 +489,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
 
         {/* PP change */}
         <div className="rounded-xl border border-border bg-card p-4 text-center">
-          <p className="text-xs text-muted-foreground">PP</p>
+          <p className="text-xs text-muted-foreground">{t("common:pp")}</p>
           <p
             className={`mt-1 text-lg font-bold ${
               ppChange == null
@@ -504,7 +507,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
 
         {/* Tokens earned */}
         <div className="rounded-xl border border-border bg-card p-4 text-center">
-          <p className="text-xs text-muted-foreground">Tokens</p>
+          <p className="text-xs text-muted-foreground">{t("common:tokens")}</p>
           <div className="mt-1">
             <CoinAnimation amount={tokensEarned} triggerKey={eloTriggerKey} className="justify-center" />
             {tokensEarned === 0 && (
@@ -530,10 +533,10 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
               </div>
               <div>
                 <h4 className="font-bold text-yellow-300">
-                  Overkill Bonus!
+                  {t("challenge:pve.overkillBonus")}
                 </h4>
                 <p className="text-sm text-yellow-400/80">
-                  You conquered a problem above your level! Token multiplier: x{overkillMultiplier.toFixed(2)}
+                  {t("challenge:pve.overkillDesc", { multiplier: overkillMultiplier.toFixed(2) })}
                 </p>
               </div>
             </div>
@@ -545,10 +548,10 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
       <div className="flex justify-center gap-3">
         <Button onClick={onReset}>
           <RotateCcw className="mr-2 size-4" />
-          New Challenge
+          {t("challenge:pve.newChallenge")}
         </Button>
         <Button variant="outline" onClick={() => navigate("/dashboard")}>
-          Back to Dashboard
+          {t("challenge:pve.backToDashboard")}
         </Button>
       </div>
     </div>

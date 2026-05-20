@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Dumbbell, Star, BookOpen } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import api from "@/services/api";
 import type { ApiResponse, TopicInfo } from "@/types";
@@ -19,6 +20,7 @@ function StarRating({ count, max = 5 }: { count: number; max?: number }) {
 }
 
 export default function TrainingPage() {
+  const { t } = useTranslation("training");
   const [topics, setTopics] = useState<TopicInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -30,13 +32,13 @@ export default function TrainingPage() {
       .catch((err) => {
         const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response
           ?.data?.error?.message;
-        setError(msg ?? "Failed to load topics");
+        setError(msg ?? t("failedLoadTopics"));
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   if (loading) {
-    return <LoadingSpinner text="Loading topics..." className="py-20" />;
+    return <LoadingSpinner text={t("loadingTopics")} className="py-20" />;
   }
 
   if (error) {
@@ -52,16 +54,16 @@ export default function TrainingPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Topic Training</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("topicTraining")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Choose a topic to practice and improve your skills. Earn stars and tokens as you progress.
+          {t("topicTrainingDesc")}
         </p>
       </div>
 
       {topics.length === 0 ? (
         <div className="rounded-xl border border-border bg-card px-4 py-12 text-center">
           <BookOpen className="mx-auto size-10 text-muted-foreground" />
-          <p className="mt-3 text-sm text-muted-foreground">No topics available yet.</p>
+          <p className="mt-3 text-sm text-muted-foreground">{t("noTopics")}</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

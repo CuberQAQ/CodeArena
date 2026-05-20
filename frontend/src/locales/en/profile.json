@@ -1,0 +1,23 @@
+{
+  "profile": "Profile",
+  "editProfile": "Edit Profile",
+  "username": "Username",
+  "email": "Email",
+  "profileUpdated": "Profile updated successfully.",
+  "failedUpdate": "Failed to update profile",
+  "joined": "Joined {{date}}",
+  "cfHandleLabel": "CF Handle:",
+  "verified": "Verified",
+  "linkCF": "Link your Codeforces account",
+  "linkCFDesc": "Connect your CF handle to track submissions and get personalized problems",
+  "bindHandle": "Bind Handle",
+  "eloRating": "Elo Rating",
+  "performancePoints": "Performance Points",
+  "eloTrend": "Elo Trend",
+  "noEloHistory": "No Elo history yet. Start playing to see your progress!",
+  "failedLoadElo": "Failed to load Elo history. Please try again later.",
+  "ppRanking": "PP Ranking",
+  "ppRankingDesc": "PP ranking will be available on the leaderboard page.",
+  "viewLeaderboard": "View Leaderboard",
+  "loadingProfile": "Loading profile..."
+}

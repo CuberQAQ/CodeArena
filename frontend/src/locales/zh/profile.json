@@ -1,0 +1,23 @@
+{
+  "profile": "个人资料",
+  "editProfile": "编辑资料",
+  "username": "用户名",
+  "email": "邮箱",
+  "profileUpdated": "个人资料更新成功。",
+  "failedUpdate": "更新个人资料失败",
+  "joined": "加入于 {{date}}",
+  "cfHandleLabel": "CF 账号：",
+  "verified": "已验证",
+  "linkCF": "关联你的 Codeforces 账号",
+  "linkCFDesc": "绑定 CF 账号以追踪提交记录并获取个性化题目",
+  "bindHandle": "绑定账号",
+  "eloRating": "Elo 评分",
+  "performancePoints": "表现分",
+  "eloTrend": "Elo 趋势",
+  "noEloHistory": "暂无 Elo 历史记录。开始对战以查看你的进步！",
+  "failedLoadElo": "加载 Elo 历史失败，请稍后重试。",
+  "ppRanking": "PP 排名",
+  "ppRankingDesc": "PP 排名将在排行榜页面提供。",
+  "viewLeaderboard": "查看排行榜",
+  "loadingProfile": "加载个人资料中..."
+}

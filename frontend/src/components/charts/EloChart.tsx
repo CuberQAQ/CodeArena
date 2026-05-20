@@ -8,6 +8,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import type { EloHistoryPoint } from "@/types";
 
 interface EloChartProps {
@@ -44,7 +46,9 @@ function CustomTooltip({
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold text-foreground">Elo: {point.elo}</p>
+      <p className="text-sm font-semibold text-foreground">
+        {i18n.t("dashboard:charts.eloLabel", { elo: point.elo })}
+      </p>
       <p className={`text-xs font-medium ${point.change >= 0 ? "text-green-400" : "text-red-400"}`}>
         {point.change >= 0 ? "+" : ""}
         {point.change}
@@ -53,14 +57,11 @@ function CustomTooltip({
   );
 }
 
-const RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
-  { value: "7d", label: "7D" },
-  { value: "30d", label: "30D" },
-  { value: "all", label: "All" },
-];
+const RANGE_OPTIONS: TimeRange[] = ["7d", "30d", "all"];
 
 export function EloChart({ data }: EloChartProps) {
   const [range, setRange] = useState<TimeRange>("30d");
+  const { t } = useTranslation("dashboard");
 
   const filtered = useMemo(() => filterByRange(data, range), [data, range]);
 
@@ -76,9 +77,9 @@ export function EloChart({ data }: EloChartProps) {
   if (data.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card p-5">
-        <h3 className="mb-4 text-sm font-semibold text-foreground">Elo Trend</h3>
+        <h3 className="mb-4 text-sm font-semibold text-foreground">{t("charts.eloTrend")}</h3>
         <div className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">
-          No Elo history yet. Start playing to see your progress!
+          {t("charts.noEloHistory")}
         </div>
       </div>
     );
@@ -87,19 +88,19 @@ export function EloChart({ data }: EloChartProps) {
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Elo Trend</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t("charts.eloTrend")}</h3>
         <div className="flex gap-1 rounded-lg bg-muted p-0.5">
           {RANGE_OPTIONS.map((opt) => (
             <button
-              key={opt.value}
-              onClick={() => setRange(opt.value)}
+              key={opt}
+              onClick={() => setRange(opt)}
               className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-                range === opt.value
+                range === opt
                   ? "bg-card text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {opt.label}
+              {t(`charts.${opt}`)}
             </button>
           ))}
         </div>

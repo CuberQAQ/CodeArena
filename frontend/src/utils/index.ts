@@ -60,6 +60,27 @@ export function getRatingColor(rating: number | null | undefined): string {
   return getRatingTierInfo(rating).color;
 }
 
+/** Rating tier name -> i18n key mapping for the rating namespace. */
+const RATING_KEY_MAP: Record<string, string> = {
+  "Newbie": "rating:newbie",
+  "Pupil": "rating:pupil",
+  "Specialist": "rating:specialist",
+  "Expert": "rating:expert",
+  "Candidate Master": "rating:candidateMaster",
+  "Master": "rating:master",
+  "International Master": "rating:internationalMaster",
+  "Grandmaster": "rating:grandmaster",
+  "International Grandmaster": "rating:internationalGrandmaster",
+  "Legendary Grandmaster": "rating:legendaryGrandmaster",
+};
+
+/** Return the i18n key for a rating tier name (for use with t()). */
+export function getDifficultyLabelKey(rating: number | null | undefined): string {
+  if (rating == null) return "rating:unrated";
+  const name = getRatingTierInfo(rating).name;
+  return RATING_KEY_MAP[name] ?? "rating:unrated";
+}
+
 /** Return the CF English tier name for a given rating. */
 export function getDifficultyLabel(rating: number | null | undefined): string {
   if (rating == null) return "Unrated";
@@ -76,9 +97,10 @@ export function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export function formatDate(dateStr: string | null | undefined): string {
+export function formatDate(dateStr: string | null | undefined, locale?: string): string {
   if (!dateStr) return "-";
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  const loc = locale ?? (typeof window !== "undefined" && localStorage.getItem("i18nextLng")?.startsWith("zh") ? "zh-CN" : "en-US");
+  return new Date(dateStr).toLocaleDateString(loc, {
     year: "numeric",
     month: "short",
     day: "numeric",

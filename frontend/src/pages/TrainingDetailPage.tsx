@@ -11,6 +11,7 @@ import {
   Clock,
   Trophy,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { StreakEffect } from "@/components/animations/StreakEffect";
@@ -31,6 +32,7 @@ type Phase = "loading" | "topic" | "session" | "result";
 export default function TrainingDetailPage() {
   const { id: topicId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation(["training", "common"]);
   const [phase, setPhase] = useState<Phase>("loading");
   const [topic, setTopic] = useState<TopicDetail | null>(null);
   const [session, setSession] = useState<TrainingSessionInfo | null>(null);
@@ -55,10 +57,10 @@ export default function TrainingDetailPage() {
         setPhase("topic");
       })
       .catch(() => {
-        setError("Failed to load topic details");
+        setError(t("training:failedLoadTopic"));
         setPhase("topic");
       });
-  }, [topicId]);
+  }, [topicId, t]);
 
   useEffect(() => {
     return () => {
@@ -79,7 +81,7 @@ export default function TrainingDetailPage() {
       setElapsed(0);
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
     } catch (err) {
-      setError(extractApiError(err, "Failed to start training session"));
+      setError(extractApiError(err, t("training:failedStartSession")));
     } finally {
       setLoading(false);
     }
@@ -121,11 +123,8 @@ export default function TrainingDetailPage() {
         const topicRes = await api.get<ApiResponse<TopicDetail>>(`/training/topics/${topicId}`);
         setTopic(topicRes.data.data);
       }
-      if (data.elo_change != null) {
-        // Show brief notification inline
-      }
     } catch (err) {
-      setError(extractApiError(err, "Failed to submit result"));
+      setError(extractApiError(err, t("training:failedSubmit")));
     } finally {
       setLoading(false);
     }
@@ -140,7 +139,7 @@ export default function TrainingDetailPage() {
       if (timerRef.current) clearInterval(timerRef.current);
       setPhase("result");
     } catch (err) {
-      setError(extractApiError(err, "Failed to abandon session"));
+      setError(extractApiError(err, t("training:failedAbandon")));
     } finally {
       setLoading(false);
     }
@@ -156,12 +155,12 @@ export default function TrainingDetailPage() {
     setShowAchievements(false);
   };
 
-  // ── LOADING ─────────────────────────────────────────────────────
+  // -- LOADING --
   if (phase === "loading") {
-    return <LoadingSpinner text="Loading topic..." className="py-20" />;
+    return <LoadingSpinner text={t("training:loadingTopic")} className="py-20" />;
   }
 
-  // ── TOPIC VIEW ──────────────────────────────────────────────────
+  // -- TOPIC VIEW --
   if (phase === "topic" && topic) {
     return (
       <div className="mx-auto max-w-4xl space-y-5">
@@ -170,7 +169,7 @@ export default function TrainingDetailPage() {
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to Topics
+          {t("training:backToTopics")}
         </button>
 
         <div className="flex items-start justify-between gap-4">
@@ -195,7 +194,7 @@ export default function TrainingDetailPage() {
             ) : (
               <Play className="mr-2 size-4" />
             )}
-            Start Training
+            {t("training:startTraining")}
           </Button>
         </div>
 
@@ -209,12 +208,12 @@ export default function TrainingDetailPage() {
         <div className="rounded-xl border border-border bg-card">
           <div className="border-b border-border px-5 py-3">
             <h2 className="text-sm font-semibold text-foreground">
-              Problems ({topic.problems?.length ?? 0})
+              {t("training:problems", { count: topic.problems?.length ?? 0 })}
             </h2>
           </div>
           {(!topic.problems || topic.problems.length === 0) ? (
             <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-              No problems available for this topic.
+              {t("training:noProblems")}
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -235,7 +234,7 @@ export default function TrainingDetailPage() {
                     </p>
                     {problem.solved && problem.time_spent != null && (
                       <p className="text-xs text-muted-foreground">
-                        Solved in {formatTime(problem.time_spent)} ({problem.attempts} attempts)
+                        {t("training:solvedIn", { time: formatTime(problem.time_spent), attempts: problem.attempts })}
                       </p>
                     )}
                   </div>
@@ -264,7 +263,7 @@ export default function TrainingDetailPage() {
     );
   }
 
-  // ── SESSION IN PROGRESS ─────────────────────────────────────────
+  // -- SESSION IN PROGRESS --
   if (phase === "session" && session && topic) {
     return (
       <div className="mx-auto max-w-4xl space-y-5">
@@ -282,7 +281,7 @@ export default function TrainingDetailPage() {
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
-            Topics
+            {t("training:topics")}
           </button>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -291,7 +290,7 @@ export default function TrainingDetailPage() {
             </div>
             <Button variant="destructive" size="sm" onClick={abandonSession} disabled={loading}>
               <StopCircle className="mr-1.5 size-3.5" />
-              End Session
+              {t("training:endSession")}
             </Button>
           </div>
         </div>
@@ -299,15 +298,15 @@ export default function TrainingDetailPage() {
         {/* Session info */}
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">Solved</p>
+            <p className="text-xs text-muted-foreground">{t("training:solvedLabel")}</p>
             <p className="mt-1 text-xl font-bold text-green-400">{session.problems_solved}</p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-xs text-muted-foreground">{t("common:total")}</p>
             <p className="mt-1 text-xl font-bold text-foreground">{session.total_problems}</p>
           </div>
           <div className="relative rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">Streak</p>
+            <p className="text-xs text-muted-foreground">{t("training:streak")}</p>
             <div className="mt-1 flex items-center justify-center">
               <StreakEffect streak={session.streak_count} />
             </div>
@@ -330,7 +329,7 @@ export default function TrainingDetailPage() {
         {/* Problem list with inline report panel */}
         <div className="rounded-xl border border-border bg-card">
           <div className="border-b border-border px-5 py-3">
-            <h2 className="text-sm font-semibold text-foreground">Problems</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("training:problems", { count: topic.problems?.length ?? 0 })}</h2>
           </div>
           <div className="divide-y divide-border">
             {topic.problems?.map((problem) => {
@@ -376,7 +375,7 @@ export default function TrainingDetailPage() {
                             setSubmitAttempts(1);
                           }}
                         >
-                          Report
+                          {t("common:report", { ns: "common" })}
                         </Button>
                       )}
                     </div>
@@ -384,25 +383,25 @@ export default function TrainingDetailPage() {
                   {isThis && (
                     <div className="border-t border-border px-5 py-4 space-y-3 bg-primary/5">
                       <div className="flex items-center gap-3">
-                        <span className="text-sm text-muted-foreground">Solved?</span>
+                        <span className="text-sm text-muted-foreground">{t("challenge:didYouSolve", { ns: "challenge" })}</span>
                         <Button
                           size="sm"
                           variant={submitSolved ? "default" : "outline"}
                           onClick={() => setSubmitSolved(true)}
                         >
-                          Yes
+                          {t("common:yes", { ns: "common" })}
                         </Button>
                         <Button
                           size="sm"
                           variant={!submitSolved ? "destructive" : "outline"}
                           onClick={() => setSubmitSolved(false)}
                         >
-                          No
+                          {t("common:no", { ns: "common" })}
                         </Button>
                       </div>
                       {submitSolved && (
                         <div className="flex items-center gap-3">
-                          <span className="text-sm text-muted-foreground">Attempts:</span>
+                          <span className="text-sm text-muted-foreground">{t("common:attempts", { ns: "common" })}:</span>
                           <input
                             type="number"
                             min={1}
@@ -421,10 +420,10 @@ export default function TrainingDetailPage() {
                       <div className="flex gap-2">
                         <Button size="sm" onClick={submitProblem} disabled={loading}>
                           {loading && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                          Submit
+                          {t("common:submit", { ns: "common" })}
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => setSelectedProblem(null)}>
-                          Cancel
+                          {t("common:cancel", { ns: "common" })}
                         </Button>
                       </div>
                     </div>
@@ -438,23 +437,23 @@ export default function TrainingDetailPage() {
     );
   }
 
-  // ── RESULT ──────────────────────────────────────────────────────
+  // -- RESULT --
   if (phase === "result") {
     return (
       <div className="mx-auto max-w-2xl space-y-5 text-center">
         <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-green-500/10">
           <Trophy className="size-8 text-green-400" />
         </div>
-        <h1 className="text-2xl font-bold text-foreground">Training Session Complete</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("training:trainingComplete")}</h1>
         {session && (
           <p className="text-sm text-muted-foreground">
-            Solved {session.problems_solved} out of {session.total_problems} problems
+            {t("training:solvedOutOf", { solved: session.problems_solved, total: session.total_problems })}
           </p>
         )}
         <div className="flex justify-center gap-3">
-          <Button onClick={handleReset}>Train Again</Button>
+          <Button onClick={handleReset}>{t("training:trainAgain")}</Button>
           <Button variant="outline" onClick={() => navigate("/training")}>
-            Back to Topics
+            {t("training:backToTopics")}
           </Button>
         </div>
       </div>

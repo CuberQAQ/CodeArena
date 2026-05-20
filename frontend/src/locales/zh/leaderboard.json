@@ -1,0 +1,13 @@
+{
+  "leaderboard": "排行榜",
+  "leaderboardDesc": "根据竞技表现排名的顶尖选手。",
+  "byElo": "按 Elo",
+  "byPP": "按 PP",
+  "loadingLeaderboard": "加载排行榜中...",
+  "noData": "暂无排行榜数据。成为第一个参赛者！",
+  "player": "选手",
+  "elo": "Elo",
+  "pp": "PP",
+  "tokens": "代币",
+  "cfHandle": "CF: {{handle}}"
+}

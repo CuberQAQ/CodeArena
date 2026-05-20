@@ -15,6 +15,7 @@ import {
   UserCheck,
   UserX,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { extractApiError } from "@/utils";
@@ -58,6 +59,7 @@ interface UserListResponse {
 // ---------------------------------------------------------------------------
 
 export default function AdminOverviewPage() {
+  const { t } = useTranslation("admin");
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [users, setUsers] = useState<UserListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,7 @@ export default function AdminOverviewPage() {
       );
       setUsers(res.data.data);
     } catch (err) {
-      setError(extractApiError(err, "Failed to load users"));
+      setError(extractApiError(err, t("failedLoadUsers")));
     }
   };
 
@@ -118,7 +120,7 @@ export default function AdminOverviewPage() {
       await fetchUsers(userPage, userSearch);
       await fetchStats();
     } catch (err) {
-      setError(extractApiError(err, "Failed to toggle user status"));
+      setError(extractApiError(err, t("failedToggleStatus")));
     } finally {
       setActionLoading(null);
     }
@@ -130,22 +132,22 @@ export default function AdminOverviewPage() {
       await api.put(`/admin/users/${userId}/toggle-admin`);
       await fetchUsers(userPage, userSearch);
     } catch (err) {
-      setError(extractApiError(err, "Failed to toggle admin status"));
+      setError(extractApiError(err, t("failedToggleAdmin")));
     } finally {
       setActionLoading(null);
     }
   };
 
   if (loading) {
-    return <LoadingSpinner text="Loading admin dashboard..." className="py-20" />;
+    return <LoadingSpinner text={t("loadingAdmin")} className="py-20" />;
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("adminDashboard")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          System administration and monitoring.
+          {t("adminDashboardDesc")}
         </p>
       </div>
 
@@ -156,7 +158,7 @@ export default function AdminOverviewPage() {
             onClick={() => setError("")}
             className="ml-2 underline hover:no-underline"
           >
-            dismiss
+            {t("common:dismiss", { ns: "common" })}
           </button>
         </div>
       )}
@@ -166,36 +168,36 @@ export default function AdminOverviewPage() {
         <StatCard
           icon={<Users className="size-5 text-blue-400" />}
           iconBg="bg-blue-500/10"
-          label="Total Users"
+          label={t("totalUsers")}
           value={stats?.users.total ?? 0}
-          sublabel={`${stats?.users.active ?? 0} active`}
+          sublabel={t("activeCount", { count: stats?.users.active ?? 0 })}
         />
         <StatCard
           icon={<Sword className="size-5 text-orange-400" />}
           iconBg="bg-orange-500/10"
-          label="Challenges"
+          label={t("challenges")}
           value={stats?.challenges.total ?? 0}
-          sublabel={`${stats?.challenges.active ?? 0} active`}
+          sublabel={t("activeCount", { count: stats?.challenges.active ?? 0 })}
         />
         <StatCard
           icon={<Dumbbell className="size-5 text-green-400" />}
           iconBg="bg-green-500/10"
-          label="Training Sessions"
+          label={t("trainingSessions")}
           value={stats?.training.total_sessions ?? 0}
-          sublabel={`${stats?.training.active_sessions ?? 0} active`}
+          sublabel={t("activeCount", { count: stats?.training.active_sessions ?? 0 })}
         />
         <StatCard
           icon={<Trophy className="size-5 text-yellow-400" />}
           iconBg="bg-yellow-500/10"
-          label="Contests"
+          label={t("contests")}
           value={stats?.contests.total ?? 0}
-          sublabel={`${stats?.contests.active ?? 0} active`}
+          sublabel={t("activeCount", { count: stats?.contests.active ?? 0 })}
         />
       </div>
 
       {/* ---- Quick Actions ---- */}
       <div className="rounded-xl border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold text-foreground">Quick Actions</h2>
+        <h2 className="text-sm font-semibold text-foreground">{t("quickActions")}</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Link
             to="/admin/config"
@@ -203,8 +205,8 @@ export default function AdminOverviewPage() {
           >
             <Settings className="size-5 text-muted-foreground" />
             <div>
-              <p className="text-sm font-medium text-foreground">Configuration</p>
-              <p className="text-xs text-muted-foreground">Manage system settings</p>
+              <p className="text-sm font-medium text-foreground">{t("configuration")}</p>
+              <p className="text-xs text-muted-foreground">{t("manageSettings")}</p>
             </div>
           </Link>
           <button
@@ -216,8 +218,8 @@ export default function AdminOverviewPage() {
           >
             <Activity className="size-5 text-muted-foreground" />
             <div>
-              <p className="text-sm font-medium text-foreground">Refresh Data</p>
-              <p className="text-xs text-muted-foreground">Reload stats and user list</p>
+              <p className="text-sm font-medium text-foreground">{t("refreshData")}</p>
+              <p className="text-xs text-muted-foreground">{t("reloadStats")}</p>
             </div>
           </button>
         </div>
@@ -228,12 +230,12 @@ export default function AdminOverviewPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Users className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">User Management</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("userManagement")}</h2>
           </div>
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Search users..."
+              placeholder={t("searchUsers")}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -241,7 +243,7 @@ export default function AdminOverviewPage() {
             />
             <Button variant="outline" size="sm" onClick={handleSearch}>
               <Search className="mr-1 size-3.5" />
-              Search
+              {t("common:search", { ns: "common" })}
             </Button>
           </div>
         </div>
@@ -251,12 +253,12 @@ export default function AdminOverviewPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="pb-2 pr-4">User</th>
-                <th className="pb-2 pr-4">Elo</th>
-                <th className="pb-2 pr-4">Tokens</th>
-                <th className="pb-2 pr-4">Status</th>
-                <th className="pb-2 pr-4">Role</th>
-                <th className="pb-2">Actions</th>
+                <th className="pb-2 pr-4">{t("user")}</th>
+                <th className="pb-2 pr-4">{t("elo")}</th>
+                <th className="pb-2 pr-4">{t("tokens")}</th>
+                <th className="pb-2 pr-4">{t("status")}</th>
+                <th className="pb-2 pr-4">{t("role")}</th>
+                <th className="pb-2">{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -283,17 +285,17 @@ export default function AdminOverviewPage() {
                       ) : (
                         <UserX className="size-3" />
                       )}
-                      {user.is_active ? "Active" : "Disabled"}
+                      {user.is_active ? t("active") : t("disabled")}
                     </span>
                   </td>
                   <td className="py-3 pr-4">
                     {user.is_admin ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-xs font-medium text-purple-400">
                         <Shield className="size-3" />
-                        Admin
+                        {t("admin")}
                       </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">User</span>
+                      <span className="text-xs text-muted-foreground">{t("user")}</span>
                     )}
                   </td>
                   <td className="py-3">
@@ -303,7 +305,7 @@ export default function AdminOverviewPage() {
                         size="sm"
                         onClick={() => handleToggleActive(user.id)}
                         disabled={actionLoading === user.id + "-active"}
-                        title={user.is_active ? "Disable user" : "Enable user"}
+                        title={user.is_active ? t("disableUser") : t("enableUser")}
                         className="h-7 px-2"
                       >
                         {user.is_active ? (
@@ -317,7 +319,7 @@ export default function AdminOverviewPage() {
                         size="sm"
                         onClick={() => handleToggleAdmin(user.id)}
                         disabled={actionLoading === user.id + "-admin"}
-                        title={user.is_admin ? "Revoke admin" : "Grant admin"}
+                        title={user.is_admin ? t("revokeAdmin") : t("grantAdmin")}
                         className="h-7 px-2"
                       >
                         {user.is_admin ? (
@@ -333,7 +335,7 @@ export default function AdminOverviewPage() {
               {users && users.items.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                    No users found
+                    {t("noUsers")}
                   </td>
                 </tr>
               )}
@@ -345,7 +347,7 @@ export default function AdminOverviewPage() {
         {users && users.total_pages > 1 && (
           <div className="mt-4 flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              {users.total} total users
+              {t("totalUsersCount", { count: users.total })}
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -358,7 +360,7 @@ export default function AdminOverviewPage() {
                 <ChevronLeft className="size-4" />
               </Button>
               <span className="text-xs text-muted-foreground">
-                Page {userPage} of {users.total_pages}
+                {t("page", { current: userPage, total: users.total_pages })}
               </span>
               <Button
                 variant="outline"
