@@ -2000,3 +2000,327 @@ AI 机器人模拟存在三个叠加问题：
 ```
 
 **建议执行顺序**: 26.1 + 26.2 + 26.4 并行开发 → 26.3
+
+---
+
+## 阶段 27: 测试基础设施 + UX 质量门禁改造
+
+> 目的：解决交付物 UX 质量问题。根因是测试全部在 mock 环境中运行，无人用用户视角验证实际渲染效果。
+> 三层 UX 质量防线：截图+AI 视觉分析 / 组件边界状态测试 / 完整业务流程 E2E
+
+### Task 27.1: 后端 testcontainers 依赖 + conftest 重写
+**状态**: 📋 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+将后端集成测试从 SQLite 切换到真实 PostgreSQL（testcontainers），彻底消除模型漂移问题。
+
+**需要修改的文件**:
+- `backend/requirements.txt` — 添加 `testcontainers[postgres]>=4.0.0` 和 `psycopg2-binary>=2.9.0`
+- `backend/tests/integration/conftest.py` — 完全重写
+
+**关键实现细节**:
+
+1. **requirements.txt**: 在 `# Development` 区添加 testcontainers 和 psycopg2-binary
+
+2. **conftest.py 重写**:
+   - **删除全部**: `SQLiteUUID` 类、`TestBase` 类、12 个 `_Test*` 模型类（_TestUser, _TestEloHistory, _TestPPRecord, _TestChallengeSession, _TestTopicCategory, _TestTrainingSession, _TestTrainingProblemRecord, _TestContestSession, _TestContestProblemRecord, _TestTokenTransaction, _TestHintPurchase, _TestSystemConfig）、模块引用块、`_apply_model_patches()`、`_stop_model_patches()`、旧 `db_engine` fixture
+   - **替换为**:
+     - `postgres_container` fixture (scope="session"): `PostgresContainer("postgres:16-alpine")`
+     - `postgres_url` fixture: 构建 `postgresql+asyncpg://...` URL
+     - `_run_migrations` fixture: `alembic upgrade head` 对测试容器
+     - `db_engine` fixture: 连接真实 PG，测试间用 `TRUNCATE ... CASCADE` 清理数据
+     - `db_session` fixture: 不需要任何 patch.object()，生产模型直接工作
+   - **保留**: `fake_redis` fixture、`create_test_user()` (改用生产 User)、`create_test_topic()` (改用生产 TopicCategory)、`get_auth_headers()`、`make_cf_problems_response()`、`mock_cf_service()`
+   - **保留但改为 fixture 内 patch**: `_mock_get_config` 和 `_mock_get_submission_count`（mock 服务行为而非模型）、`get_redis` patch（match_service 和 challenge_service 用 fakeredis）
+
+#### 测试要点
+- [ ] `pytest tests/integration/ -v` 全部通过
+- [ ] 无 `_Test*` 模型类残留
+- [ ] 无 `patch.object` 引用测试模型类
+- [ ] Docker 可用时测试正常运行；不可用时自动 skip（pytest.importorskip）
+- [ ] `pytest tests/test_*.py`（单元测试）不受影响
+
+#### 验收标准
+1. 集成测试在真实 PostgreSQL 上运行
+2. 508 行 conftest 缩减到 ~120 行
+3. 现有单元测试零回归
+
+---
+
+### Task 27.2: 集成测试文件模型导入更新
+**状态**: 📋 待开始
+**优先级**: P0
+**依赖**: Task 27.1
+
+#### 任务描述
+将 7 个集成测试文件中的 `_Test*` 模型引用替换为生产模型导入。
+
+**需要修改的文件** (全部 7 个):
+- `backend/tests/integration/test_auth_flow.py` — `_TestUser` → `User`
+- `backend/tests/integration/test_challenge_flow.py` — `_TestChallengeSession` + `_TestUser` → `ChallengeSession` + `User` (7 处构造)
+- `backend/tests/integration/test_training_flow.py` — `_TestTopicCategory` + `_TestTrainingSession` + `_TestUser`
+- `backend/tests/integration/test_contest_flow.py` — `_TestContestSession` + `_TestUser`
+- `backend/tests/integration/test_economy_flow.py` — `_TestTokenTransaction` + `_TestUser`
+- `backend/tests/integration/test_hint_flow.py` — `_TestHintPurchase` + `_TestUser`
+- `backend/tests/integration/test_pp_elo_flow.py` — `_TestPPRecord` + `_TestEloHistory` + `_TestUser`
+
+**关键实现细节**:
+- 所有 `from .conftest import _TestXxx` 替换为 `from app.models.xxx import Xxx`
+- 所有 `_TestXxx(...)` 构造替换为 `Xxx(...)`
+- 所有 `select(_TestXxx).where(...)` 查询替换为 `select(Xxx).where(...)`
+- 生产模型的 `server_default` 字段（如 `challenger_tokens_earned`）不需要手动赋值
+
+#### 测试要点
+- [ ] 每个 `from .conftest import` 语句不再包含 `_Test` 前缀
+- [ ] 无文件引用已删除的 `_Test*` 类
+- [ ] `pytest tests/integration/ -v` 全部通过
+
+#### 验收标准
+1. 7 个文件全部使用生产模型
+2. 所有集成测试在真实 PG 上通过
+
+---
+
+### Task 27.3: 数据库约束 + HTTP API 集成测试
+**状态**: 📋 待开始
+**优先级**: P1
+**依赖**: Task 27.1
+
+#### 任务描述
+新增测试覆盖之前 SQLite 无法验证的 PostgreSQL 特性和 HTTP 级集成。
+
+**需要新建的文件**:
+- `backend/tests/integration/test_db_constraints.py`
+- `backend/tests/integration/test_api_auth.py`
+
+**test_db_constraints.py 覆盖**:
+- ForeignKey 约束：ChallengeSession 无效 challenger_id 触发 IntegrityError
+- Unique 约束：重复 username / 重复 (user_id, tag)
+- server_default：UUID 自动生成、created_at 自动设置、JSONB 列
+- 4 个零覆盖模型 CRUD：UserTagElo, PvEChallengeSession, SubmissionTracking, ContestBot
+
+**test_api_auth.py 覆盖**:
+- 复用 test_auth_flow.py 的 `client` fixture 模式（httpx + ASGITransport + dependency_overrides）
+- 测试完整 HTTP 请求/响应周期：中间件、序列化、数据库交互
+
+#### 测试要点
+- [ ] FK 约束违反被正确抛出
+- [ ] Unique 约束违反被正确抛出
+- [ ] UUID 由 PG 自动生成（非 Python 端）
+- [ ] 4 个零覆盖模型可正常 CRUD
+- [ ] HTTP 层测试覆盖注册/登录/获取 profile
+
+#### 验收标准
+1. 新增 ~20 个测试用例全部通过
+2. 覆盖了之前 4 个零覆盖的生产模型
+
+---
+
+### Task 27.4: 前端 Vitest 基础设施 + Store/Utils 单元测试
+**状态**: 📋 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+引入 Vitest + Testing Library 前端测试框架，为核心 Store 和工具函数编写单元测试。
+
+**需要修改的文件**:
+- `frontend/package.json` — 添加 devDependencies 和 test scripts
+- `frontend/vite.config.ts` — 添加 test 配置
+
+**需要新建的文件**:
+- `frontend/src/test/setup.ts` — `import "@testing-library/jest-dom/vitest"`
+- `frontend/src/utils/__tests__/index.test.ts`
+- `frontend/src/stores/__tests__/auth.test.ts`
+- `frontend/src/services/__tests__/api.test.ts`
+
+**关键实现细节**:
+
+1. **package.json**:
+   - devDependencies: vitest, @vitest/coverage-v8, jsdom, @testing-library/react, @testing-library/jest-dom, @testing-library/user-event, msw
+   - scripts: `"test": "vitest run"`, `"test:watch": "vitest"`, `"test:coverage": "vitest run --coverage"`
+
+2. **vite.config.ts**: 添加 `test: { environment: "jsdom", globals: true, setupFiles: ["./src/test/setup.ts"], css: true }`
+
+3. **utils 测试**: getRatingTierInfo 段位边界 (1199=Newbie, 1200=Pupil, 3000=Legendary GM, null=Newbie)、getRatingColor、formatTime、extractApiError
+
+4. **auth store 测试**: login/register/logout/fetchUser/hydrate + token 过期/刷新。用 `vi.mock("@/services/api")` mock API
+
+5. **api service 测试**: 401 重试、refresh token 队列、并发请求处理。用 msw mock HTTP
+
+#### 测试要点
+- [ ] `npm test` 成功运行
+- [ ] `npm run build` 不受影响
+- [ ] utils 段位边界精确验证
+- [ ] auth store login → user 正确设置 / logout → 清除
+- [ ] api 401 → refresh → retry 链路正确
+
+#### 验收标准
+1. `npm test` 全部通过
+2. TypeScript 类型检查通过
+
+---
+
+### Task 27.5: 前端组件边界状态测试
+**状态**: 📋 待开始
+**优先级**: P0
+**依赖**: Task 27.4
+
+#### 任务描述
+为 4 个核心页面编写组件边界状态测试，覆盖 UX bug 高发区域。
+
+**需要新建的文件**:
+- `frontend/src/pages/__tests__/DashboardPage.test.tsx`
+- `frontend/src/pages/__tests__/ChallengePage.test.tsx`
+- `frontend/src/pages/__tests__/ContestPage.test.tsx`
+- `frontend/src/pages/__tests__/TrainingPage.test.tsx`
+
+**每个页面必须覆盖 5 种状态**:
+1. **Loading** — isLoading=true 时显示加载指示器，不闪烁内容
+2. **Empty** — 无数据时显示友好提示（如"暂无比赛"），不报错不白屏
+3. **Error** — API 返回错误时显示错误信息，有重试入口
+4. **正常数据** — 典型数据正确渲染（段位、分数、代币余额等）
+5. **边界数据** — Elo=0 / Elo=9999、零代币、超长用户名、空字符串
+
+**注意**: ChallengePage 同时服务 PvP 和 PvE 两种模式，测试应覆盖两种模式各自的典型数据场景（如 PvP 匹配等待状态 vs PvE 盲盒揭示状态）。
+
+**关键实现细节**:
+- 用 msw (Mock Service Worker) mock API 响应
+- 用 `render()` from @testing-library/react 渲染组件
+- 用 `screen.getByText()`, `screen.getByRole()` 断言 DOM
+- 用 `userEvent` 模拟用户交互
+- 需要用 `MemoryRouter` 或 `BrowserRouter` 包裹有路由依赖的组件
+- Zustand store 可能需要在测试前 reset 状态
+
+#### 测试要点
+- [ ] 每个页面 5 种状态各至少 1 个测试
+- [ ] Loading 状态不出现 undefined/null 渲染
+- [ ] Empty 状态不报错
+- [ ] Error 状态显示可读的错误信息
+- [ ] 边界数据不导致组件崩溃或布局错乱
+
+#### 验收标准
+1. 4 个页面 × 5 种状态 = 至少 20 个测试用例
+2. `npm test` 全部通过
+
+---
+
+### Task 27.6: Playwright 配置 + 截图基础设施 + 完整业务流程 E2E
+**状态**: 📋 待开始
+**优先级**: P0
+**依赖**: 无（可与 27.1-27.5 并行开发）
+
+#### 任务描述
+建立真实后端 E2E 测试能力：Playwright 对接 Docker Compose 全栈环境，覆盖 4 条完整业务流程，集成截图验证。
+
+**需要修改的文件**:
+- `frontend/playwright.config.ts` — 新增 `integration` project
+
+**需要新建的文件**:
+- `frontend/e2e/integration/helpers/screenshots.ts`
+- `frontend/e2e/integration/auth-flow.spec.ts`
+- `frontend/e2e/integration/challenge-flow.spec.ts`
+- `frontend/e2e/integration/training-flow.spec.ts`
+- `frontend/e2e/integration/contest-flow.spec.ts`
+
+**关键实现细节**:
+
+1. **playwright.config.ts**:
+   - 保留现有 `chromium` project（testDir: `./e2e`，webServer 自启动 Vite）
+   - 新增 `integration` project（testDir: `./e2e/integration`，不启动 server）
+   - 现有 4 个 mock E2E 文件不迁移
+
+2. **screenshots.ts**: 标准化截图工具函数 `screenshotPage(page, name)`，保存到 `e2e/integration/screenshots/`
+
+3. **4 条完整业务流程**:
+   - `auth-flow.spec.ts`: 注册 → 登录 → 查看 dashboard → 退出 → 重新登录
+   - `challenge-flow.spec.ts`: 加入匹配 → 匹配成功 → 提交结果 → 查看 Elo 变化
+   - `training-flow.spec.ts`: 选择专题 → 开始训练 → 提交答案 → 查看进度
+   - `contest-flow.spec.ts`: 创建比赛 → 做题 → 比赛结束 → 查看 leaderboard
+
+4. **每个 E2E 测试验证**:
+   - 每步操作后页面数据是否正确
+   - 页面跳转是否正确
+   - 关键 UI 元素可见性（段位、分数、代币余额）
+   - 关键步骤自动截图
+
+#### 测试要点
+- [ ] `npx playwright test --project=chromium` 现有测试不受影响
+- [ ] `docker compose up -d` 后 `npx playwright test --project=integration` 可运行
+- [ ] 截图文件正确生成到 screenshots/ 目录
+- [ ] 每条业务流程覆盖完整用户旅程
+
+#### 验收标准
+1. 现有 mock E2E 零回归
+2. 4 条真实后端 E2E 可运行
+3. 截图基础设施可用
+
+---
+
+### Task 27.7: Agent 工作流更新 — UX 质量门禁
+**状态**: 📋 待开始
+**优先级**: P1
+**依赖**: Task 27.1 + Task 27.6
+
+#### 任务描述
+更新 test-engineer 和 feature-engineer agent 配置，文档化新的测试基础设施和 UX 验证流程。
+
+**需要修改的文件**:
+- `.claude/agents/professional-test-engineer.md`
+- `.claude/agents/feature-engineer.md`
+
+**professional-test-engineer.md 更新**:
+在 "## UI Testing Rules" 后新增 "## UX 质量验证流程" 章节：
+
+- **后端测试**: testcontainers + 真实 PG，`cd backend && pytest tests/integration/ -v`
+- **前端三层测试体系**:
+  1. Vitest 组件边界状态测试（每页面 5 种状态），`cd frontend && npm test`
+  2. Playwright mock E2E，`cd frontend && npx playwright test --project=chromium`
+  3. Playwright integration E2E（真实后端），`docker compose up -d && cd frontend && npx playwright test --project=integration`
+- **截图验证 SOP（必须执行）**:
+  1. 确保 Docker 环境运行
+  2. Playwright 导航到受影响页面
+  3. 每个关键状态截图
+  4. Read 工具读取截图
+  5. 测试报告附上截图分析和 UI 质量判定
+  6. 截图路径: `frontend/e2e/integration/screenshots/`
+
+**feature-engineer.md 更新**:
+在 "Testing Is Non-Negotiable" 后新增 "### 前端测试规范":
+- 页面组件必须覆盖 loading/empty/error/正常/边界 5 种状态
+- 后端集成测试用 `from app.models.*`，不定义 SQLite 测试模型
+
+#### 测试要点
+- [ ] agent 配置中的文件路径和命令正确
+- [ ] test-engineer 知道三层测试体系及其运行命令
+- [ ] test-engineer 知道截图验证 SOP
+- [ ] feature-engineer 知道前端测试规范
+
+#### 验收标准
+1. 两个 agent 配置文件更新完成
+2. 所有命令路径可执行
+
+---
+
+### 任务依赖关系
+
+```
+阶段 27 (测试基础设施 + UX 质量门禁):
+  27.1 testcontainers + conftest ← 无依赖 (P0)
+  27.2 集成测试导入更新 ← 27.1 (P0)
+  27.3 DB 约束 + HTTP 测试 ← 27.1 (P1)
+  27.4 Vitest + Store/Utils ← 无依赖 (P0)
+  27.5 组件边界状态测试 ← 27.4 (P0)
+  27.6 Playwright E2E + 截图 ← 无依赖 (P0)
+  27.7 Agent 工作流更新 ← 27.1 + 27.6 (P1)
+
+  并行轨道:
+    轨道 A (后端): 27.1 → 27.2 → 27.3
+    轨道 B (前端): 27.4 → 27.5
+    轨道 C (E2E):  27.6
+    轨道 D (Agent): 27.7 (等 A+C 完成)
+```
+
+**建议执行顺序**: 27.1 + 27.4 + 27.6 并行 → 27.2 + 27.3 + 27.5 → 27.7

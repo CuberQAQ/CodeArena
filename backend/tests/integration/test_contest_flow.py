@@ -11,8 +11,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .conftest import (
-    _TestContestSession,
-    _TestUser,
     create_test_user,
     make_cf_problems_response,
     mock_cf_service,

@@ -9,9 +9,9 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from app.models.challenge_session import ChallengeSession
+
 from .conftest import (
-    _TestChallengeSession,
-    _TestUser,
     create_test_user,
     make_cf_problems_response,
     mock_cf_service,
@@ -121,7 +121,7 @@ class TestChallengeStartAndSubmit:
         from app.services.challenge_service import ChallengeService
 
         # Create session directly using test model
-        session = _TestChallengeSession(
+        session = ChallengeSession(
             challenger_id=user_a.id,
             opponent_id=user_b.id,
             problem_id="1000A",
@@ -159,7 +159,7 @@ class TestChallengeStartAndSubmit:
 
         from app.services.challenge_service import ChallengeService
 
-        session = _TestChallengeSession(
+        session = ChallengeSession(
             challenger_id=user_a.id,
             opponent_id=user_b.id,
             problem_id="1001B",
@@ -189,7 +189,7 @@ class TestChallengeStartAndSubmit:
 
         from app.services.challenge_service import ChallengeService
 
-        session = _TestChallengeSession(
+        session = ChallengeSession(
             challenger_id=user_a.id,
             opponent_id=user_b.id,
             problem_id="1002C",
@@ -215,7 +215,7 @@ class TestChallengeStartAndSubmit:
 
         from app.services.challenge_service import ChallengeService
 
-        session = _TestChallengeSession(
+        session = ChallengeSession(
             challenger_id=user_a.id,
             opponent_id=user_b.id,
             problem_id="1003D",
@@ -243,7 +243,7 @@ class TestChallengeStartAndSubmit:
 
         from app.services.challenge_service import ChallengeService
 
-        session = _TestChallengeSession(
+        session = ChallengeSession(
             challenger_id=user_a.id,
             opponent_id=user_b.id,
             problem_id="1004A",
@@ -273,7 +273,7 @@ class TestChallengeStartAndSubmit:
 
         from app.services.challenge_service import ChallengeService
 
-        session = _TestChallengeSession(
+        session = ChallengeSession(
             challenger_id=user_a.id,
             opponent_id=user_b.id,
             problem_id="1005A",
@@ -301,7 +301,7 @@ class TestChallengeStartAndSubmit:
 
         from app.services.challenge_service import ChallengeService
 
-        session = _TestChallengeSession(
+        session = ChallengeSession(
             challenger_id=user_a.id,
             opponent_id=user_b.id,
             problem_id="1006A",

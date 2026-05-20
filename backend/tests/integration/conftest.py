@@ -1,305 +1,127 @@
 """Shared fixtures for end-to-end integration tests.
 
 Provides:
-- In-memory SQLite async database with SQLite-compatible test models
-- Patched service modules that use the test models
+- Real PostgreSQL via testcontainers (session-scoped container + migrations)
+- Async engine and session with TRUNCATE-based cleanup between tests
+- Patched service modules for Redis, config, Elo, MElo, ContestSimulation
 - Helper factories for common entities (users, topics, etc.)
 - CF API mock helper
 """
 
 import uuid
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
+import pytest
 import pytest_asyncio
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, TypeDecorator, event
-from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.security import create_access_token, hash_password
+from app.models.topic_category import TopicCategory
+from app.models.user import User
 from app.services.config_service import ConfigService
 from app.services.elo_service import EloService
 
 # ---------------------------------------------------------------------------
-# Custom UUID type for SQLite compatibility
+# Skip entire module if Docker / testcontainers is not available
 # ---------------------------------------------------------------------------
-
-
-class SQLiteUUID(TypeDecorator):
-    """A UUID type that stores values as plain strings in SQLite.
-
-    Handles both uuid.UUID objects and string representations transparently,
-    avoiding the PostgreSQL-specific UUID type handler that breaks with SQLite.
-    """
-    impl = String(36)
-    cache_ok = True
-
-    def process_bind_param(self, value, dialect):
-        if value is not None:
-            return str(value)
-        return value
-
-    def process_result_value(self, value, dialect):
-        if value is not None:
-            return str(value)
-        return value
-
+pytest.importorskip("testcontainers")
 
 # ---------------------------------------------------------------------------
-# SQLite-compatible test models
+# Module references for service patching
 # ---------------------------------------------------------------------------
-
-
-class TestBase(DeclarativeBase):
-    pass
-
-
-class _TestUser(TestBase):
-    __tablename__ = "users"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    cf_handle: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
-    cf_handle_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
-    pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    daily_tokens_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    daily_tokens_reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-
-
-class _TestEloHistory(TestBase):
-    __tablename__ = "elo_history"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    elo_before: Mapped[int] = mapped_column(Integer, nullable=False)
-    elo_after: Mapped[int] = mapped_column(Integer, nullable=False)
-    elo_change: Mapped[int] = mapped_column(Integer, nullable=False)
-    reason: Mapped[str] = mapped_column(String(50), nullable=False)
-    reference_id: Mapped[str | None] = mapped_column(SQLiteUUID, nullable=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class _TestPPRecord(TestBase):
-    __tablename__ = "pp_records"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    cf_problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
-    problem_rating: Mapped[int] = mapped_column(Integer, nullable=False)
-    base_pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    solved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    hints_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    wa_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    time_spent_minutes: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    performance_factor: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
-    final_pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    overkill_multiplier: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
-
-
-class _TestChallengeSession(TestBase):
-    __tablename__ = "challenge_sessions"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    challenger_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    opponent_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
-    problem_rating: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    challenger_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    opponent_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    challenger_solved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    opponent_solved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    challenger_time: Mapped[float | None] = mapped_column(Float, nullable=True)
-    opponent_time: Mapped[float | None] = mapped_column(Float, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
-    result: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    opponent_elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    opponent_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    problem_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    hints_used_challenger: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    hints_used_opponent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class _TestTopicCategory(TestBase):
-    __tablename__ = "topic_categories"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    cf_tags: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    display_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-
-
-class _TestTrainingSession(TestBase):
-    __tablename__ = "training_sessions"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    topic_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    problems_solved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    total_problems: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    streak_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class _TestTrainingProblemRecord(TestBase):
-    __tablename__ = "training_problem_records"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    session_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    user_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    topic_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
-    problem_rating: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    solved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    time_spent: Mapped[float | None] = mapped_column(Float, nullable=True)
-    solved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class _TestContestSession(TestBase):
-    __tablename__ = "contest_sessions"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    contest_tier: Mapped[str] = mapped_column(String(20), nullable=False)
-    problems: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    total_problems: Mapped[int] = mapped_column(Integer, nullable=False)
-    problems_solved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    time_limit: Mapped[int] = mapped_column(Integer, nullable=False)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
-    elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-
-class _TestContestProblemRecord(TestBase):
-    __tablename__ = "contest_problem_records"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    contest_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
-    problem_rating: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    solved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    time_spent: Mapped[float | None] = mapped_column(Float, nullable=True)
-    solved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class _TestTokenTransaction(TestBase):
-    __tablename__ = "token_transactions"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
-    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    reference_id: Mapped[str | None] = mapped_column(SQLiteUUID, nullable=True)
-    balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: datetime.now(UTC), nullable=True)
-
-
-class _TestHintPurchase(TestBase):
-    __tablename__ = "hint_purchases"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str] = mapped_column(SQLiteUUID, nullable=False)
-    problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
-    problem_rating: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    hint_level: Mapped[int] = mapped_column(Integer, nullable=False)
-    tokens_cost: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class _TestSystemConfig(TestBase):
-    __tablename__ = "system_config"
-
-    id: Mapped[str] = mapped_column(SQLiteUUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    value: Mapped[str] = mapped_column(Text, nullable=False)
-    updated_by: Mapped[str | None] = mapped_column(SQLiteUUID, nullable=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-# ---------------------------------------------------------------------------
-# Module references for patching
-# ---------------------------------------------------------------------------
-
-# All services that import models
-from app.core import security as _security_mod
-from app.services import admin_service as _admin_mod
-from app.services import auth_service as _auth_mod
 from app.services import challenge_service as _chal_mod
-from app.services import config_service as _config_mod
-from app.services import contest_service as _contest_mod
 from app.services import contest_simulation_service as _sim_mod
-from app.services import economy_service as _eco_mod
-from app.services import elo_service as _elo_mod
-from app.services import hint_service as _hint_mod
 from app.services import match_service as _match_mod
 from app.services import melo_service as _melo_mod
-from app.services import pp_service as _pp_mod
-from app.services import pve_challenge_service as _pve_mod
-from app.services import training_service as _train_mod
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Session-scoped fixtures: PostgreSQL container, URL, migrations
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def postgres_container():
+    """Start a PostgreSQL 16-alpine container for the test session."""
+    from testcontainers.postgres import PostgresContainer
+
+    container = PostgresContainer("postgres:16-alpine")
+    container.start()
+    yield container
+    container.stop()
+
+
+@pytest.fixture(scope="session")
+def postgres_url(postgres_container):
+    """Build an asyncpg-compatible connection URL from the container."""
+    # PostgresContainer gives us a psycopg2-style URL like:
+    #   postgresql://test:test@localhost:54321/test
+    # We need asyncpg: postgresql+asyncpg://...
+    raw = postgres_container.get_connection_url()
+    # Replace the driver: postgresql:// -> postgresql+asyncpg://
+    return raw.replace("postgresql://", "postgresql+asyncpg://", 1) if raw.startswith("postgresql://") else raw
+
+
+@pytest.fixture(scope="session")
+def _run_migrations(postgres_url):
+    """Run Alembic migrations against the test PostgreSQL container.
+
+    Uses the synchronous psycopg2 driver because Alembic's default migration
+    runner is synchronous.  The URL is rewritten from +asyncpg to +psycopg2.
+    """
+    # Convert async URL to sync for Alembic
+    sync_url = postgres_url.replace("+asyncpg", "+psycopg2")
+
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+
+    alembic_cfg = AlembicConfig()
+    alembic_cfg.set_main_option("script_location", "migrations")
+    alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
+    command.upgrade(alembic_cfg, "head")
+
+
+# ---------------------------------------------------------------------------
+# Test-scoped fixtures: engine and session
 # ---------------------------------------------------------------------------
 
 
 @pytest_asyncio.fixture
-async def fake_redis():
-    """Provide a shared fakeredis instance for integration tests."""
-    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    yield redis
-    await redis.aclose()
-
-
-@pytest_asyncio.fixture
-async def db_engine():
-    """Create an in-memory SQLite async engine with all tables."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-
-    @event.listens_for(engine.sync_engine, "connect")
-    def _set_sqlite_pragma(dbapi_connection, _connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    async with engine.begin() as conn:
-        await conn.run_sync(TestBase.metadata.create_all)
-
+async def db_engine(postgres_url, _run_migrations):
+    """Create an async engine connected to the real PostgreSQL test container."""
+    engine = create_async_engine(postgres_url, echo=False, pool_size=5, max_overflow=0)
     yield engine
-
-    async with engine.begin() as conn:
-        await conn.run_sync(TestBase.metadata.drop_all)
-
     await engine.dispose()
+
+
+# Table names in dependency order for TRUNCATE CASCADE.
+# Leaf tables (those referencing others via FK) come first so that CASCADE
+# can propagate cleanly; root tables (users, topic_categories) come last.
+_TRUNCATE_TABLES = [
+    "submission_tracking",
+    "hint_purchases",
+    "token_transactions",
+    "training_problem_records",
+    "training_sessions",
+    "contest_problem_records",
+    "contest_sessions",
+    "contest_bots",
+    "challenge_sessions",
+    "pve_challenge_sessions",
+    "pp_records",
+    "elo_history",
+    "user_tag_elo",
+    "system_config",
+    "users",
+    "topic_categories",
+]
 
 
 async def _mock_get_config(db, key):
     """Return default config section for integration tests."""
     from app.core.default_config import DEFAULT_CONFIG
 
-    # Return the requested section from DEFAULT_CONFIG
     parts = key.split(".")
     node = DEFAULT_CONFIG
     for part in parts:
@@ -315,98 +137,73 @@ async def _mock_get_submission_count(db, user_id):
     return 0
 
 
-def _apply_model_patches(fake_redis_instance=None):
-    """Apply all model patches and return a list of patch objects.
+@pytest_asyncio.fixture
+async def db_session(db_engine, fake_redis):
+    """Provide an async database session with service patches applied.
 
-    Uses start/stop pattern instead of context managers to avoid
-    Python's static nesting depth limit.
-
-    If fake_redis_instance is provided, patches get_redis() in both
-    match_service and challenge_service modules.
+    After the test completes, all tables are TRUNCATEd to leave a clean
+    database for the next test.  Only lightweight service patches are applied
+    (Redis, config, Elo submission count, MElo, ContestSimulation) -- no
+    model patches are needed because we use the real PostgreSQL schema.
     """
+    session_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+
     patches_list = [
-        # Security module uses User for get_current_user
-        patch.object(_security_mod, "User", _TestUser),
-        patch.object(_eco_mod, "User", _TestUser),
-        patch.object(_eco_mod, "TokenTransaction", _TestTokenTransaction),
-        patch.object(_auth_mod, "User", _TestUser),
-        patch.object(_chal_mod, "User", _TestUser),
-        patch.object(_chal_mod, "ChallengeSession", _TestChallengeSession),
-        patch.object(_train_mod, "User", _TestUser),
-        patch.object(_train_mod, "TopicCategory", _TestTopicCategory),
-        patch.object(_train_mod, "TrainingSession", _TestTrainingSession),
-        patch.object(_train_mod, "TrainingProblemRecord", _TestTrainingProblemRecord),
-        patch.object(_train_mod, "EloHistory", _TestEloHistory),
-        patch.object(_train_mod, "TokenTransaction", _TestTokenTransaction),
-        patch.object(_contest_mod, "User", _TestUser),
-        patch.object(_contest_mod, "ContestSession", _TestContestSession),
-        patch.object(_contest_mod, "ContestProblemRecord", _TestContestProblemRecord),
-        patch.object(_contest_mod, "EloHistory", _TestEloHistory),
-        patch.object(_hint_mod, "User", _TestUser),
-        patch.object(_hint_mod, "HintPurchase", _TestHintPurchase),
-        patch.object(_hint_mod.HintService, "get_max_hint_level", AsyncMock(return_value=0)),
-        patch.object(_elo_mod, "EloHistory", _TestEloHistory),
-        patch.object(_pp_mod, "User", _TestUser),
-        patch.object(_pp_mod, "PPRecord", _TestPPRecord),
-        patch.object(_admin_mod, "User", _TestUser),
-        patch.object(_admin_mod, "ChallengeSession", _TestChallengeSession),
-        patch.object(_admin_mod, "ContestSession", _TestContestSession),
-        patch.object(_admin_mod, "TrainingSession", _TestTrainingSession),
-        patch.object(_config_mod, "SystemConfig", _TestSystemConfig),
-        # Patch ConfigService and EloService for K-factor segmentation
+        # Redis patches: point match_service and challenge_service at fakeredis
+        patch.object(_match_mod, "get_redis", return_value=fake_redis),
+        patch.object(_chal_mod, "get_redis", return_value=fake_redis),
+        # ConfigService: return DEFAULT_CONFIG without hitting DB
         patch.object(ConfigService, "get_config", _mock_get_config),
+        # EloService: skip submission-count query
         patch.object(EloService, "get_submission_count", _mock_get_submission_count),
-        # Patch ContestSimulationService to avoid DB operations on contest_bots table
+        # ContestSimulationService: avoid bot-generation logic
         patch.object(_sim_mod.ContestSimulationService, "generate_bots", AsyncMock(return_value=[])),
         patch.object(_sim_mod.ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),
-        patch.object(_sim_mod.ContestSimulationService, "calculate_performance_rating", AsyncMock(return_value=1200)),
+        patch.object(
+            _sim_mod.ContestSimulationService,
+            "calculate_performance_rating",
+            AsyncMock(return_value=1200),
+        ),
         patch.object(_sim_mod.ContestSimulationService, "build_leaderboard", AsyncMock(return_value=None)),
-        # Patch MEloService to avoid querying user_tag_elo table (UUID type incompatible with SQLite)
+        # MEloService: avoid querying user_tag_elo table
         patch.object(_melo_mod.MEloService, "is_shield_active", AsyncMock(return_value=False)),
         patch.object(_melo_mod.MEloService, "deactivate_shield", AsyncMock(return_value=None)),
-        patch.object(_melo_mod.MEloService, "get_or_create_melo", AsyncMock(
-            return_value=type("FakeMelo", (), {"elo": 1200, "first_ac_at": None})()
-        )),
+        patch.object(
+            _melo_mod.MEloService,
+            "get_or_create_melo",
+            AsyncMock(return_value=type("FakeMelo", (), {"elo": 1200, "first_ac_at": None})()),
+        ),
         patch.object(_melo_mod.MEloService, "update_melo", AsyncMock(return_value=None)),
         patch.object(_melo_mod.MEloService, "get_all_melos", AsyncMock(return_value=[])),
     ]
 
-    # Patch get_redis if a fake_redis instance is provided
-    if fake_redis_instance is not None:
-        patches_list.append(
-            patch.object(_match_mod, "get_redis", return_value=fake_redis_instance)
-        )
-        patches_list.append(
-            patch.object(_chal_mod, "get_redis", return_value=fake_redis_instance)
-        )
-
     for p in patches_list:
         p.start()
-    return patches_list
-
-
-def _stop_model_patches(patches_list):
-    """Stop all model patches."""
-    for p in patches_list:
-        p.stop()
-
-
-@pytest_asyncio.fixture
-async def db_session(db_engine, fake_redis):
-    """Provide an async database session with all model patches applied.
-
-    Patches all service modules to use SQLite-compatible test models instead
-    of the PostgreSQL-specific production models. Also patches get_redis()
-    to use the shared fakeredis instance.
-    """
-    session_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
-    active_patches = _apply_model_patches(fake_redis_instance=fake_redis)
 
     async with session_factory() as session:
         yield session
         await session.rollback()
 
-    _stop_model_patches(active_patches)
+    # Cleanup: TRUNCATE all tables for a clean slate
+    async with db_engine.begin() as conn:
+        for table in _TRUNCATE_TABLES:
+            await conn.execute(text(f'TRUNCATE TABLE "{table}" CASCADE'))
+
+    for p in patches_list:
+        p.stop()
+
+
+# ---------------------------------------------------------------------------
+# Other fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def fake_redis():
+    """Provide a shared fakeredis instance for integration tests."""
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    yield redis
+    await redis.aclose()
 
 
 # ---------------------------------------------------------------------------
@@ -423,9 +220,9 @@ async def create_test_user(
     tokens: int = 0,
     is_admin: bool = False,
     is_active: bool = True,
-) -> _TestUser:
+) -> User:
     """Create a test user directly in the database."""
-    user = _TestUser(
+    user = User(
         username=username,
         email=email,
         password_hash=hash_password(password),
@@ -448,9 +245,9 @@ async def create_test_topic(
     cf_tags: list[str] | None = None,
     description: str = "DP problems",
     display_order: int = 0,
-) -> _TestTopicCategory:
+) -> TopicCategory:
     """Create a test topic directly in the database."""
-    topic = _TestTopicCategory(
+    topic = TopicCategory(
         name=name,
         slug=slug,
         description=description,

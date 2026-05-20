@@ -10,8 +10,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .conftest import (
-    _TestHintPurchase,
-    _TestUser,
     create_test_user,
 )
 

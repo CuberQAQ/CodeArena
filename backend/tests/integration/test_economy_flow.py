@@ -10,9 +10,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.token_transaction import TokenTransaction
+
 from .conftest import (
-    _TestTokenTransaction,
-    _TestUser,
     create_test_user,
 )
 
@@ -52,7 +52,7 @@ class TestTokenAward:
         )
 
         from sqlalchemy import select as sel
-        stmt = sel(_TestTokenTransaction).where(_TestTokenTransaction.user_id == user.id)
+        stmt = sel(TokenTransaction).where(TokenTransaction.user_id == user.id)
         result = await db_session.execute(stmt)
         txns = list(result.scalars().all())
         assert len(txns) == 1
@@ -144,7 +144,7 @@ class TestTokenSpend:
         )
 
         from sqlalchemy import select as sel
-        stmt = sel(_TestTokenTransaction).where(_TestTokenTransaction.user_id == user.id)
+        stmt = sel(TokenTransaction).where(TokenTransaction.user_id == user.id)
         result = await db_session.execute(stmt)
         txns = list(result.scalars().all())
         assert len(txns) == 1

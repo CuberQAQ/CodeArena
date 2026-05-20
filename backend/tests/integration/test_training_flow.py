@@ -10,9 +10,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .conftest import (
-    _TestTopicCategory,
-    _TestTrainingSession,
-    _TestUser,
     create_test_topic,
     create_test_user,
     make_cf_problems_response,

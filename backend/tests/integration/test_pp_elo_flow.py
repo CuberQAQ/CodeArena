@@ -10,10 +10,10 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.elo_history import EloHistory
+from app.models.pp_record import PPRecord
+
 from .conftest import (
-    _TestEloHistory,
-    _TestPPRecord,
-    _TestUser,
     create_test_user,
 )
 
@@ -184,9 +184,9 @@ class TestPPRecording:
 
         # Should have only one PP record, with the higher rating
         from sqlalchemy import select
-        stmt = select(_TestPPRecord).where(
-            _TestPPRecord.user_id == user.id,
-            _TestPPRecord.cf_problem_id == "1000A",
+        stmt = select(PPRecord).where(
+            PPRecord.user_id == user.id,
+            PPRecord.cf_problem_id == "1000A",
         )
         result = await db_session.execute(stmt)
         records = list(result.scalars().all())
@@ -382,7 +382,7 @@ class TestEloHistoryRecording:
         )
 
         from sqlalchemy import select
-        stmt = select(_TestEloHistory).where(_TestEloHistory.reference_id == session_id)
+        stmt = select(EloHistory).where(EloHistory.reference_id == session_id)
         result = await db_session.execute(stmt)
         records = list(result.scalars().all())
         assert len(records) == 2  # one for each player

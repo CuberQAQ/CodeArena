@@ -8,7 +8,7 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from .conftest import _TestUser, create_test_user, get_auth_headers
+from .conftest import create_test_user, get_auth_headers
 
 
 # ---------------------------------------------------------------------------
