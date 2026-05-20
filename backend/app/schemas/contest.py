@@ -51,6 +51,7 @@ class ContestProblemInfo(BaseModel):
     index: str = ""
     name: str = ""
     rating: int = 1000
+    tags: list[str] = []
     url: str = ""
     solved: bool = False
     attempts: int = 0

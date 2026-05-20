@@ -29,6 +29,7 @@ from app.services.config_service import ConfigService
 from app.services.contest_service import ContestService
 from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
+from app.services.melo_service import MEloService
 from app.services.submission_tracker import SubmissionTracker
 
 # ---------------------------------------------------------------------------
@@ -73,6 +74,7 @@ class _TestChallengeSession(_TestBase):
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     result: Mapped[str | None] = mapped_column(String(20), nullable=True)
     elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    problem_tags: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     hints_used_challenger: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     hints_used_opponent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -219,6 +221,7 @@ async def challenge_db(async_engine):
             patch.object(elo_svc_module.EloService, "record_elo_history", _mock_record_elo_history),
             patch.object(ConfigService, "get_config", _mock_get_config),
             patch.object(EloService, "get_submission_count", _mock_get_submission_count),
+            patch.object(MEloService, "batch_update_melo_for_problem", AsyncMock(return_value={})),
         ):
             session._recorded_transactions = recorded_transactions
             yield session
@@ -269,6 +272,7 @@ async def contest_db(async_engine):
             patch.object(ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),
             patch.object(ContestSimulationService, "start_simulation", AsyncMock(return_value=None)),
             patch.object(SubmissionTracker, "register_pending", AsyncMock()),
+            patch.object(MEloService, "batch_update_melo_for_problem", AsyncMock(return_value={})),
         ):
             session._recorded_transactions = recorded_transactions
             yield session

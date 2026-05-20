@@ -18,6 +18,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.services import economy_service as economy_svc_module
 from app.services import pve_challenge_service as pve_svc_module
+from app.services.melo_service import MEloService as _RealMEloService
 from app.services.hint_service import HintService as _RealHintService
 from app.services.pp_service import PPService as _RealPPService
 from app.services.pve_challenge_service import PvEChallengeService
@@ -185,6 +186,7 @@ async def db(async_engine):
             patch.object(pve_svc_module, "PPService") as mock_pp_cls,
             patch.object(pve_svc_module, "HintService") as mock_hint_cls,
             patch.object(SubmissionTracker, "register_pending", AsyncMock()),
+            patch.object(pve_svc_module.MEloService, "batch_update_melo_for_problem", AsyncMock(return_value={})),
         ):
             mock_config_cls.get_config = _mock_get_config
             mock_elo_cls.get_submission_count = _mock_get_submission_count

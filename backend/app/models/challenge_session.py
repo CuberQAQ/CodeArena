@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UUIDPrimaryKeyMixin
@@ -36,6 +36,7 @@ class ChallengeSession(Base, UUIDPrimaryKeyMixin):
     opponent_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
     challenger_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
     problem_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    problem_tags: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     hints_used_challenger: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     hints_used_opponent: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(

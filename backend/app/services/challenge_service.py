@@ -35,6 +35,7 @@ from app.services.cf_api_service import CFApiService
 from app.services.config_service import ConfigService
 from app.services.elo_service import EloService
 from app.services.match_service import MatchService
+from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
 from app.services.time_factor_service import TimeFactorService
@@ -360,7 +361,10 @@ class ChallengeService:
 
         # If session already active (problem already selected), return problem
         if session.status == "active" and session.problem_id:
-            problem = _build_problem_info(session.problem_id, session.problem_rating, session.problem_name)
+            problem = _build_problem_info(
+                session.problem_id, session.problem_rating,
+                session.problem_name, session.problem_tags,
+            )
             return StartChallengeResponse(
                 session_id=session.id,
                 problem=problem,
@@ -404,6 +408,7 @@ class ChallengeService:
         session.problem_id = problem["id"]
         session.problem_rating = problem.get("rating", 0)
         session.problem_name = problem.get("name", "")
+        session.problem_tags = problem.get("tags", [])
         session.status = "active"
         await db.flush()
 
@@ -429,7 +434,10 @@ class ChallengeService:
         # Clean up pending state
         await _remove_pending(session_id)
 
-        problem_info = _build_problem_info(session.problem_id, session.problem_rating, session.problem_name)
+        problem_info = _build_problem_info(
+            session.problem_id, session.problem_rating,
+            session.problem_name, session.problem_tags,
+        )
         return StartChallengeResponse(
             session_id=session.id,
             problem=problem_info,
@@ -517,7 +525,10 @@ class ChallengeService:
 
         problem_info = None
         if session.problem_id:
-            problem_info = _build_problem_info(session.problem_id, session.problem_rating, session.problem_name)
+            problem_info = _build_problem_info(
+                session.problem_id, session.problem_rating,
+                session.problem_name, session.problem_tags,
+            )
 
         is_challenger = user.id == session.challenger_id
         user_result = _result_for_user(session, user.id)
@@ -830,6 +841,7 @@ def _build_problem_info(
     problem_id: str,
     problem_rating: int,
     problem_name: str | None = None,
+    problem_tags: list[str] | None = None,
 ) -> ProblemInfo:
     """Build a ProblemInfo from stored problem_id, rating, and optional name.
 
@@ -858,6 +870,7 @@ def _build_problem_info(
         index=index,
         name=problem_name or problem_id,
         rating=problem_rating,
+        tags=problem_tags or [],
         url=url,
     )
 
@@ -1108,6 +1121,53 @@ async def _settle_challenge(
     session.challenger_tokens_earned = tokens_challenger
     session.completed_at = datetime.now(UTC)
     await db.flush()
+
+    # --- M-Elo update for both players (FR-9.1) ---
+    problem_tags = session.problem_tags or []
+    if problem_tags and session.problem_rating > 0:
+        # Use segmented K-factor based on each player's submission count
+        melo_k_challenger = EloService.calculate_k_factor(challenger_sub_count, k_factor_config)
+        melo_k_opponent = EloService.calculate_k_factor(opponent_sub_count, k_factor_config)
+
+        # Hint attenuation for M-Elo
+        hint_att_challenger = None
+        hint_att_opponent = None
+        if session.hints_used_challenger and session.hints_used_challenger > 0:
+            from app.services.elo_service import EloConfig
+            _hint_cfg = EloConfig()
+            hint_att_challenger = _hint_cfg.hint_attenuation.get(session.hints_used_challenger)
+        if session.hints_used_opponent and session.hints_used_opponent > 0:
+            from app.services.elo_service import EloConfig
+            _hint_cfg = EloConfig()
+            hint_att_opponent = _hint_cfg.hint_attenuation.get(session.hints_used_opponent)
+
+        # Update M-Elo for challenger
+        await MEloService.batch_update_melo_for_problem(
+            db=db,
+            user_id=challenger.id,
+            problem_tags=problem_tags,
+            problem_rating=session.problem_rating,
+            s_value=s_value_challenger,
+            k_factor=melo_k_challenger,
+            time_factor=time_factor_challenger,
+            hint_attenuation=hint_att_challenger,
+            coefficient=1.0,
+            solved=bool(session.challenger_solved),
+        )
+
+        # Update M-Elo for opponent
+        await MEloService.batch_update_melo_for_problem(
+            db=db,
+            user_id=opponent.id,
+            problem_tags=problem_tags,
+            problem_rating=session.problem_rating,
+            s_value=s_value_opponent,
+            k_factor=melo_k_opponent,
+            time_factor=time_factor_opponent,
+            hint_attenuation=hint_att_opponent,
+            coefficient=1.0,
+            solved=bool(session.opponent_solved),
+        )
 
     logger.info(
         "Challenge settled: session=%s result=%s elo_change=%d tokens_challenger=%d tokens_opponent=%d",

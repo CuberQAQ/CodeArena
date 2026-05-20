@@ -336,6 +336,7 @@ async def pve_db(async_engine):
             patch.object(pve_svc_module, "HintService") as mock_hint_cls,
             patch.object(pve_svc_module, "AchievementService") as mock_ach_cls,
             patch.object(pve_svc_module, "TimeFactorService") as mock_tf_cls,
+            patch.object(pve_svc_module.MEloService, "batch_update_melo_for_problem", AsyncMock(return_value={})),
         ):
             mock_config_cls.get_config = _mock_get_config
             mock_elo_cls.get_submission_count = _mock_get_submission_count

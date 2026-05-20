@@ -39,6 +39,7 @@ from app.services.config_service import ConfigService
 from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
 from app.services.hint_service import HintService
+from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
 from app.services.time_factor_service import TimeFactorService
@@ -477,6 +478,50 @@ class ContestService:
                 )
                 tokens_earned += awarded
 
+        # --- M-Elo update (FR-9.1) ---
+        problem_tags_list = problem_data.get("tags", []) if problem_data else []
+        if problem_tags_list and problem_rating > 0:
+            # Calculate S-value for this problem
+            is_first_ac = solved and attempts <= 1
+            error_count = max(0, attempts - 1) if solved else 0
+            s_val = EloService.calculate_s_value(
+                is_solved=solved,
+                is_first_ac=is_first_ac,
+                error_count=error_count,
+            )
+
+            # Get K-factor for this user
+            elo_config = await ConfigService.get_config(db, "elo")
+            k_factor_config = {
+                "k_newbie": elo_config.get("k_newbie", 40),
+                "k_veteran": elo_config.get("k_veteran", 20),
+                "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
+                "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
+            }
+            user_sub_count = await EloService.get_submission_count(db, user.id)
+            melo_k = EloService.calculate_k_factor(user_sub_count, k_factor_config)
+
+            # Hint attenuation for M-Elo
+            hint_level = await HintService.get_max_hint_level(db, user.id, problem_id)
+            hint_att = None
+            if hint_level > 0:
+                from app.services.elo_service import EloConfig
+                _hint_cfg = EloConfig()
+                hint_att = _hint_cfg.hint_attenuation.get(hint_level)
+
+            await MEloService.batch_update_melo_for_problem(
+                db=db,
+                user_id=user.id,
+                problem_tags=problem_tags_list,
+                problem_rating=problem_rating,
+                s_value=s_val,
+                k_factor=melo_k,
+                time_factor=1.0,
+                hint_attenuation=hint_att,
+                coefficient=1.0,
+                solved=solved,
+            )
+
         await db.flush()
 
         return SubmitContestResponse(
@@ -867,6 +912,7 @@ class ContestService:
                     index=index,
                     name=chosen.get("name", ""),
                     rating=chosen.get("rating", 1000),
+                    tags=chosen.get("tags", []),
                     url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
                 ))
                 # Remove from pool to avoid duplicates
@@ -884,6 +930,7 @@ class ContestService:
                 index=index,
                 name=chosen.get("name", ""),
                 rating=chosen.get("rating", 1000),
+                tags=chosen.get("tags", []),
                 url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
             ))
             valid_problems.remove(chosen)
@@ -945,6 +992,7 @@ class ContestService:
                 index=p.get("index", ""),
                 name=p.get("name", ""),
                 rating=p.get("rating", 1000),
+                tags=p.get("tags", []),
                 url=p.get("url", ""),
                 solved=record.solved if record else False,
                 attempts=record.attempts if record else 0,

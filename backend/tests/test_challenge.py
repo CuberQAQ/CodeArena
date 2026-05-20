@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, event
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, TypeDecorator, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -36,6 +36,7 @@ from app.services.challenge_service import (
 from app.services.config_service import ConfigService
 from app.services.elo_service import EloService
 from app.services.match_service import MatchResult, MatchService, QueueEntry
+from app.services.melo_service import MEloService
 from app.services.submission_tracker import SubmissionTracker
 
 # ---------------------------------------------------------------------------
@@ -45,6 +46,24 @@ from app.services.submission_tracker import SubmissionTracker
 
 class _TestBase(DeclarativeBase):
     pass
+
+
+class JSONText(TypeDecorator):
+    """SQLite-compatible JSON storage using TEXT column."""
+    impl = String(2000)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            import json
+            return json.dumps(value)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            import json
+            return json.loads(value)
+        return value
 
 
 class _TestUser(_TestBase):
@@ -82,6 +101,7 @@ class _TestChallengeSession(_TestBase):
     opponent_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
     challenger_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
     problem_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    problem_tags: Mapped[str | None] = mapped_column(JSONText, nullable=True)
     hints_used_challenger: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     hints_used_opponent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -178,6 +198,7 @@ async def db(async_engine, fake_redis):
             patch.object(ConfigService, "get_config", _mock_get_config),
             patch.object(EloService, "get_submission_count", _mock_get_submission_count),
             patch.object(SubmissionTracker, "register_pending", AsyncMock()),
+            patch.object(MEloService, "batch_update_melo_for_problem", AsyncMock(return_value={})),
             patch("app.services.challenge_service.get_redis", return_value=fake_redis),
         ):
             yield session

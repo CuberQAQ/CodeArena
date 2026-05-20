@@ -182,3 +182,94 @@ class MEloService:
                 "Shield deactivated for user=%s tag=%s", user_id, tag,
             )
         return melo
+
+    @staticmethod
+    async def batch_update_melo_for_problem(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        problem_tags: list[str],
+        problem_rating: int,
+        s_value: float,
+        k_factor: float,
+        time_factor: float | None = None,
+        hint_attenuation: float | None = None,
+        coefficient: float = 1.0,
+        *,
+        solved: bool = True,
+    ) -> dict[str, int]:
+        """Update M-Elo for every tag of a completed problem.
+
+        Implements the full M-Elo update formula per tag:
+            change = K * (S - P(AC_melo)) * time_factor * hint_attenuation * coefficient
+
+        Where P(AC_melo) is the expected score based on the tag's M-Elo
+        vs the problem rating (NOT the global Elo).
+
+        Also handles Learning Shield:
+        - Shield active + failure: skip Elo deduction for that tag
+        - Shield active + first AC: deactivate shield for that tag
+
+        Args:
+            db: Async database session.
+            user_id: The user's UUID.
+            problem_tags: List of CF tags for the problem (e.g. ["dp", "greedy"]).
+            problem_rating: The problem's rating.
+            s_value: The S-value (performance outcome, 0.0-1.0).
+            k_factor: K-factor for this user.
+            time_factor: Optional time factor multiplier for positive gains.
+            hint_attenuation: Optional hint attenuation multiplier for positive gains.
+            coefficient: Mode-specific coefficient (1.0 for PvP/PvE/Contest,
+                         training uses 2.0 via its own path).
+            solved: Whether the problem was solved (for shield logic).
+
+        Returns:
+            Dict mapping tag name to the Elo change applied (0 if skipped).
+        """
+        if not problem_tags:
+            return {}
+
+        results: dict[str, int] = {}
+
+        for tag in problem_tags:
+            # Get or create the M-Elo record for this user-tag
+            melo_record = await MEloService.get_or_create_melo(db, user_id, tag)
+            shield_active = melo_record.first_ac_at is None
+
+            # Shield protection: skip Elo deduction on failure if shield is active
+            if not solved and shield_active:
+                logger.info(
+                    "Shield active for user=%s tag=%s -- skipping M-Elo deduction",
+                    user_id, tag,
+                )
+                results[tag] = 0
+                continue
+
+            # Deactivate shield on first AC
+            if solved and shield_active:
+                await MEloService.deactivate_shield(db, user_id, tag)
+                logger.info(
+                    "Shield deactivated for user=%s tag=%s on first AC",
+                    user_id, tag,
+                )
+
+            # Calculate expected score based on tag M-Elo vs problem rating
+            melo_expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - melo_record.elo) / 400.0))
+
+            # M-Elo change: K * (S - P(AC)) * coefficient
+            melo_change = round(k_factor * (s_value - melo_expected) * coefficient)
+
+            # Apply hint attenuation to positive gains
+            if melo_change > 0 and hint_attenuation is not None:
+                melo_change = round(melo_change * hint_attenuation)
+
+            # Apply time factor to positive gains
+            if melo_change > 0 and time_factor is not None:
+                melo_change = round(melo_change * time_factor)
+
+            # Apply the change
+            if melo_change != 0:
+                await MEloService.update_melo(db, user_id, tag, melo_change)
+
+            results[tag] = melo_change
+
+        return results

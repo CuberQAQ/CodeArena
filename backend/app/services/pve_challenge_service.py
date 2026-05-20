@@ -34,6 +34,7 @@ from app.services.cf_api_service import CFApiService
 from app.services.config_service import ConfigService
 from app.services.elo_service import EloReason, EloService
 from app.services.hint_service import HintService
+from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
 from app.services.time_factor_service import TimeFactorService
@@ -283,6 +284,29 @@ class PvEChallengeService:
         session.completed_at = datetime.now(UTC)
         await db.flush()
 
+        # --- M-Elo update (FR-9.1) ---
+        problem_tags = session.problem_tags or []
+        if problem_tags and session.problem_rating > 0:
+            # Get hint attenuation for M-Elo
+            hint_attenuation = None
+            if hint_level > 0:
+                from app.services.elo_service import EloConfig
+                _hint_cfg = EloConfig()
+                hint_attenuation = _hint_cfg.hint_attenuation.get(hint_level)
+
+            await MEloService.batch_update_melo_for_problem(
+                db=db,
+                user_id=user.id,
+                problem_tags=problem_tags,
+                problem_rating=session.problem_rating,
+                s_value=s_value,
+                k_factor=k_factor,
+                time_factor=time_factor,
+                hint_attenuation=hint_attenuation,
+                coefficient=1.0,
+                solved=solved,
+            )
+
         logger.info(
             "PvE challenge completed: session=%s solved=%s elo_change=%d tokens=%d s_value=%.2f",
             session.id, solved, elo_change, tokens_earned, s_value,
@@ -386,6 +410,26 @@ class PvEChallengeService:
         session.s_value = 0.0 if submissions >= 3 else None
         session.completed_at = datetime.now(UTC)
         await db.flush()
+
+        # Update M-Elo for 3+ submissions (normal failure path)
+        if submissions >= 3 and session.problem_tags:
+            from app.services.melo_service import MEloService
+            problem_tags_list = (
+                session.problem_tags if isinstance(session.problem_tags, list)
+                else []
+            )
+            await MEloService.batch_update_melo_for_problem(
+                db=db,
+                user_id=user.id,
+                problem_tags=problem_tags_list,
+                problem_rating=session.problem_rating,
+                s_value=0.0,
+                k_factor=k_factor,
+                time_factor=1.0,
+                hint_attenuation=1.0,
+                coefficient=1.0,
+                solved=False,
+            )
 
         logger.info(
             "PvE challenge quit: session=%s submissions=%d elo_change=%d",
