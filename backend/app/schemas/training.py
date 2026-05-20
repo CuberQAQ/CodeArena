@@ -96,6 +96,7 @@ class SubmitTrainingResponse(BaseModel):
     total_streak_tokens: int = 0
     tokens_earned: int = 0
     elo_change: int | None = None
+    achievements: list[dict] = []
 
 
 class TopicProgress(BaseModel):

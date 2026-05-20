@@ -528,6 +528,7 @@ class TestSubmitProblem:
     @patch.object(training_svc_module, "PPService")
     async def test_submit_solved_problem(self, mock_pp_cls, db, cf_mock):
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -562,6 +563,7 @@ class TestSubmitProblem:
     @patch.object(training_svc_module, "PPService")
     async def test_submit_unsolved_problem(self, mock_pp_cls, db, cf_mock):
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -625,6 +627,7 @@ class TestSubmitProblem:
     @patch.object(training_svc_module, "PPService")
     async def test_submit_already_solved_rejected(self, mock_pp_cls, db, cf_mock):
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db)
         topic = _make_test_topic(db)
@@ -678,6 +681,7 @@ class TestStreakMechanism:
     async def test_streak_increases_on_higher_rating(self, mock_pp_cls, db, cf_mock):
         """Solving a harder problem after an easier one triggers a streak."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -714,6 +718,7 @@ class TestStreakMechanism:
     async def test_streak_resets_on_lower_rating(self, mock_pp_cls, db, cf_mock):
         """Solving an easier problem after a harder one breaks the streak."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -748,6 +753,7 @@ class TestStreakMechanism:
     async def test_streak_resets_on_same_rating(self, mock_pp_cls, db, cf_mock):
         """Solving same rating problem breaks the streak (not >)."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -790,6 +796,7 @@ class TestStreakMechanism:
     async def test_streak_token_cap(self, mock_pp_cls, db, cf_mock):
         """Streak tokens are capped at 50 per session."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -828,6 +835,7 @@ class TestStreakMechanism:
         """Submitting an unsolved result doesn't affect streak directly,
         but the next solved with non-increasing rating breaks it."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -1032,6 +1040,7 @@ class TestCrossSessionProgress:
     async def test_progress_persists_across_sessions(self, mock_pp_cls, db, cf_mock):
         """Progress from a previous session should be visible in a new session."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db)
         db.add(user)
@@ -1110,6 +1119,7 @@ class TestTokenRewards:
     async def test_ac_reward_correct_amount(self, mock_pp_cls, db, cf_mock):
         """Solving a problem awards the correct AC tokens."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -1141,6 +1151,7 @@ class TestTokenRewards:
     async def test_attempt_reward_on_failure(self, mock_pp_cls, db, cf_mock):
         """Failing a problem awards attempt tokens."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -1171,6 +1182,7 @@ class TestTokenRewards:
     async def test_streak_bonus_tokens(self, mock_pp_cls, db, cf_mock):
         """Streak bonus tokens are correctly calculated."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -1227,6 +1239,7 @@ class TestEloUpdate:
     async def test_elo_increases_on_solve(self, mock_pp_cls, db, cf_mock):
         """Solving a training problem increases Elo."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, elo=1200)
         topic = _make_test_topic(db)
@@ -1259,6 +1272,7 @@ class TestEloUpdate:
     async def test_no_elo_change_on_failure(self, mock_pp_cls, db, cf_mock):
         """Failing a training problem with shield active produces no Elo change."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, elo=1200)
         topic = _make_test_topic(db)
@@ -1301,6 +1315,7 @@ class TestFullTrainingFlow:
     @patch.object(training_svc_module, "PPService")
     async def test_complete_training_flow(self, mock_pp_cls, db, cf_mock):
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         # Step 1: List topics
         topics = await TrainingService.list_topics(db)
@@ -1377,6 +1392,7 @@ class TestFullTrainingFlow:
     async def test_new_session_can_start_after_abandon(self, mock_pp_cls, db, cf_mock):
         """After abandoning a session, a new session can be started for the same topic."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db)
         db.add(user)
@@ -1398,6 +1414,7 @@ class TestFullTrainingFlow:
     async def test_new_session_can_start_after_completion(self, mock_pp_cls, db, cf_mock):
         """After a session is completed/abandoned, user can start a new one."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db)
         topic = _make_test_topic(db)
@@ -1431,6 +1448,7 @@ class TestEdgeCases:
     async def test_submit_unsolved_then_solved_same_problem(self, mock_pp_cls, db, cf_mock):
         """Can re-submit a problem after failing it."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)
@@ -1483,6 +1501,7 @@ class TestEdgeCases:
     async def test_free_choice_any_problem(self, mock_pp_cls, db, cf_mock):
         """User can choose any problem in any order (free choice)."""
         mock_pp_cls.record_pp = AsyncMock()
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *a, **kw: 1.0)
 
         user = _make_test_user(db, tokens=0)
         topic = _make_test_topic(db)

@@ -563,6 +563,13 @@ def _setup_elo_mocks(mock_elo_cls):
     mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
 
 
+def _setup_pp_mocks(mock_pp_cls):
+    """Add calculate_overkill_multiplier mock to a PPService mock."""
+    mock_pp_cls.calculate_overkill_multiplier = staticmethod(
+        lambda *args, **kwargs: 1.0
+    )
+
+
 def _setup_config_mocks(mock_config_cls):
     """Add get_config mock to a ConfigService mock."""
     mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
@@ -585,6 +592,7 @@ class TestSettlement:
     async def test_settlement_challenger_wins(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -617,6 +625,7 @@ class TestSettlement:
     async def test_settlement_opponent_wins(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -643,6 +652,7 @@ class TestSettlement:
     async def test_settlement_both_solved_faster_wins(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -669,6 +679,7 @@ class TestSettlement:
     async def test_settlement_neither_solved_draw(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -693,6 +704,7 @@ class TestSettlement:
     async def test_settlement_awards_tokens(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
         db.add_all([user_a, user_b])
@@ -911,6 +923,7 @@ class TestFullChallengeFlow:
     async def test_complete_flow(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
         # Create two users
         user_a = _make_test_user(db, username="player_a", elo=1200, tokens=0)
         user_b = _make_test_user(db, username="player_b", elo=1250, tokens=0)

@@ -324,6 +324,13 @@ export interface PvEDetailResponse {
   completed_at: string | null;
 }
 
+export interface AchievementEvent {
+  type: string;
+  title: string;
+  description: string;
+  icon: string;
+}
+
 export interface PvESubmitResultResponse {
   session_id: string;
   solved: boolean;
@@ -333,6 +340,7 @@ export interface PvESubmitResultResponse {
   s_value: number | null;
   tokens_earned: number;
   overkill_multiplier: number;
+  achievements: AchievementEvent[];
 }
 
 export interface PvEQuitResponse {

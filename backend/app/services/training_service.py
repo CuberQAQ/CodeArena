@@ -38,6 +38,7 @@ from app.schemas.training import (
 )
 from app.services import config_service as config_svc
 from app.services import economy_service as economy_svc
+from app.services.achievement_service import AchievementService
 from app.services.cf_api_service import CFApiService
 from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
@@ -794,6 +795,21 @@ class TrainingService:
 
         await db.flush()
 
+        # --- Achievement event detection ---
+        achievements: list[dict] = []
+
+        if solved and problem_rating > 0:
+            overkill_multiplier = PPService.calculate_overkill_multiplier(
+                user.elo, problem_rating,
+            )
+            overkill_event = AchievementService.check_overkill(
+                user_elo=user.elo,
+                problem_rating=problem_rating,
+                multiplier=overkill_multiplier,
+            )
+            if overkill_event is not None:
+                achievements.append(overkill_event.to_dict())
+
         return SubmitTrainingResponse(
             session_id=session_id,
             problem_id=problem_id,
@@ -803,6 +819,7 @@ class TrainingService:
             total_streak_tokens=total_streak_tokens,
             tokens_earned=tokens_earned,
             elo_change=elo_change,
+            achievements=achievements,
         )
 
     # ------------------------------------------------------------------

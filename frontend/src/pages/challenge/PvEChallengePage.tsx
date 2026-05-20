@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { EloChange, CoinAnimation, AcceptedCelebration } from "@/components/animations";
+import { EloChange, CoinAnimation, AcceptedCelebration, AchievementPopup } from "@/components/animations";
 import { usePvEChallengeStore } from "@/stores/pveChallengeStore";
 import { formatTime, getRatingColor } from "@/utils";
 
@@ -307,6 +307,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
   const quitResult = usePvEChallengeStore((s) => s.quitResult);
   const [eloTriggerKey] = useState(() => Date.now());
   const [showCelebration, setShowCelebration] = useState(false);
+  const [showAchievements, setShowAchievements] = useState(false);
 
   // Show celebration for positive Elo
   useEffect(() => {
@@ -315,6 +316,15 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
       setShowCelebration(true);
     }
   }, [submitResult?.elo_change, quitResult?.elo_change]);
+
+  // Show achievement popup when achievements are present
+  useEffect(() => {
+    if (submitResult?.achievements && submitResult.achievements.length > 0) {
+      // Delay slightly so the celebration plays first
+      const timer = setTimeout(() => setShowAchievements(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [submitResult?.achievements]);
 
   const isQuit = challenge?.status === "quit" || quitResult != null;
   const isSolved = submitResult?.solved === true;
@@ -326,6 +336,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
   const tokensEarned = submitResult?.tokens_earned ?? 0;
   const overkillMultiplier = submitResult?.overkill_multiplier ?? 1.0;
   const isOverkill = overkillMultiplier > 1.0;
+  const achievements = submitResult?.achievements ?? [];
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -333,6 +344,14 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
         active={showCelebration}
         onComplete={() => setShowCelebration(false)}
       />
+
+      {/* Achievement popup overlay */}
+      {achievements.length > 0 && showAchievements && (
+        <AchievementPopup
+          achievements={achievements}
+          onComplete={() => setShowAchievements(false)}
+        />
+      )}
 
       {/* Header */}
       <motion.div

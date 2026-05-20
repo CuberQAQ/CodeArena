@@ -100,6 +100,7 @@ class ContestResult(BaseModel):
     elo_change: int | None = None
     performance_rating: int | None = None
     problems: list[ContestProblemInfo] = []
+    achievements: list[dict] = []
 
 
 class ContestHistoryItem(BaseModel):

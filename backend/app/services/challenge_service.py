@@ -27,6 +27,7 @@ from app.schemas.challenge import (
     SubmitResultResponse,
 )
 from app.services import economy_service as economy_svc
+from app.services.achievement_service import AchievementService
 from app.services.cf_api_service import CFApiService
 from app.services.config_service import ConfigService
 from app.services.elo_service import EloService
@@ -867,6 +868,22 @@ async def _settle_challenge(
         tokens_opponent,
     )
 
+    # --- Achievement event detection ---
+    achievements: list[dict] = []
+
+    # Check overkill for challenger (if they solved)
+    if session.challenger_solved and session.problem_rating > 0:
+        challenger_overkill = PPService.calculate_overkill_multiplier(
+            new_challenger_elo, session.problem_rating,
+        )
+        overkill_event = AchievementService.check_overkill(
+            user_elo=new_challenger_elo,
+            problem_rating=session.problem_rating,
+            multiplier=challenger_overkill,
+        )
+        if overkill_event is not None:
+            achievements.append(overkill_event.to_dict())
+
     # Determine the submitting user's perspective
     return SubmitResultResponse(
         session_id=session.id,
@@ -876,4 +893,5 @@ async def _settle_challenge(
         result=result,
         elo_change=challenger_elo_change,
         tokens_earned=tokens_challenger,
+        achievements=achievements,
     )

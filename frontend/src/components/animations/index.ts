@@ -4,3 +4,4 @@ export { StreakEffect } from "./StreakEffect";
 export { LevelUpEffect } from "./LevelUpEffect";
 export { MatchWaiting } from "./MatchWaiting";
 export { AcceptedCelebration } from "./AcceptedCelebration";
+export { AchievementPopup } from "./AchievementPopup";

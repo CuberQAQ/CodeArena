@@ -20,6 +20,7 @@ from app.models.pp_record import PPRecord
 from app.models.pve_challenge_session import PvEChallengeSession
 from app.models.user import User
 from app.schemas.pve_challenge import (
+    AchievementEventSchema,
     PvEDetailResponse,
     PvEHistoryItem,
     PvEHistoryResponse,
@@ -28,6 +29,7 @@ from app.schemas.pve_challenge import (
     PvESubmitResultResponse,
 )
 from app.services import economy_service as economy_svc
+from app.services.achievement_service import AchievementService
 from app.services.cf_api_service import CFApiService
 from app.services.config_service import ConfigService
 from app.services.elo_service import EloReason, EloService
@@ -238,6 +240,28 @@ class PvEChallengeService:
             session.id, solved, elo_change, tokens_earned, s_value,
         )
 
+        # --- Achievement event detection ---
+        achievements: list[AchievementEventSchema] = []
+
+        # Check overkill achievement
+        overkill_event = AchievementService.check_overkill(
+            user_elo=user.elo,
+            problem_rating=session.problem_rating,
+            multiplier=overkill_multiplier,
+        )
+        if overkill_event is not None:
+            achievements.append(AchievementEventSchema(**overkill_event.to_dict()))
+
+        # Check personal best PP (only on solve with PP gain)
+        if solved and pp_change is not None and pp_change > 0:
+            pp_before_settlement = user.pp - pp_change
+            pp_event = AchievementService.check_personal_best_pp(
+                new_pp=user.pp,
+                old_pp=pp_before_settlement,
+            )
+            if pp_event is not None:
+                achievements.append(AchievementEventSchema(**pp_event.to_dict()))
+
         return PvESubmitResultResponse(
             session_id=session.id,
             solved=solved,
@@ -247,6 +271,7 @@ class PvEChallengeService:
             s_value=s_value,
             tokens_earned=tokens_earned,
             overkill_multiplier=overkill_multiplier,
+            achievements=achievements,
         )
 
     # ------------------------------------------------------------------

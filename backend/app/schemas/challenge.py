@@ -111,6 +111,7 @@ class SubmitResultResponse(BaseModel):
     result: str | None = None
     elo_change: int | None = None
     tokens_earned: int | None = None
+    achievements: list[dict] = []
 
 
 class QuitChallengeResponse(BaseModel):

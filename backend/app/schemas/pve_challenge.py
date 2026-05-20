@@ -71,6 +71,15 @@ class PvEDetailResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AchievementEventSchema(BaseModel):
+    """A single achievement event returned in settlement responses."""
+
+    type: str
+    title: str
+    description: str
+    icon: str
+
+
 class PvESubmitResultResponse(BaseModel):
     """Response after submitting PvE challenge result."""
 
@@ -82,6 +91,7 @@ class PvESubmitResultResponse(BaseModel):
     s_value: float | None = None
     tokens_earned: int = 0
     overkill_multiplier: float = 1.0
+    achievements: list[AchievementEventSchema] = []
 
 
 class PvEQuitResponse(BaseModel):

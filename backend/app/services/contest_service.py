@@ -33,6 +33,7 @@ from app.schemas.contest import (
     TierInfo,
 )
 from app.services import economy_service as economy_svc
+from app.services.achievement_service import AchievementService
 from app.services.cf_api_service import CFApiService
 from app.services.config_service import ConfigService
 from app.services.contest_simulation_service import ContestSimulationService
@@ -523,6 +524,31 @@ class ContestService:
             player_solved=session.problems_solved,
         )
 
+        # --- Achievement event detection ---
+        achievements: list[dict] = []
+
+        try:
+            # Check contest win (rank 1 among all participants including bots)
+            leaderboard = await ContestSimulationService.build_leaderboard(db, contest_id, user)
+            player_rank = None
+            total_participants = len(leaderboard.leaderboard)
+            for entry in leaderboard.leaderboard:
+                if not entry.is_bot:
+                    player_rank = entry.rank
+                    break
+
+            if player_rank is not None:
+                win_event = AchievementService.check_contest_win(
+                    rank=player_rank,
+                    total_participants=total_participants,
+                )
+                if win_event is not None:
+                    achievements.append(win_event.to_dict())
+        except Exception:
+            # Leaderboard may not be available (e.g., no bots table in test DB).
+            # Achievement detection is best-effort and must not break settlement.
+            logger.debug("Achievement detection skipped: leaderboard unavailable for contest %s", contest_id)
+
         return ContestResult(
             id=session.id,
             tier=session.contest_tier,
@@ -536,6 +562,7 @@ class ContestService:
             elo_change=session.elo_change,
             performance_rating=pr,
             problems=problem_infos,
+            achievements=achievements,
         )
 
     # ------------------------------------------------------------------
@@ -611,6 +638,7 @@ class ContestService:
             elo_change=session.elo_change,
             performance_rating=pr,
             problems=problem_infos,
+            achievements=[],  # Achievements are only generated at end_contest time
         )
 
     # ------------------------------------------------------------------
