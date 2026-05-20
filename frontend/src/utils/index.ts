@@ -52,11 +52,17 @@ export function formatDate(dateStr: string | null | undefined): string {
 
 export function extractApiError(err: unknown, fallback = "An unexpected error occurred"): string {
   const axiosErr = err as {
-    response?: { data?: { error?: { message?: string }; detail?: string } };
+    response?: { data?: { error?: { code?: string; message?: string }; detail?: string } };
   };
-  return (
-    axiosErr?.response?.data?.error?.message ??
-    axiosErr?.response?.data?.detail ??
-    fallback
-  );
+  const data = axiosErr?.response?.data;
+  const errorCode = data?.error?.code;
+  const errorMsg = data?.error?.message;
+  const detail = data?.detail;
+
+  // VALIDATION_ERROR: detail contains the specific field error (e.g. "body -> password: String should have at least 8 characters")
+  if (errorCode === "VALIDATION_ERROR" && detail) return detail;
+  // Business errors: error.message is the user-facing message
+  if (errorMsg) return errorMsg;
+  // Fallback chain
+  return detail ?? fallback;
 }

@@ -72,14 +72,32 @@ def register_exception_handlers(app: FastAPI) -> None:
         _request: Request, exc: RequestValidationError
     ) -> error_response:  # type: ignore[misc]
         errors = exc.errors()
+        field_labels = {"username": "用户名", "email": "邮箱", "password": "密码", "confirmPassword": "确认密码"}
         detail_messages = []
         for err in errors:
-            loc = " -> ".join(str(x) for x in err.get("loc", []))
+            loc_parts = [str(x) for x in err.get("loc", []) if str(x) != "body"]
+            field = field_labels.get(loc_parts[-1], loc_parts[-1]) if loc_parts else ""
             msg = err.get("msg", "")
-            detail_messages.append(f"{loc}: {msg}" if loc else msg)
+            if "at least" in msg and "characters" in msg:
+                import re
+                m = re.search(r"at least (\d+) characters", msg)
+                n = m.group(1) if m else "?"
+                detail_messages.append(f"{field}至少需要{n}个字符" if field else f"至少需要{n}个字符")
+            elif "uppercase" in msg:
+                detail_messages.append(f"{field}必须包含至少一个大写字母" if field else "必须包含至少一个大写字母")
+            elif "lowercase" in msg:
+                detail_messages.append(f"{field}必须包含至少一个小写字母" if field else "必须包含至少一个小写字母")
+            elif "digit" in msg:
+                detail_messages.append(f"{field}必须包含至少一个数字" if field else "必须包含至少一个数字")
+            elif "valid email" in msg:
+                detail_messages.append("请输入有效的邮箱地址")
+            elif "letters, digits, and underscores" in msg:
+                detail_messages.append(f"{field}只能包含字母、数字和下划线" if field else "只能包含字母、数字和下划线")
+            else:
+                detail_messages.append(f"{field}: {msg}" if field else msg)
         return error_response(
             code="VALIDATION_ERROR",
-            message="Request validation failed",
+            message="请求验证失败",
             detail="; ".join(detail_messages),
             status_code=422,
         )
