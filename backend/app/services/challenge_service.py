@@ -873,11 +873,13 @@ async def _settle_challenge(
 
     # Check overkill for challenger (if they solved)
     if session.challenger_solved and session.problem_rating > 0:
+        # Use pre-settlement Elo for overkill detection (fair comparison with problem rating)
+        challenger_elo_before = new_challenger_elo - challenger_elo_change
         challenger_overkill = PPService.calculate_overkill_multiplier(
-            new_challenger_elo, session.problem_rating,
+            challenger_elo_before, session.problem_rating,
         )
         overkill_event = AchievementService.check_overkill(
-            user_elo=new_challenger_elo,
+            user_elo=challenger_elo_before,
             problem_rating=session.problem_rating,
             multiplier=challenger_overkill,
         )

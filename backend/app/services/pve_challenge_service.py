@@ -265,7 +265,7 @@ class PvEChallengeService:
 
         # Check overkill achievement
         overkill_event = AchievementService.check_overkill(
-            user_elo=user.elo,
+            user_elo=elo_before,
             problem_rating=session.problem_rating,
             multiplier=overkill_multiplier,
         )

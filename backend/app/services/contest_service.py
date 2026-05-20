@@ -708,10 +708,27 @@ class ContestService:
         session.ended_at = now
         session.status = "completed"
 
-        # Use PR settlement for auto-ended contests (time ran out, treat as normal completion)
+        # Tiered penalty matching end_contest logic
         if session.submissions == 0:
             session.elo_change = 0
+        elif session.submissions <= 2:
+            # 1-2 submissions: quit penalty (-5 to -10)
+            elo_change = random.randint(-10, -5)
+            session.elo_change = elo_change
+            user.elo += elo_change
+
+            # Record Elo history
+            history = EloHistory(
+                user_id=user.id,
+                elo_before=user.elo - elo_change,
+                elo_after=user.elo,
+                elo_change=elo_change,
+                reason="quit_early",
+                reference_id=session.id,
+            )
+            db.add(history)
         else:
+            # 3+ submissions: PR (Performance Rating) based settlement
             elo_change = await ContestService._settle_with_pr(
                 db=db,
                 user=user,
