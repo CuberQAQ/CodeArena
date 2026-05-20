@@ -45,3 +45,4 @@
 ### Service Test Coverage (verified)
 - Task 7.1 (contest_service): 57 tests, all passing
 - Task 9.1 (frontend framework): 10/10 checkpoints passed
+- Task 17.1 (pve_challenge): 40 tests, all passing. 3 low-severity observations. See [task17-patterns](task17-patterns.md).

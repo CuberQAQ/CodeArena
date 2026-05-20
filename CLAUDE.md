@@ -14,13 +14,17 @@
 
 5. **每个 task 完成后必须 commit**：task 标记 🟢 后立即提交代码，不累积多个 task 一起提交。
 
+## 项目常量
+
+- **游戏模式**：PvP 挑战 (`challenge_service`)、PvE 挑战 (`pve_challenge_service`)、专题训练 (`training_service`)、虚拟比赛 (`contest_service`)。横切特性（Elo 结算、PP 计算、代币奖励、提示衰减、成就事件等）必须在这四个模式中一致实现。
+
 ## 子 Agent 协作规范
 
 | 子 Agent | 职责 | 调用方式 |
 |----------|------|----------|
-| feature-engineer | 按需求实现功能，交付生产级代码 | `Agent(subagent_type="feature-engineer")` |
-| professional-test-engineer | 按 task 测试要点验证交付物 | `Agent(subagent_type="professional-test-engineer")` |
-| requirements-auditor | 逐条比对需求与代码实现的一致性 | `Agent(subagent_type="requirements-auditor")` |
+| feature-engineer | 按 requirements.md 实现功能，交付生产级代码。task 描述是最小范围，需主动检查横切特性在所有模式中的集成 | `Agent(subagent_type="feature-engineer")` |
+| professional-test-engineer | 以 requirements.md 为完整标准验证交付物，task 测试要点是最小覆盖集 | `Agent(subagent_type="professional-test-engineer")` |
+| requirements-auditor | 逐条比对需求与代码实现的一致性（含横切一致性） | `Agent(subagent_type="requirements-auditor")` |
 
 对每个子 agent 的约束：不允许修改 task.md 和 requirements.md，不允许 workaround。
 
@@ -41,6 +45,7 @@
 2. 测试要点要能检测"表面实现但不满足需求"的情况
 3. **集成点追踪**：对每个涉及"被调用"的 task（新增服务、新增中间件、新增工具函数等），必须在 task 描述中明确列出：
    - **调用方清单**：哪些现有代码位置需要调用此新功能（文件路径 + 函数名）
+   - **反向集成清单**：该新功能需要集成哪些已有的横切特性（如：提示衰减、代币奖励、成就事件、Elo 结算等），列出每个横切特性在所有适用游戏模式中的集成要求
    - **触发场景**：用户通过什么操作路径能触达此功能
    - 如果调用方尚未实现（属于后续 task），标注依赖关系
    - 如果该功能仅通过 API 暴露、由前端调用，标注前端需要对接
@@ -62,12 +67,12 @@ task.md 写完后，调用 requirements-auditor 验证：
 
 按 task.md 顺序和依赖关系，逐个执行：
 
-1. **调度 feature-engineer**：提供 requirements.md + 当前 task 完整内容（含集成点追踪中的调用方清单） + 约束说明
+1. **调度 feature-engineer**：提供 requirements.md + 当前 task 完整内容（含集成点追踪中的调用方清单） + 约束说明。明确指示：requirements.md 是最终交付标准，task 描述的"需要修改的文件"是最小范围——如果 requirements.md 中的需求暗示更广的适用范围，必须覆盖所有适用场景（如所有游戏模式）
 2. **验证交付物**：
    - 检查是否修改了 task.md / requirements.md
    - 交付物是否匹配 task 描述
    - **集成点验证**：如果 task 有调用方清单，逐一检查调用方代码中是否已接入新功能
-3. **调度 professional-test-engineer**：提供 task 完整内容（含测试要点 + 集成点） + 交付物，要求测试每个要点，**必须包含端到端可达性测试**
+3. **调度 professional-test-engineer**：提供 **requirements.md** + task 完整内容（含测试要点 + 集成点） + 交付物，要求测试每个要点，**必须包含端到端可达性测试**。明确指示：测试标准是 requirements.md，task 测试要点是最小覆盖集；如果需求暗示更广的适用范围（如某特性应适用于所有游戏模式），必须验证所有适用场景
 4. **处理结果**：
    - 全部通过 → task 标记 🟢，继续下一个
    - 有失败 → 反馈给 feature-engineer 修复，再测试（同一 task 超过 5 轮向用户报告）

@@ -1,6 +1,6 @@
 ---
 name: requirements-auditor
-description: "Use this agent to verify that the current codebase implementation matches the requirements document (requirements.md). This agent performs a line-by-line audit of each requirement against the actual code, producing a structured compliance report.\\n\\nCalled automatically by project-task-manager at three key checkpoints:\\n1. After task.md is generated — verify all requirements are covered by tasks\\n2. After requirements are updated — assess impact on existing implementation\\n3. After all tasks are completed — final compliance audit\\n\\nCan also be called directly by the user to check implementation consistency at any time."
+description: "Use this agent to verify that the current codebase implementation matches the requirements document (requirements.md). This agent performs a line-by-line audit of each requirement against the actual code, producing a structured compliance report.\\n\\nCalled by the orchestrator at three key checkpoints:\\n1. After task.md is generated — verify all requirements are covered by tasks\\n2. After requirements are updated — assess impact on existing implementation\\n3. After all tasks are completed — final compliance audit\\n\\nCan also be called directly by the user to check implementation consistency at any time."
 model: sonnet
 color: purple
 memory: project
@@ -59,6 +59,12 @@ memory: project
    - 如果是新服务/工具函数：检查是否有调用方导入并调用它
    - 如果是新 API 端点：检查前端是否有对应的调用代码，或后端是否有内部调用
    - 如果可达性检查失败，即使代码实现正确，也应标记为 **UNREACHABLE**
+
+5. **横切一致性验证**（适用于场景 A、B、C）：
+   对于需求中定义的通用规则（非限定于单一模式的特性），必须验证其在所有适用模式中的一致性：
+   - 识别需求中的横切特性：如"Elo 衰减"、"代币奖励"、"提示系统"、"成就事件"等不限定于单一游戏模式的规则
+   - 对每个横切特性，检查所有游戏模式（PvP 挑战、PvE 挑战、专题训练、虚拟比赛）是否都有对应实现
+   - 如果某模式缺少该横切特性的实现，即使其他模式已正确实现，该条需求在该模式下应标记为 **PARTIAL**（缺少特定模式的集成）
 
 ### Step 3: 生成审计报告
 
