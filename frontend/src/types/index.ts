@@ -118,6 +118,7 @@ export interface SubmitResultResponse {
   result: string | null;
   elo_change: number | null;
   tokens_earned: number | null;
+  achievements: AchievementEvent[];
 }
 
 export interface QuitChallengeResponse {
@@ -183,6 +184,7 @@ export interface SubmitTrainingResponse {
   total_streak_tokens: number;
   tokens_earned: number;
   elo_change: number | null;
+  achievements: AchievementEvent[];
 }
 
 export interface TopicProgress {
@@ -272,6 +274,7 @@ export interface ContestResult {
   elo_change: number | null;
   performance_rating: number | null;
   problems: ContestProblemInfo[];
+  achievements: AchievementEvent[];
 }
 
 export interface ContestHistoryItem {

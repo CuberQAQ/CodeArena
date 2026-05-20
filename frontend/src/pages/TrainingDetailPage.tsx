@@ -15,10 +15,12 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { StreakEffect } from "@/components/animations/StreakEffect";
 import { CoinAnimation } from "@/components/animations/CoinAnimation";
+import { AchievementPopup } from "@/components/animations";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
 import type {
   ApiResponse,
+  AchievementEvent,
   TopicDetail,
   TrainingSessionInfo,
   SubmitTrainingResponse,
@@ -41,6 +43,8 @@ export default function TrainingDetailPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lastTokensEarned, setLastTokensEarned] = useState(0);
   const [tokenTriggerKey, setTokenTriggerKey] = useState(0);
+  const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
+  const [showAchievements, setShowAchievements] = useState(false);
 
   useEffect(() => {
     if (!topicId) return;
@@ -101,6 +105,11 @@ export default function TrainingDetailPage() {
         setLastTokensEarned(data.tokens_earned);
         setTokenTriggerKey((k) => k + 1);
       }
+      // Trigger achievement popup if achievements are present
+      if (data.achievements && data.achievements.length > 0) {
+        setAchievements(data.achievements);
+        setTimeout(() => setShowAchievements(true), 1500);
+      }
       // Refresh session
       const sessRes = await api.get<ApiResponse<TrainingSessionInfo>>(
         `/training/session/${session.id}`,
@@ -143,6 +152,8 @@ export default function TrainingDetailPage() {
     setPhase("topic");
     setElapsed(0);
     setError("");
+    setAchievements([]);
+    setShowAchievements(false);
   };
 
   // ── LOADING ─────────────────────────────────────────────────────
@@ -257,6 +268,14 @@ export default function TrainingDetailPage() {
   if (phase === "session" && session && topic) {
     return (
       <div className="mx-auto max-w-4xl space-y-5">
+        {/* Achievement popup overlay */}
+        {achievements.length > 0 && showAchievements && (
+          <AchievementPopup
+            achievements={achievements}
+            onComplete={() => setShowAchievements(false)}
+          />
+        )}
+
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate("/training")}

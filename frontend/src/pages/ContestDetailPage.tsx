@@ -15,11 +15,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { AchievementPopup } from "@/components/animations";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
 import { useContestLiveStore } from "@/stores/contestStore";
 import type {
   ApiResponse,
+  AchievementEvent,
   ContestSessionInfo,
   ContestResult,
   LeaderboardEntry,
@@ -142,6 +144,8 @@ export default function ContestDetailPage() {
   const [submitAttempts, setSubmitAttempts] = useState(1);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasFetchedRef = useRef(false);
+  const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
+  const [showAchievements, setShowAchievements] = useState(false);
 
   // Live leaderboard state from Zustand store
   const {
@@ -282,6 +286,15 @@ export default function ContestDetailPage() {
       resetLive();
     };
   }, [disconnectWs, resetLive]);
+
+  // Show achievement popup when contest result has achievements
+  useEffect(() => {
+    if (result?.achievements && result.achievements.length > 0) {
+      setAchievements(result.achievements);
+      const timer = setTimeout(() => setShowAchievements(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [result?.achievements]);
 
   const submitProblem = async () => {
     if (!contestId || !selectedProblem) return;
@@ -563,6 +576,14 @@ export default function ContestDetailPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
+      {/* Achievement popup overlay */}
+      {achievements.length > 0 && showAchievements && (
+        <AchievementPopup
+          achievements={achievements}
+          onComplete={() => setShowAchievements(false)}
+        />
+      )}
+
       <button
         onClick={() => navigate("/contest")}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"

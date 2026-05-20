@@ -6,10 +6,12 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { MatchWaiting } from "@/components/animations/MatchWaiting";
 import { EloChange } from "@/components/animations/EloChange";
 import { AcceptedCelebration } from "@/components/animations/AcceptedCelebration";
+import { AchievementPopup } from "@/components/animations";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
 import type {
   ApiResponse,
+  AchievementEvent,
   QueueStatus,
   StartChallengeResponse,
   ChallengeDetail,
@@ -34,6 +36,8 @@ export default function ChallengePage() {
   const [quitSubmissions, setQuitSubmissions] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
   const [eloTriggerKey, setEloTriggerKey] = useState(0);
+  const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
+  const [showAchievements, setShowAchievements] = useState(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -148,6 +152,10 @@ export default function ChallengePage() {
         if (data.elo_change != null && data.elo_change > 0) {
           setShowCelebration(true);
         }
+        if (data.achievements && data.achievements.length > 0) {
+          setAchievements(data.achievements);
+          setTimeout(() => setShowAchievements(true), 1500);
+        }
         setPhase("result");
       } else {
         // Waiting for opponent
@@ -209,6 +217,8 @@ export default function ChallengePage() {
     setAttempts(0);
     setQuitSubmissions(0);
     setShowCelebration(false);
+    setAchievements([]);
+    setShowAchievements(false);
   };
 
   // ── IDLE ────────────────────────────────────────────────────────
@@ -462,6 +472,15 @@ export default function ChallengePage() {
           active={showCelebration}
           onComplete={() => setShowCelebration(false)}
         />
+
+        {/* Achievement popup overlay */}
+        {achievements.length > 0 && showAchievements && (
+          <AchievementPopup
+            achievements={achievements}
+            onComplete={() => setShowAchievements(false)}
+          />
+        )}
+
         <div className="text-center">
           <div
             className={`mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl ${
