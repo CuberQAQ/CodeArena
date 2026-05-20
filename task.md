@@ -1595,3 +1595,121 @@ P_i = base(rating) × f(wa, t)
 - [ ] **有数据用户**: 所有专题显示正确的 M-Elo 值
 - [ ] **shield 状态**: 未练习过的专题 shield_active=True
 - [ ] **性能**: 不会因创建过多记录而变慢
+
+---
+
+## 阶段 25: UI 打磨 + AI 模拟真实性
+
+### Task 25.1: 比赛卡片按钮间距优化
+**状态**: 🟢 已完成
+**优先级**: P2
+**依赖**: 无
+
+#### 任务描述
+比赛卡片（Beginner/Advanced/Master）按钮与上方信息行的间距不够，视觉上略显拥挤。
+
+**需要修改的文件**:
+- `frontend/src/pages/ContestPage.tsx` — Button 的 `mt-auto` 改为 `mt-auto pt-4` 或增加 `mt-6`
+
+**关键实现细节**:
+1. 将 Button 的 `className="mt-auto w-full"` 改为 `className="mt-auto w-full pt-4 border-t border-border/50"` 或类似的分隔效果，在按钮和信息行之间增加视觉分隔
+
+#### 测试要点
+- [ ] **间距可见**: 按钮与上方信息行之间有明显间距
+- [ ] **三卡片一致**: 三个卡片按钮位置仍然对齐
+
+---
+
+### Task 25.2: 训练卡片去掉进度条改为段位徽章
+**状态**: 🟢 已完成
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+专题训练卡片去掉进度条，改为展示 Codeforces 风格的段位徽章（彩色标签 + 段位名称 + M-Elo 数值）。
+
+**需要修改的文件**:
+- `frontend/src/pages/TrainingPage.tsx` — 移除进度条相关代码，添加段位徽章组件
+- `frontend/src/locales/en/training.json` — 添加段位相关翻译 key
+- `frontend/src/locales/zh/training.json` — 添加段位相关翻译 key
+
+**关键实现细节**:
+1. 移除 `meloToProgress` 函数和 `getProgressBarColor` 函数
+2. 移除进度条 JSX（`<div className="mt-2 h-1.5 ...">` 及下方的百分比文字）
+3. 新增段位徽章展示：使用 `getRatingTierInfo(melo)` 获取段位信息（名称、颜色），渲染为彩色标签
+4. 徽章样式使用 inline style + CF 标准 HEX 颜色（来自 `RATING_TIERS` 的 `color` 属性），自动覆盖全部 10 个段位：
+   - 背景色: 段位颜色 + 透明度（如 `color + "20"` 或 `color + "15"` 做浅化）
+   - 文字色: 直接使用段位颜色
+   - 圆角 pill 形状: `rounded-full px-2 py-0.5 text-xs font-semibold`
+   - 不要使用硬编码的 Tailwind 类名（如 bg-green-100），以确保与 Task 23.1 的 CF 精确对标一致
+5. `shield_active=True` 的专题显示灰色徽章（`#9ca3af`）+ "未开始" 文案
+6. 徽章旁边显示 M-Elo 数值
+7. 段位名称需要 i18n 支持，使用 `RATING_KEY_MAP` 映射到翻译 key（已存在于 `utils/index.ts`）
+8. 保留星星评分和 solved_count 展示
+
+**触发场景**: 用户访问 `/training` 页面
+
+#### 测试要点
+- [ ] **有 M-Elo 的专题**: 显示对应段位颜色的徽章 + 段位名称 + M-Elo 数值
+- [ ] **未开始的专题**: 显示灰色徽章 + "未开始" 文案
+- [ ] **段位颜色正确**: 各段位颜色与 Codeforces 一致
+- [ ] **i18n**: 段位名称和"未开始"有中英文翻译
+- [ ] **星星保留**: 星星评分仍然显示
+- [ ] **进度条已移除**: 页面中不再有进度条
+
+---
+
+### Task 25.3: AI 做题速度按难度分档延迟
+**状态**: 🟢 已完成
+**优先级**: P1
+**依赖**: 无
+
+#### 根因分析
+AI 机器人模拟存在三个叠加问题：
+1. **每次 tick 同时尝试所有题目**: 每分钟每个机器人对全部未解题目独立投骰子，Elo=1600 的机器人在第 1 分钟期望解出 ~2.5 题
+2. **tick 间隔仅 60 秒**: 120 分钟比赛有 120 次尝试机会
+3. **无难度相关延迟**: AI 不区分简单题和难题，同时尝试所有题目
+
+根因位置: `backend/app/services/contest_simulation_service.py:607-619`（`_simulate_bot_tick` 方法）
+
+#### 任务描述
+重构 AI 机器人模拟逻辑，使做题节奏更接近真实比赛：每 tick 每个机器人只专注 1 道题，解题时间与题目难度正相关。
+
+**需要修改的文件**:
+- `backend/app/services/contest_simulation_service.py` — 重构 `_simulate_bot_tick` 方法和模拟循环
+- `backend/app/core/default_config.py` — 新增 AI 模拟相关配置参数
+
+**关键实现细节**:
+1. **每次 tick 每个机器人只尝试 1 道题**（而非所有题目）。选题策略：优先未解题目中 rating 最低的（模拟真实选手从易到难的做题顺序）
+2. **tick 间隔从 60 秒改为可配置**（默认 30 秒），提取到 `default_config.py` 的 `contest.simulation` 配置中
+3. **引入"读题+编码时间"概念**：每道题从"开始尝试"到"可能解出"需要经过若干 tick：
+   - 简单题 (rating < 1200): 1-3 分钟（2-4 个 tick）
+   - 中等题 (1200 ≤ rating < 1800): 3-8 分钟（6-16 个 tick）
+   - 难题 (rating ≥ 1800): 8-15 分钟（16-30 个 tick）
+   - 每个时间范围加入 ±30% 随机抖动
+4. **实现方式**：为每个 bot 维护内存状态（dict，不持久化到 DB，避免 Alembic 迁移），包含 `current_problem`（正在做的题 ID）和 `ticks_remaining`（剩余 tick 数）。当 `ticks_remaining` 归零时，按 P(AC) 公式判定是否解出，然后选择下一题
+5. **新增配置项**（`contest.simulation`）:
+   - `tick_interval_seconds`: 30（默认 tick 间隔）
+   - `bot_count`: 50（机器人数量，已有）
+   - `focus_mode`: true（每次只做 1 题）
+   - `difficulty_ticks`: 简单/中等/难的 tick 范围
+6. **保留现有的 P(AC) 公式和 time_factor 机制**，仅在"何时投骰子"上改变行为
+
+**调用方清单**:
+- `contest_simulation_service.py:_run_simulation_loop` (line ~200-255) — 模拟主循环，需调整 tick 间隔
+- `contest_simulation_service.py:_simulate_bot_tick` (line ~580-627) — 核心解题逻辑，需重构为"聚焦一题"模式
+- `contest_simulation_service.py:generate_bots` (line ~80-160) — Bot 生成，可能需要增加 `current_problem` 和 `ticks_remaining` 字段
+- `backend/app/models/contest.py` — ContestBot 模型，可能需要新增字段（或使用内存状态）
+
+**反向集成清单**:
+- PR 结算逻辑 (`contest_service.py`) 依赖机器人的 solved_problem_ids，确保重构后该字段更新正确
+- WebSocket 排行榜推送依赖 `tick_simulation` 的返回值，确保新逻辑仍正确推送更新
+
+#### 测试要点
+- [ ] **简单题延迟**: AI 不会在比赛第 1 分钟就解出所有简单题
+- [ ] **难度递增**: 难题的解题时间明显长于简单题
+- [ ] **单题专注**: 每个 bot 每次 tick 最多解出 1 道题
+- [ ] **P(AC) 公式不变**: Elo 高的 bot 解难题概率仍高于 Elo 低的 bot
+- [ ] **PR 结算正常**: 比赛结束后 PR 和 Elo 结算仍然正确
+- [ ] **WebSocket 排行榜**: 排行榜仍然实时更新
+- [ ] **配置可热更新**: tick 间隔和难度参数可通过 admin config 页面调整
