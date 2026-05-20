@@ -101,6 +101,22 @@ task.md 写完后，调用 requirements-auditor 验证：
 4. 将审计报告和 task 更新方案呈现给用户确认
 5. 确认后进入阶段三执行
 
+## Bug 反馈处理
+
+当用户报告 bug 或异常行为时：
+
+1. **定位根因**：复现问题，定位到具体代码位置
+2. **评估范围**：判断是孤立 bug 还是同类问题（如刚才的验证提示 bug，`extractApiError` 对 `VALIDATION_ERROR` 的解析可能在其他页面也有影响）
+3. **生成修复 task**：在 task.md 中新增 bug 修复 task，包含：
+   - 根因分析
+   - 需要修改的文件
+   - 测试要点（含同类场景排查）
+4. **调度 feature-engineer** 修复
+5. **调度 professional-test-engineer** 验证修复 + 检查无回归
+6. commit + task 标记 🟢
+
+原则：即使是小 bug 也走 feature-engineer → test-engineer 流程，不允许跳过测试直接提交。
+
 ## 异常处理
 
 必须向用户报告的情况：
