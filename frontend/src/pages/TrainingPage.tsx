@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Dumbbell, Star, BookOpen } from "lucide-react";
+import { Dumbbell, Star, BookOpen, Shield } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { getRatingColor } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, TopicInfo } from "@/types";
 
-function StarRating({ count, max = 5 }: { count: number; max?: number }) {
+function StarRating({ count, max = 7 }: { count: number; max?: number }) {
   return (
     <div className="flex gap-0.5">
       {Array.from({ length: max }, (_, i) => (
@@ -17,6 +18,20 @@ function StarRating({ count, max = 5 }: { count: number; max?: number }) {
       ))}
     </div>
   );
+}
+
+/** Calculate progress percentage from M-Elo.
+ *  Maps [800, 2200] to [0%, 100%].
+ */
+function meloToProgress(melo: number | null): number {
+  if (melo === null) return 0;
+  return Math.round(Math.max(0, Math.min(100, ((melo - 800) / 1400) * 100)));
+}
+
+/** Get progress bar color based on M-Elo and shield status. */
+function getProgressBarColor(melo: number | null, shieldActive: boolean): string {
+  if (shieldActive || melo === null) return "#9ca3af";
+  return getRatingColor(melo);
 }
 
 export default function TrainingPage() {
@@ -68,10 +83,8 @@ export default function TrainingPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {topics.map((topic) => {
-            const progress =
-              topic.total_problems > 0
-                ? Math.round((topic.solved_count / topic.total_problems) * 100)
-                : 0;
+            const progress = meloToProgress(topic.melo);
+            const barColor = getProgressBarColor(topic.melo, topic.shield_active);
 
             return (
               <Link
@@ -99,16 +112,29 @@ export default function TrainingPage() {
 
                 <div className="mt-4 flex items-center justify-between">
                   <StarRating count={topic.stars} />
-                  <span className="text-xs text-muted-foreground">
-                    {topic.solved_count}/{topic.total_problems}
-                  </span>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {topic.shield_active && (
+                      <Shield className="size-3 text-blue-400" />
+                    )}
+                    {topic.melo !== null ? (
+                      <span>{Math.round(topic.melo)}</span>
+                    ) : (
+                      <span>-</span>
+                    )}
+                    <span className="text-muted-foreground/50">
+                      | {topic.solved_count}/{topic.total_problems}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Progress bar */}
+                {/* Progress bar based on M-Elo */}
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-green-400 transition-all"
-                    style={{ width: `${progress}%` }}
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${progress}%`,
+                      backgroundColor: barColor,
+                    }}
                   />
                 </div>
                 <p className="mt-1 text-right text-xs text-muted-foreground">{progress}%</p>

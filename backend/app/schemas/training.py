@@ -57,6 +57,8 @@ class TopicInfo(BaseModel):
     total_problems: int = 0
     solved_count: int = 0
     stars: int = 0
+    melo: float | None = None
+    shield_active: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -111,6 +113,8 @@ class TopicProgress(BaseModel):
     stars: int = 0
     total_attempts: int = 0
     total_time_spent: float = 0.0
+    melo: float | None = None
+    shield_active: bool = False
 
 
 class TrainingProgress(BaseModel):

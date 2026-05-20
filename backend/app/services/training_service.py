@@ -204,6 +204,35 @@ def calculate_stars(completion_rate: float) -> int:
     return 5
 
 
+def calculate_stars_from_melo(melo: float | None) -> int:
+    """Calculate star rating from M-Elo.
+
+    - 0 stars: no M-Elo (user never touched this tag)
+    - 1 star: M-Elo < 1000
+    - 2 stars: M-Elo < 1200
+    - 3 stars: M-Elo < 1400
+    - 4 stars: M-Elo < 1600
+    - 5 stars: M-Elo < 1800
+    - 6 stars: M-Elo < 2000
+    - 7 stars: M-Elo >= 2000
+    """
+    if melo is None:
+        return 0
+    if melo < 1000:
+        return 1
+    if melo < 1200:
+        return 2
+    if melo < 1400:
+        return 3
+    if melo < 1600:
+        return 4
+    if melo < 1800:
+        return 5
+    if melo < 2000:
+        return 6
+    return 7
+
+
 # ---------------------------------------------------------------------------
 # Training Service
 # ---------------------------------------------------------------------------
@@ -260,13 +289,22 @@ class TrainingService:
         if user_id is not None and cf_service is not None:
             all_problems = await TrainingService._get_all_problems_cached(cf_service)
 
+        # Bulk-fetch all M-Elo records for this user (1 query instead of N)
+        melo_map: dict[str, object] = {}
+        if user_id is not None:
+            melo_records = await MEloService.get_all_melos(db, user_id)
+            melo_map = {m.tag: m for m in melo_records}
+
         topic_infos: list[TopicInfo] = []
         for topic in topics:
             solved_count = 0
             total_problems = 0
             stars = 0
+            melo: float | None = None
+            shield_active = False
 
             cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
+            primary_tag = cf_tags[0] if cf_tags else None
 
             if user_id is not None:
                 # Filter pre-fetched problems by topic tags (in-memory)
@@ -286,9 +324,19 @@ class TrainingService:
                 solved_result = await db.execute(solved_stmt)
                 solved_count = solved_result.scalar_one()
 
-                # Calculate completion rate and stars
-                completion_rate = (solved_count / total_problems * 100) if total_problems > 0 else 0.0
-                stars = calculate_stars(completion_rate)
+                # Look up M-Elo for the topic's primary tag
+                if primary_tag:
+                    melo_rec = melo_map.get(primary_tag)
+                    if melo_rec is None:
+                        # User never touched this tag -- shield active, no melo
+                        melo = None
+                        shield_active = True
+                    else:
+                        melo = float(melo_rec.elo)
+                        shield_active = melo_rec.first_ac_at is None
+
+                # Calculate stars based on M-Elo
+                stars = calculate_stars_from_melo(melo)
 
             topic_infos.append(TopicInfo(
                 id=topic.id,
@@ -300,6 +348,8 @@ class TrainingService:
                 total_problems=total_problems,
                 solved_count=solved_count,
                 stars=stars,
+                melo=melo,
+                shield_active=shield_active,
             ))
 
         return topic_infos
@@ -373,8 +423,17 @@ class TrainingService:
 
         solved_count = sum(1 for pi in problem_infos if pi.solved)
         total_problems = len(problem_infos)
-        completion_rate = (solved_count / total_problems * 100) if total_problems > 0 else 0.0
-        stars = calculate_stars(completion_rate)
+
+        # Look up M-Elo for the topic's primary tag
+        melo: float | None = None
+        shield_active = False
+        primary_tag = cf_tags[0] if cf_tags else None
+        if user_id is not None and primary_tag:
+            melo_rec = await MEloService.get_or_create_melo(db, user_id, primary_tag)
+            melo = float(melo_rec.elo)
+            shield_active = melo_rec.first_ac_at is None
+
+        stars = calculate_stars_from_melo(melo)
 
         return TopicDetail(
             id=topic.id,
@@ -386,6 +445,8 @@ class TrainingService:
             total_problems=total_problems,
             solved_count=solved_count,
             stars=stars,
+            melo=melo,
+            shield_active=shield_active,
             problems=problem_infos,
         )
 
@@ -922,12 +983,17 @@ class TrainingService:
         # Bulk-fetch all CF problems once (1 API call instead of N)
         all_problems = await TrainingService._get_all_problems_cached(cf_service)
 
+        # Bulk-fetch all M-Elo records for this user (1 query instead of N)
+        melo_records = await MEloService.get_all_melos(db, user_id)
+        melo_map = {m.tag: m for m in melo_records}
+
         topic_progress_list: list[TopicProgress] = []
         total_solved = 0
         total_problems = 0
 
         for topic in topics:
             cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
+            primary_tag = cf_tags[0] if cf_tags else None
 
             # Filter pre-fetched problems by topic tags (in-memory)
             problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
@@ -963,6 +1029,18 @@ class TrainingService:
 
             completion_rate = (solved_count / topic_total * 100) if topic_total > 0 else 0.0
 
+            # Look up M-Elo for the topic's primary tag
+            melo: float | None = None
+            shield_active = False
+            if primary_tag:
+                melo_rec = melo_map.get(primary_tag)
+                if melo_rec is None:
+                    melo = None
+                    shield_active = True
+                else:
+                    melo = float(melo_rec.elo)
+                    shield_active = melo_rec.first_ac_at is None
+
             topic_progress_list.append(TopicProgress(
                 topic_id=topic.id,
                 topic_name=topic.name,
@@ -970,9 +1048,11 @@ class TrainingService:
                 total_problems=topic_total,
                 solved_count=solved_count,
                 completion_rate=round(completion_rate, 2),
-                stars=calculate_stars(completion_rate),
+                stars=calculate_stars_from_melo(melo),
                 total_attempts=total_attempts,
                 total_time_spent=total_time_spent or 0.0,
+                melo=melo,
+                shield_active=shield_active,
             ))
 
             total_solved += solved_count
@@ -1037,6 +1117,15 @@ class TrainingService:
 
         completion_rate = (solved_count / topic_total * 100) if topic_total > 0 else 0.0
 
+        # Look up M-Elo for the topic's primary tag
+        melo: float | None = None
+        shield_active = False
+        primary_tag = cf_tags[0] if cf_tags else None
+        if primary_tag:
+            melo_rec = await MEloService.get_or_create_melo(db, user_id, primary_tag)
+            melo = float(melo_rec.elo)
+            shield_active = melo_rec.first_ac_at is None
+
         return TopicProgress(
             topic_id=topic.id,
             topic_name=topic.name,
@@ -1044,9 +1133,11 @@ class TrainingService:
             total_problems=topic_total,
             solved_count=solved_count,
             completion_rate=round(completion_rate, 2),
-            stars=calculate_stars(completion_rate),
+            stars=calculate_stars_from_melo(melo),
             total_attempts=total_attempts,
             total_time_spent=total_time_spent or 0.0,
+            melo=melo,
+            shield_active=shield_active,
         )
 
     # ------------------------------------------------------------------

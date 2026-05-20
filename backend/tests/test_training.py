@@ -24,6 +24,7 @@ from app.services.training_service import (
     _attempt_tokens_for_rating,
     _tokens_for_rating,
     calculate_stars,
+    calculate_stars_from_melo,
 )
 
 # ---------------------------------------------------------------------------
@@ -179,6 +180,9 @@ async def db(async_engine):
     _mock_melo_service.update_melo = AsyncMock(
         return_value=_FakeMEloRecord(elo=1200, tag="dp"),
     )
+    _mock_melo_service.get_all_melos = AsyncMock(
+        return_value=[_FakeMEloRecord(elo=1200, tag="dp")],
+    )
 
     # Mock HintService so _calculate_training_elo doesn't query hint_purchases
     _mock_hint_service = AsyncMock()
@@ -288,6 +292,53 @@ class TestStarCalculation:
 
     def test_one_hundred_percent_is_five_stars(self):
         assert calculate_stars(100) == 5
+
+
+class TestStarCalculationFromMElo:
+    """Tests for calculate_stars_from_melo."""
+
+    def test_none_is_zero_stars(self):
+        assert calculate_stars_from_melo(None) == 0
+
+    def test_below_1000_is_one_star(self):
+        assert calculate_stars_from_melo(800) == 1
+        assert calculate_stars_from_melo(999) == 1
+
+    def test_1000_is_two_stars(self):
+        assert calculate_stars_from_melo(1000) == 2
+
+    def test_1199_is_two_stars(self):
+        assert calculate_stars_from_melo(1199) == 2
+
+    def test_1200_is_three_stars(self):
+        assert calculate_stars_from_melo(1200) == 3
+
+    def test_1399_is_three_stars(self):
+        assert calculate_stars_from_melo(1399) == 3
+
+    def test_1400_is_four_stars(self):
+        assert calculate_stars_from_melo(1400) == 4
+
+    def test_1599_is_four_stars(self):
+        assert calculate_stars_from_melo(1599) == 4
+
+    def test_1600_is_five_stars(self):
+        assert calculate_stars_from_melo(1600) == 5
+
+    def test_1799_is_five_stars(self):
+        assert calculate_stars_from_melo(1799) == 5
+
+    def test_1800_is_six_stars(self):
+        assert calculate_stars_from_melo(1800) == 6
+
+    def test_1999_is_six_stars(self):
+        assert calculate_stars_from_melo(1999) == 6
+
+    def test_2000_is_seven_stars(self):
+        assert calculate_stars_from_melo(2000) == 7
+
+    def test_3000_is_seven_stars(self):
+        assert calculate_stars_from_melo(3000) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -1028,7 +1079,8 @@ class TestProgress:
         assert dp_progress.solved_count == 2
         assert dp_progress.total_problems == 5
         assert dp_progress.completion_rate == 40.0
-        assert dp_progress.stars == 2  # 40% -> 2 stars
+        assert dp_progress.stars == 3  # M-Elo 1200 -> 3 stars
+        assert dp_progress.melo == 1200.0
 
     async def test_get_topic_progress_not_found(self, db, cf_mock):
         user = _make_test_user(db)
@@ -1050,7 +1102,8 @@ class TestProgress:
         assert progress.topic_name == "Dynamic Programming"
         assert progress.slug == "dp"
         assert progress.solved_count == 0
-        assert progress.stars == 0
+        assert progress.stars == 3  # M-Elo 1200 (get_or_create_melo mock) -> 3 stars
+        assert progress.melo == 1200.0
 
 
 # ---------------------------------------------------------------------------
@@ -1129,7 +1182,7 @@ class TestCrossSessionProgress:
         progress = await TrainingService.get_topic_progress(db, user.id, dp_topic.id, cf_mock)
         assert progress.solved_count == 2
         assert progress.completion_rate == 40.0
-        assert progress.stars == 2
+        assert progress.stars == 3  # M-Elo 1200 (get_or_create_melo mock) -> 3 stars
 
 
 # ---------------------------------------------------------------------------
@@ -1403,7 +1456,7 @@ class TestFullTrainingFlow:
         assert progress.solved_count == 3
         assert progress.total_problems == 5
         assert progress.completion_rate == 60.0
-        assert progress.stars == 3  # 60% -> 3 stars
+        assert progress.stars == 3  # M-Elo 1200 (get_or_create_melo mock) -> 3 stars
 
         # Step 9: Verify user gained tokens and Elo
         await db.refresh(user)

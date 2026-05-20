@@ -155,6 +155,8 @@ export interface TopicInfo {
   total_problems: number;
   solved_count: number;
   stars: number;
+  melo: number | null;
+  shield_active: boolean;
 }
 
 export interface TopicDetail extends TopicInfo {
@@ -197,6 +199,8 @@ export interface TopicProgress {
   stars: number;
   total_attempts: number;
   total_time_spent: number;
+  melo: number | null;
+  shield_active: boolean;
 }
 
 export interface TrainingProgress {
