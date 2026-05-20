@@ -139,6 +139,40 @@ async def get_elo_history(
     )
 
 
+@router.get("/leaderboard")
+async def get_global_leaderboard(
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the global leaderboard of all users."""
+    stmt = (
+        select(User.id, User.username, User.cf_handle, User.elo, User.pp, User.tokens)
+        .where(User.is_active == True)
+        .order_by(User.elo.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    users = result.fetchall()
+
+    leaderboard = []
+    for i, user in enumerate(users, 1):
+        leaderboard.append({
+            "id": str(user.id),
+            "username": user.username,
+            "cf_handle": user.cf_handle,
+            "elo": user.elo,
+            "pp": user.pp,
+            "tokens": user.tokens,
+            "rank": i,
+        })
+
+    return success_response(
+        data=leaderboard,
+        message="Leaderboard retrieved",
+    )
+
+
 @router.get("/pp-contributions")
 async def get_pp_contributions(
     current_user: User = Depends(get_current_user),

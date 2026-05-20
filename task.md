@@ -1075,3 +1075,87 @@ P_i = base(rating) × f(wa, t)
 1. 比赛超时自动结束的阶梯惩罚与手动结束一致
 2. 成就检测使用原始 Elo 值
 3. 现有功能无回归
+
+---
+
+## 阶段 16: Bug 修复 (2026-05-20)
+
+### Task 16-B1: Leaderboard 为空
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: 无
+
+#### 根因分析
+前端 `LeaderboardPage.tsx` 调用 `GET /auth/leaderboard`，但后端 `backend/app/api/v1/auth.py` 中缺少该端点，导致前端 catch 块设置 users 为空数组。
+
+#### 任务描述
+在 `backend/app/api/v1/auth.py` 中添加 `GET /leaderboard` 端点，返回所有活跃用户按 Elo 降序排列。
+
+**需要修改的文件**:
+- `backend/app/api/v1/auth.py` — 新增 `/leaderboard` 端点
+
+**关键实现细节**:
+1. 查询 `users` 表，`WHERE is_active = True`，`ORDER BY elo DESC`，`LIMIT 100`
+2. 返回字段：`id`, `username`, `cf_handle`, `elo`, `pp`, `tokens`, `rank`（序号）
+3. 需要认证（`Depends(get_current_user)`）
+4. 使用 `success_response` 包装返回
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **认证用户可访问**: 带 token 请求返回 200 + 用户列表
+- [ ] **未认证被拒绝**: 不带 token 返回 401
+- [ ] **按 Elo 降序**: 返回列表按 elo 从高到低
+- [ ] **不包含非活跃用户**: `is_active = False` 的用户不出现在列表
+- [ ] **rank 正确**: rank 从 1 开始，与排序一致
+- [ ] **前端正常展示**: 浏览器访问 leaderboard 页面能看到用户列表
+
+#### 验收标准
+1. Leaderboard 页面正常显示用户排名数据
+2. 按 Elo 和 PP 排序均正常工作
+
+---
+
+### Task 16-B2: Training 页面 "Failed to load topics"
+**状态**: 🟡 待调查
+**优先级**: P0
+**依赖**: 无
+
+#### 根因分析
+后端 `GET /training/topics` 端点存在且 API 直接测试正常（返回 12 topics）。前端通过 nginx 代理访问时可能出现认证 token 问题：
+- 前端 api.ts 的 401 拦截器在收到 401 时清除 token 并重定向到登录页
+- 如果用户 token 过期，页面 API 调用失败显示错误信息
+- docker-compose.yml health check 路径错误（`/health` 应为 `/api/v1/health`），可能导致容器状态判断不准
+
+**需要修改的文件**:
+- `docker-compose.yml` — 修复 health check 路径
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **登录后 Training 正常**: 用户登录后访问 training 页面能看到 topics 列表
+- [ ] **Health check 正确**: `curl http://localhost:8000/api/v1/health` 返回 200
+- [ ] **12 个 topics 全部展示**: 页面显示所有预定义 topic
+
+#### 验收标准
+1. Training 页面正常展示 12 个 topic 分类
+2. 每个 topic 显示题目数量
+
+---
+
+### Task 16-B3: 登录页 "Invalid credentials"
+**状态**: 🟡 待调查
+**优先级**: P0
+**依赖**: 无
+
+#### 根因分析
+后端 `POST /auth/login` API 直接测试正常（`test@example.com`/`Password123` 可登录）。通过 nginx 代理测试也正常。需确认：
+1. 用户使用的具体凭据
+2. 前端表单提交的数据格式是否正确
+3. 是否存在 CORS 或其他网络层问题
+
+#### 测试要点（防Workaround验证清单）
+- [ ] **已知账户可登录**: `test@example.com`/`Password123` 通过前端登录成功
+- [ ] **错误凭据正确提示**: 错误密码显示 "Invalid credentials"
+- [ ] **注册后可登录**: 新注册账户能立即登录
+- [ ] **登录后跳转**: 登录成功跳转到 /dashboard
+
+#### 验收标准
+1. 用户能通过前端正常登录
+2. 错误凭据给出正确提示
