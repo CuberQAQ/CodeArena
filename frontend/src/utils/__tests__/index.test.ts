@@ -1,0 +1,291 @@
+import { describe, it, expect } from "vitest";
+import {
+  getRatingTierInfo,
+  getRatingColor,
+  getDifficultyLabel,
+  formatTime,
+  extractApiError,
+  RATING_TIERS,
+} from "../index";
+
+// ---------------------------------------------------------------------------
+// getRatingTierInfo
+// ---------------------------------------------------------------------------
+
+describe("getRatingTierInfo", () => {
+  it("returns Newbie for rating 1199", () => {
+    const tier = getRatingTierInfo(1199);
+    expect(tier.name).toBe("Newbie");
+  });
+
+  it("returns Pupil for rating 1200", () => {
+    const tier = getRatingTierInfo(1200);
+    expect(tier.name).toBe("Pupil");
+  });
+
+  it("returns Grandmaster for rating 2400", () => {
+    const tier = getRatingTierInfo(2400);
+    expect(tier.name).toBe("Grandmaster");
+  });
+
+  it("returns Legendary Grandmaster for rating 3000", () => {
+    const tier = getRatingTierInfo(3000);
+    expect(tier.name).toBe("Legendary Grandmaster");
+    expect(tier.legendary).toBe(true);
+  });
+
+  it("returns Newbie for null", () => {
+    const tier = getRatingTierInfo(null);
+    expect(tier.name).toBe("Newbie");
+  });
+
+  it("returns Newbie for undefined", () => {
+    const tier = getRatingTierInfo(undefined);
+    expect(tier.name).toBe("Newbie");
+  });
+
+  it("returns Specialist for 1400", () => {
+    const tier = getRatingTierInfo(1400);
+    expect(tier.name).toBe("Specialist");
+  });
+
+  it("returns Expert for 1600", () => {
+    const tier = getRatingTierInfo(1600);
+    expect(tier.name).toBe("Expert");
+  });
+
+  it("returns Candidate Master for 1900", () => {
+    const tier = getRatingTierInfo(1900);
+    expect(tier.name).toBe("Candidate Master");
+  });
+
+  it("returns Master for 2100", () => {
+    const tier = getRatingTierInfo(2100);
+    expect(tier.name).toBe("Master");
+  });
+
+  it("returns International Master for 2300", () => {
+    const tier = getRatingTierInfo(2300);
+    expect(tier.name).toBe("International Master");
+  });
+
+  it("returns International Grandmaster for 2600", () => {
+    const tier = getRatingTierInfo(2600);
+    expect(tier.name).toBe("International Grandmaster");
+  });
+
+  it("returns correct boundary for upper edge of each tier", () => {
+    // Test boundary values at tier edges
+    expect(getRatingTierInfo(1399).name).toBe("Pupil");
+    expect(getRatingTierInfo(1599).name).toBe("Specialist");
+    expect(getRatingTierInfo(1899).name).toBe("Expert");
+    expect(getRatingTierInfo(2099).name).toBe("Candidate Master");
+    expect(getRatingTierInfo(2299).name).toBe("Master");
+    expect(getRatingTierInfo(2399).name).toBe("International Master");
+    expect(getRatingTierInfo(2599).name).toBe("Grandmaster");
+    expect(getRatingTierInfo(2999).name).toBe("International Grandmaster");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getRatingColor
+// ---------------------------------------------------------------------------
+
+describe("getRatingColor", () => {
+  it("returns gray (#808080) for Newbie", () => {
+    expect(getRatingColor(800)).toBe("#808080");
+  });
+
+  it("returns green (#008000) for Pupil", () => {
+    expect(getRatingColor(1200)).toBe("#008000");
+  });
+
+  it("returns cyan (#03A89E) for Specialist", () => {
+    expect(getRatingColor(1400)).toBe("#03A89E");
+  });
+
+  it("returns blue (#0000FF) for Expert", () => {
+    expect(getRatingColor(1600)).toBe("#0000FF");
+  });
+
+  it("returns purple (#AA00AA) for Candidate Master", () => {
+    expect(getRatingColor(1900)).toBe("#AA00AA");
+  });
+
+  it("returns orange (#FF8C00) for Master", () => {
+    expect(getRatingColor(2100)).toBe("#FF8C00");
+  });
+
+  it("returns orange (#FF8C00) for International Master", () => {
+    expect(getRatingColor(2300)).toBe("#FF8C00");
+  });
+
+  it("returns red (#FF0000) for Grandmaster", () => {
+    expect(getRatingColor(2400)).toBe("#FF0000");
+  });
+
+  it("returns red (#FF0000) for International Grandmaster", () => {
+    expect(getRatingColor(2600)).toBe("#FF0000");
+  });
+
+  it("returns red (#FF0000) for Legendary Grandmaster", () => {
+    expect(getRatingColor(3000)).toBe("#FF0000");
+  });
+
+  it("returns gray for null/undefined", () => {
+    expect(getRatingColor(null)).toBe("#808080");
+    expect(getRatingColor(undefined)).toBe("#808080");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getDifficultyLabel
+// ---------------------------------------------------------------------------
+
+describe("getDifficultyLabel", () => {
+  it("returns 'Unrated' for null", () => {
+    expect(getDifficultyLabel(null)).toBe("Unrated");
+  });
+
+  it("returns 'Unrated' for undefined", () => {
+    expect(getDifficultyLabel(undefined)).toBe("Unrated");
+  });
+
+  it("returns the tier name for a valid rating", () => {
+    expect(getDifficultyLabel(1200)).toBe("Pupil");
+    expect(getDifficultyLabel(2400)).toBe("Grandmaster");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatTime
+// ---------------------------------------------------------------------------
+
+describe("formatTime", () => {
+  it("formats 3661 seconds as 1:01:01", () => {
+    expect(formatTime(3661)).toBe("1:01:01");
+  });
+
+  it("formats 125 seconds as 02:05", () => {
+    expect(formatTime(125)).toBe("02:05");
+  });
+
+  it("formats 0 seconds as 00:00", () => {
+    expect(formatTime(0)).toBe("00:00");
+  });
+
+  it("formats 59 seconds as 00:59", () => {
+    expect(formatTime(59)).toBe("00:59");
+  });
+
+  it("formats exactly 1 hour as 1:00:00", () => {
+    expect(formatTime(3600)).toBe("1:00:00");
+  });
+
+  it("formats 10 hours as 10:00:00", () => {
+    expect(formatTime(36000)).toBe("10:00:00");
+  });
+
+  it("pads single-digit minutes in hour format", () => {
+    expect(formatTime(3665)).toBe("1:01:05");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractApiError
+// ---------------------------------------------------------------------------
+
+describe("extractApiError", () => {
+  it("extracts error.message from business error response", () => {
+    const err = {
+      response: {
+        data: {
+          error: { code: "BUSINESS_ERROR", message: "Insufficient tokens" },
+        },
+      },
+    };
+    expect(extractApiError(err)).toBe("Insufficient tokens");
+  });
+
+  it("extracts detail for VALIDATION_ERROR", () => {
+    const err = {
+      response: {
+        data: {
+          error: { code: "VALIDATION_ERROR", message: "Validation failed" },
+          detail: "body -> password: String should have at least 8 characters",
+        },
+      },
+    };
+    expect(extractApiError(err)).toBe(
+      "body -> password: String should have at least 8 characters",
+    );
+  });
+
+  it("prefers error.message over detail for non-validation errors", () => {
+    const err = {
+      response: {
+        data: {
+          error: { code: "SOME_ERROR", message: "Business error message" },
+          detail: "Some detail",
+        },
+      },
+    };
+    expect(extractApiError(err)).toBe("Business error message");
+  });
+
+  it("returns detail as fallback when no error.message", () => {
+    const err = {
+      response: {
+        data: {
+          error: { code: "SOME_ERROR" },
+          detail: "Detail fallback",
+        },
+      },
+    };
+    expect(extractApiError(err)).toBe("Detail fallback");
+  });
+
+  it("returns fallback string when nothing else matches", () => {
+    expect(extractApiError({})).toBe("An unexpected error occurred");
+  });
+
+  it("returns custom fallback when provided", () => {
+    expect(extractApiError({}, "Custom fallback")).toBe("Custom fallback");
+  });
+
+  it("handles null/undefined response data", () => {
+    expect(extractApiError({ response: {} })).toBe("An unexpected error occurred");
+    expect(extractApiError({ response: { data: null } })).toBe(
+      "An unexpected error occurred",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RATING_TIERS constant integrity
+// ---------------------------------------------------------------------------
+
+describe("RATING_TIERS", () => {
+  it("has exactly 10 tiers", () => {
+    expect(RATING_TIERS).toHaveLength(10);
+  });
+
+  it("first tier has min -Infinity", () => {
+    expect(RATING_TIERS[0].min).toBe(-Infinity);
+  });
+
+  it("last tier has legendary flag", () => {
+    expect(RATING_TIERS[RATING_TIERS.length - 1].legendary).toBe(true);
+  });
+
+  it("only last tier has legendary flag", () => {
+    const legendaryCount = RATING_TIERS.filter((t) => t.legendary).length;
+    expect(legendaryCount).toBe(1);
+  });
+
+  it("tiers are in ascending order by min", () => {
+    for (let i = 1; i < RATING_TIERS.length; i++) {
+      expect(RATING_TIERS[i].min).toBeGreaterThan(RATING_TIERS[i - 1].min);
+    }
+  });
+});
