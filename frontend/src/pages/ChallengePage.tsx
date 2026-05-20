@@ -118,6 +118,11 @@ export default function ChallengePage() {
         { session_id: sessionId },
       );
       const data = res.data.data;
+      if (!data.session_id || data.status === "no_match") {
+        setError("Match no longer available. Please try again.");
+        setPhase("idle");
+        return;
+      }
       setSessionId(data.session_id);
       setPhase("in_progress");
       startTimer();
@@ -542,13 +547,15 @@ export default function ChallengePage() {
           <div className="rounded-xl border border-border bg-card p-4 text-center">
             <p className="text-xs text-muted-foreground">{t("yourTime")}</p>
             <p className="mt-1 text-lg font-bold text-foreground">
-              {challenge.challenger_time != null ? formatTime(challenge.challenger_time) : "-"}
+              {(challenge.is_challenger ? challenge.challenger_time : challenge.opponent_time) != null
+                ? formatTime(challenge.is_challenger ? challenge.challenger_time! : challenge.opponent_time!)
+                : "-"}
             </p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 text-center">
             <p className="text-xs text-muted-foreground">{t("submissions")}</p>
             <p className="mt-1 text-lg font-bold text-foreground">
-              {challenge.challenger_submissions}
+              {challenge.is_challenger ? challenge.challenger_submissions : challenge.opponent_submissions}
             </p>
           </div>
         </div>

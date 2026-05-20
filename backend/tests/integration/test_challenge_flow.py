@@ -142,7 +142,8 @@ class TestChallengeStartAndSubmit:
             db_session, user_b, session.id, solved=True, time_spent=600.0, attempts=2
         )
         assert resp_b.settled is True
-        assert resp_b.result == "challenger_win"
+        # user_b is opponent, challenger won -> opponent sees "loss"
+        assert resp_b.result == "loss"
 
         # Check Elo changes
         await db_session.refresh(user_a)
@@ -174,7 +175,8 @@ class TestChallengeStartAndSubmit:
         resp_b = await ChallengeService.submit_result(
             db_session, user_b, session.id, solved=False, time_spent=600.0, attempts=5
         )
-        assert resp_b.result == "challenger_win"
+        # user_b is opponent, challenger won -> opponent sees "loss"
+        assert resp_b.result == "loss"
 
         await db_session.refresh(user_a)
         assert user_a.elo > 1200
@@ -257,7 +259,8 @@ class TestChallengeStartAndSubmit:
         resp_b = await ChallengeService.submit_result(
             db_session, user_b, session.id, solved=False, time_spent=600.0, attempts=3
         )
-        assert resp_b.result == "challenger_win"
+        # user_b is opponent, challenger won -> opponent sees "loss"
+        assert resp_b.result == "loss"
 
         await db_session.refresh(user_a)
         assert user_a.tokens > 0

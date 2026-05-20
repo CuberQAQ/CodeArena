@@ -25,9 +25,11 @@ from app.services import economy_service as economy_svc_module
 from app.services.challenge_service import (
     ChallengeService,
     _build_problem_info,
+    _elo_change_for_user,
     _get_pending,
     _pending_key,
     _remove_pending,
+    _result_for_user,
     _set_pending,
     _tokens_for_rating,
 )
@@ -77,6 +79,7 @@ class _TestChallengeSession(_TestBase):
     elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
     opponent_elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
     opponent_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    challenger_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
     problem_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     hints_used_challenger: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     hints_used_opponent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -653,7 +656,8 @@ class TestSettlement:
         # Opponent submits (not solved) -> triggers settlement
         result = await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
         assert result.settled is True
-        assert result.result == "challenger_win"
+        # user_b is opponent, challenger won -> opponent sees "loss"
+        assert result.result == "loss"
 
         await db.refresh(session)
         assert session.status == "completed"
@@ -685,7 +689,8 @@ class TestSettlement:
         # Opponent submits (solved) -> settlement
         result = await ChallengeService.submit_result(db, user_b, session.id, True, 60.0, 1)
         assert result.settled is True
-        assert result.result == "opponent_win"
+        # user_b is opponent, opponent won -> opponent sees "win"
+        assert result.result == "win"
 
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
@@ -712,7 +717,8 @@ class TestSettlement:
         # Opponent solved in 90s -> challenger wins (faster)
         result = await ChallengeService.submit_result(db, user_b, session.id, True, 90.0, 1)
         assert result.settled is True
-        assert result.result == "challenger_win"
+        # user_b is opponent, challenger won -> opponent sees "loss"
+        assert result.result == "loss"
 
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
@@ -1028,10 +1034,11 @@ class TestFullChallengeFlow:
         # Player B submits (not solved) -> triggers settlement
         # Note: user_b is the challenger (joined second and triggered match),
         # user_a is the opponent. Since user_a solved and user_b didn't,
-        # the result is "opponent_win" from the challenger's perspective.
+        # the DB result is "opponent_win". From user_b's (challenger's) perspective,
+        # opponent winning means "loss".
         submit_b = await ChallengeService.submit_result(db, user_b, session_id, False, 120.0, 3)
         assert submit_b.settled is True
-        assert submit_b.result == "opponent_win"
+        assert submit_b.result == "loss"
 
         # Verify session completed
         test_session = await db.get(_TestChallengeSession, session_id)
@@ -1301,7 +1308,8 @@ class TestSettlementOpponentFields:
         # Opponent wins -> gets tokens
         result = await ChallengeService.submit_result(db, user_b, session.id, True, 60.0, 1)
         assert result.settled is True
-        assert result.result == "opponent_win"
+        # user_b is opponent, opponent won -> sees "win"
+        assert result.result == "win"
 
         await db.refresh(session)
         # Rating 1200 -> green tier -> 20 tokens for winner
@@ -1340,3 +1348,458 @@ class TestSettlementOpponentFields:
         # Opponent lost but made 3 submissions -> gets attempt tokens
         # Rating 1400 -> cyan tier -> attempt_tokens = 4
         assert detail.opponent_tokens_earned == 4
+
+
+# ---------------------------------------------------------------------------
+# Perspective transformation tests
+# ---------------------------------------------------------------------------
+
+
+class TestPerspectiveTransformation:
+    """Tests for _result_for_user, _elo_change_for_user helper methods."""
+
+    @pytest.mark.parametrize(
+        "db_result,is_challenger,expected",
+        [
+            ("draw", True, "draw"),
+            ("draw", False, "draw"),
+            ("challenger_win", True, "win"),
+            ("challenger_win", False, "loss"),
+            ("opponent_win", True, "loss"),
+            ("opponent_win", False, "win"),
+            ("challenger_quit", True, "quit"),
+            ("challenger_quit", False, "win"),
+            ("opponent_quit", True, "win"),
+            ("opponent_quit", False, "quit"),
+        ],
+    )
+    async def test_result_for_user_all_cases(self, db, db_result, is_challenger, expected):
+        """_result_for_user converts DB result to user perspective correctly."""
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.result = db_result
+        session.elo_change = 30
+        session.opponent_elo_change = -30
+        db.add(session)
+        await db.flush()
+
+        user_id = user_a.id if is_challenger else user_b.id
+        assert _result_for_user(session, user_id) == expected
+
+    async def test_result_for_user_none(self, db):
+        """_result_for_user returns None when session has no result."""
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.result = None
+        db.add(session)
+        await db.flush()
+
+        assert _result_for_user(session, user_a.id) is None
+
+    async def test_elo_change_for_user_challenger(self, db):
+        """_elo_change_for_user returns session.elo_change for challenger."""
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.elo_change = 25
+        session.opponent_elo_change = -25
+        db.add(session)
+        await db.flush()
+
+        assert _elo_change_for_user(session, user_a.id) == 25
+
+    async def test_elo_change_for_user_opponent(self, db):
+        """_elo_change_for_user returns session.opponent_elo_change for opponent."""
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.elo_change = 25
+        session.opponent_elo_change = -25
+        db.add(session)
+        await db.flush()
+
+        assert _elo_change_for_user(session, user_b.id) == -25
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_get_detail_returns_user_perspective_result(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        """get_challenge_detail returns result and elo_change from the requesting user's perspective."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1200)
+        db.add(session)
+        await db.flush()
+
+        # Challenger (user_a) solved, opponent (user_b) didn't -> challenger_win
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+
+        # Challenger (user_a) sees "win"
+        detail_a = await ChallengeService.get_challenge_detail(db, user_a, session.id)
+        assert detail_a.result == "win"
+        assert detail_a.elo_change == 30
+        assert detail_a.is_challenger is True
+
+        # Opponent (user_b) sees "loss"
+        detail_b = await ChallengeService.get_challenge_detail(db, user_b, session.id)
+        assert detail_b.result == "loss"
+        assert detail_b.elo_change == -30
+        assert detail_b.is_challenger is False
+
+        # DB session result unchanged
+        await db.refresh(session)
+        assert session.result == "challenger_win"
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_submit_result_returns_perspective_elo_and_tokens(
+        self, mock_elo_cls, mock_pp_cls, mock_config_cls, db,
+    ):
+        """submit_result returns elo_change and tokens_earned from the submitting user's perspective."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1500)
+        db.add(session)
+        await db.flush()
+
+        # Opponent (user_b) submits first (solved)
+        await ChallengeService.submit_result(db, user_b, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1170, 1230, -30, 30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        # Challenger (user_a) submits (not solved) -> triggers settlement
+        result = await ChallengeService.submit_result(db, user_a, session.id, False, 120.0, 3)
+        assert result.settled is True
+        # user_a is challenger, opponent won -> "loss"
+        assert result.result == "loss"
+        # Challenger elo change is -30
+        assert result.elo_change == -30
+        # Challenger lost but made 3 submissions -> gets attempt tokens
+        # Rating 1500 -> cyan tier -> attempt_tokens = 4
+        assert result.tokens_earned == 4
+
+    async def test_quit_returns_quit_result_for_quitter(self, db):
+        """quit_challenge returns 'quit' result for the quitter."""
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1200)
+        session.status = "active"
+        db.add(session)
+        await db.flush()
+
+        with (
+            patch.object(challenge_svc_module, "ConfigService") as mock_config_cls,
+            patch.object(challenge_svc_module, "EloService") as mock_elo_cls,
+        ):
+            _setup_config_mocks(mock_config_cls)
+            mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
+            mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1180, -20))
+
+            result = await ChallengeService.quit_challenge(
+                db, user_a, session.id, submissions=1,
+            )
+            assert result["result"] == "quit"
+            assert result["elo_change"] == -20
+
+
+# ---------------------------------------------------------------------------
+# BUG-001: quit_challenge elo_change semantic consistency
+# ---------------------------------------------------------------------------
+
+
+class TestQuitEloChangeSemantics:
+    """Verify that session.elo_change always stores challenger's Elo change
+    and session.opponent_elo_change always stores opponent's Elo change,
+    regardless of who quit.
+    """
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_challenger_quit_stores_challenger_penalty_in_elo_change(
+        self, mock_elo_cls, mock_config_cls, db,
+    ):
+        """When challenger quits with 1-2 submissions, session.elo_change = challenger's penalty."""
+        _setup_config_mocks(mock_config_cls)
+        mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
+        mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1185, -15))
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.status = "active"
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.quit_challenge(db, user_a, session.id, submissions=1)
+
+        await db.refresh(session)
+        assert session.elo_change == -15  # challenger's penalty
+        assert session.opponent_elo_change == 0  # opponent unaffected
+        assert session.result == "challenger_quit"
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_opponent_quit_stores_opponent_penalty_in_opponent_elo_change(
+        self, mock_elo_cls, mock_config_cls, db,
+    ):
+        """When opponent quits with 1-2 submissions, session.opponent_elo_change = opponent's penalty."""
+        _setup_config_mocks(mock_config_cls)
+        mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
+        mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1185, -15))
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.status = "active"
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.quit_challenge(db, user_b, session.id, submissions=1)
+
+        await db.refresh(session)
+        assert session.elo_change == 0  # challenger unaffected
+        assert session.opponent_elo_change == -15  # opponent's penalty
+        assert session.result == "opponent_quit"
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_challenger_quit_3plus_submissions_stores_both_elo_changes(
+        self, mock_elo_cls, mock_config_cls, db,
+    ):
+        """When challenger quits with 3+ submissions, both Elo changes are stored correctly."""
+        _setup_config_mocks(mock_config_cls)
+        mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
+        # 3+ submissions: process_quit_penalty treats as normal loss
+        # Returns (new_rating_for_quitter, elo_change_for_quitter)
+        mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1170, -30))
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1300, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.status = "active"
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.quit_challenge(db, user_a, session.id, submissions=3)
+
+        await db.refresh(session)
+        assert session.elo_change == -30  # challenger's loss
+        # opponent_elo_change should be computed from opponent's updated Elo
+        # process_quit_penalty updated opponent Elo to (1300 + positive change)
+        await db.refresh(user_b)
+        opponent_change = user_b.elo - 1300
+        assert session.opponent_elo_change == opponent_change
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_opponent_quit_3plus_submissions_stores_both_elo_changes(
+        self, mock_elo_cls, mock_config_cls, db,
+    ):
+        """When opponent quits with 3+ submissions, both Elo changes are stored correctly."""
+        _setup_config_mocks(mock_config_cls)
+        mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
+        mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1270, -30))
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1300, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.status = "active"
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.quit_challenge(db, user_b, session.id, submissions=3)
+
+        await db.refresh(session)
+        # challenger Elo should reflect the win
+        await db.refresh(user_a)
+        challenger_change = user_a.elo - 1200
+        assert session.elo_change == challenger_change
+        assert session.opponent_elo_change == -30  # opponent's loss
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_quit_detail_shows_correct_elo_change_for_both_players(
+        self, mock_elo_cls, mock_config_cls, db,
+    ):
+        """After opponent quits, both players see correct elo_change in detail."""
+        _setup_config_mocks(mock_config_cls)
+        mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
+        mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1185, -15))
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.status = "active"
+        db.add(session)
+        await db.flush()
+
+        # Opponent (user_b) quits
+        await ChallengeService.quit_challenge(db, user_b, session.id, submissions=1)
+
+        # Challenger (user_a) sees 0 elo change
+        detail_a = await ChallengeService.get_challenge_detail(db, user_a, session.id)
+        assert detail_a.result == "win"
+        assert detail_a.elo_change == 0  # challenger unaffected
+
+        # Opponent (user_b) sees -15 elo change
+        detail_b = await ChallengeService.get_challenge_detail(db, user_b, session.id)
+        assert detail_b.result == "quit"
+        assert detail_b.elo_change == -15  # opponent's penalty
+
+
+# ---------------------------------------------------------------------------
+# BUG-002: ChallengeDetail tokens_earned + challenger_tokens persistence
+# ---------------------------------------------------------------------------
+
+
+class TestChallengerTokensPersistence:
+    """Verify that challenger_tokens_earned is persisted and returned in detail."""
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_stores_challenger_tokens_earned(
+        self, mock_elo_cls, mock_pp_cls, mock_config_cls, db,
+    ):
+        """_settle_challenge saves challenger_tokens_earned to the session."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1200)
+        db.add(session)
+        await db.flush()
+
+        # Challenger solves, opponent does not
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+
+        await db.refresh(session)
+        # Rating 1200 -> green tier -> 20 tokens for winner (challenger)
+        assert session.challenger_tokens_earned == 20
+        # Opponent made 3 submissions but didn't solve -> attempt tokens = 3
+        assert session.opponent_tokens_earned == 3
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_detail_returns_tokens_earned_for_challenger(
+        self, mock_elo_cls, mock_pp_cls, mock_config_cls, db,
+    ):
+        """get_challenge_detail returns tokens_earned from challenger's perspective."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1200)
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+
+        detail = await ChallengeService.get_challenge_detail(db, user_a, session.id)
+        assert detail.tokens_earned == 20  # challenger won: green tier = 20
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_detail_returns_tokens_earned_for_opponent(
+        self, mock_elo_cls, mock_pp_cls, mock_config_cls, db,
+    ):
+        """get_challenge_detail returns tokens_earned from opponent's perspective."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1200)
+        db.add(session)
+        await db.flush()
+
+        # Challenger does not solve, opponent solves
+        await ChallengeService.submit_result(db, user_a, session.id, False, 120.0, 3)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1170, 1230, -30, 30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        await ChallengeService.submit_result(db, user_b, session.id, True, 60.0, 1)
+
+        # Opponent (user_b) sees their tokens
+        detail = await ChallengeService.get_challenge_detail(db, user_b, session.id)
+        assert detail.tokens_earned == 20  # opponent won: green tier = 20

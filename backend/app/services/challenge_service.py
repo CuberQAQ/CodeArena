@@ -465,7 +465,7 @@ class ChallengeService:
         )
 
         if both_submitted:
-            return await _settle_challenge(db, session)
+            return await _settle_challenge(db, session, submitting_user_id=user.id)
 
         return SubmitResultResponse(
             session_id=session.id,
@@ -496,6 +496,11 @@ class ChallengeService:
         if session.problem_id:
             problem_info = _build_problem_info(session.problem_id, session.problem_rating, session.problem_name)
 
+        is_challenger = user.id == session.challenger_id
+        user_result = _result_for_user(session, user.id)
+        user_elo_change = _elo_change_for_user(session, user.id)
+        user_tokens = _tokens_for_user(session, user.id, session.challenger_tokens_earned)
+
         return ChallengeDetail(
             id=session.id,
             challenger_id=session.challenger_id,
@@ -510,9 +515,11 @@ class ChallengeService:
             challenger_time=session.challenger_time,
             opponent_time=session.opponent_time,
             status=session.status,
-            result=session.result,
-            elo_change=session.elo_change,
+            result=user_result,
+            is_challenger=is_challenger,
+            elo_change=user_elo_change,
             opponent_elo_change=session.opponent_elo_change,
+            tokens_earned=user_tokens,
             opponent_tokens_earned=session.opponent_tokens_earned,
             created_at=session.created_at,
             completed_at=session.completed_at,
@@ -581,31 +588,40 @@ class ChallengeService:
         # Update user's Elo
         user.elo = new_rating
 
-        # If opponent hasn't submitted and session is active, mark it
-        if session.status == "active" and opponent and submissions >= 3:
-            # Treated as normal loss -- opponent gets win via EloService
-            pass
-
-        # Mark session as completed
-        session.status = "completed"
-        session.result = "challenger_quit" if is_challenger else "opponent_quit"
-        session.elo_change = elo_change
-        session.completed_at = datetime.now(UTC)
-
-        # Update opponent Elo if needed (for 3+ submissions case, opponent
-        # already got Elo update via process_quit_penalty)
+        # For 3+ submissions, process_quit_penalty also updates opponent's Elo.
+        # We need to capture the opponent's Elo change for storage.
+        opponent_elo_change_value: int | None = None
         if opponent and submissions >= 3:
             # Opponent Elo was already updated in process_quit_penalty
-            # Refresh from DB
+            # Refresh from DB to get the new value
             await db.refresh(opponent)
+            opponent_elo_change_value = opponent.elo - opponent_elo
+
+        # Mark session as completed.
+        # Convention: session.elo_change = challenger's change,
+        #             session.opponent_elo_change = opponent's change.
+        session.status = "completed"
+        session.result = "challenger_quit" if is_challenger else "opponent_quit"
+        session.completed_at = datetime.now(UTC)
+
+        if is_challenger:
+            session.elo_change = elo_change  # challenger's penalty (negative)
+            session.opponent_elo_change = opponent_elo_change_value if opponent_elo_change_value is not None else 0
+        else:
+            session.elo_change = opponent_elo_change_value if opponent_elo_change_value is not None else 0
+            session.opponent_elo_change = elo_change  # opponent's penalty (negative)
 
         await db.flush()
 
         await _remove_pending(session_id)
 
+        # Convert result to user's perspective (always "quit" for the quitter)
+        user_result = _result_for_user(session, user.id)
+
         return {
             "session_id": str(session.id),
             "status": "quit",
+            "result": user_result,
             "elo_change": elo_change,
             "new_elo": new_rating,
             "penalty": abs(elo_change) if elo_change and elo_change < 0 else 0,
@@ -694,6 +710,54 @@ async def _select_problem(
     }
 
 
+def _result_for_user(session: ChallengeSession, user_id: uuid.UUID) -> str | None:
+    """Convert session result to the given user's perspective.
+
+    DB stores: challenger_win, opponent_win, draw, challenger_quit, opponent_quit.
+    Returns: win, loss, draw, quit (or None if no result yet).
+    """
+    if session.result is None:
+        return None
+
+    is_challenger = user_id == session.challenger_id
+
+    if session.result == "draw":
+        return "draw"
+    if session.result == "challenger_win":
+        return "win" if is_challenger else "loss"
+    if session.result == "opponent_win":
+        return "win" if not is_challenger else "loss"
+    if session.result == "challenger_quit":
+        return "quit" if is_challenger else "win"
+    if session.result == "opponent_quit":
+        return "quit" if not is_challenger else "win"
+
+    # Fallback for unknown result values
+    return session.result
+
+
+def _elo_change_for_user(session: ChallengeSession, user_id: uuid.UUID) -> int | None:
+    """Return the Elo change for the given user from their perspective."""
+    if user_id == session.challenger_id:
+        return session.elo_change
+    return session.opponent_elo_change
+
+
+def _tokens_for_user(
+    session: ChallengeSession,
+    user_id: uuid.UUID,
+    challenger_tokens: int | None = None,
+) -> int | None:
+    """Return the tokens earned for the given user from their perspective.
+
+    ``challenger_tokens`` is required when querying for the challenger because
+    the session model only stores ``opponent_tokens_earned``.
+    """
+    if user_id == session.challenger_id:
+        return challenger_tokens
+    return session.opponent_tokens_earned
+
+
 def _build_problem_info(
     problem_id: str,
     problem_rating: int,
@@ -733,6 +797,7 @@ def _build_problem_info(
 async def _settle_challenge(
     db: AsyncSession,
     session: ChallengeSession,
+    submitting_user_id: uuid.UUID | None = None,
 ) -> SubmitResultResponse:
     """Settle a challenge after both players have submitted.
 
@@ -940,6 +1005,7 @@ async def _settle_challenge(
     session.elo_change = challenger_elo_change
     session.opponent_elo_change = _opponent_elo_change
     session.opponent_tokens_earned = tokens_opponent
+    session.challenger_tokens_earned = tokens_challenger
     session.completed_at = datetime.now(UTC)
     await db.flush()
 
@@ -971,13 +1037,31 @@ async def _settle_challenge(
             achievements.append(overkill_event.to_dict())
 
     # Determine the submitting user's perspective
+    if submitting_user_id is not None:
+        user_result = _result_for_user(session, submitting_user_id)
+        user_elo = _elo_change_for_user(session, submitting_user_id)
+        user_tokens = (
+            tokens_challenger if submitting_user_id == session.challenger_id else tokens_opponent
+        )
+        user_solved = (
+            session.challenger_solved
+            if submitting_user_id == session.challenger_id
+            else session.opponent_solved
+        )
+    else:
+        # Fallback: return challenger perspective (should not normally happen)
+        user_result = result
+        user_elo = challenger_elo_change
+        user_tokens = tokens_challenger
+        user_solved = session.challenger_solved or session.opponent_solved
+
     return SubmitResultResponse(
         session_id=session.id,
-        solved=session.challenger_solved or session.opponent_solved,
+        solved=user_solved,
         status="settled",
         settled=True,
-        result=result,
-        elo_change=challenger_elo_change,
-        tokens_earned=tokens_challenger,
+        result=user_result,
+        elo_change=user_elo,
+        tokens_earned=user_tokens,
         achievements=achievements,
     )

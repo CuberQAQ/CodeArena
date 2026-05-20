@@ -99,6 +99,7 @@ export interface ChallengeDetail {
   opponent_time: number | null;
   status: string;
   result: string | null;
+  is_challenger: boolean;
   elo_change: number | null;
   created_at: string | null;
   completed_at: string | null;
