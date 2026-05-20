@@ -201,28 +201,40 @@ class PvEChallengeService:
                 user.elo, session.problem_rating,
             )
 
-        # Token rewards (only on solve)
+        # Token rewards
         tokens_earned = 0
-        if solved and session.problem_rating > 0:
-            base_tokens = economy_svc.tokens_for_rating(session.problem_rating)
-            tokens_earned = await economy_svc.award_tokens(
-                db, user, base_tokens,
-                tx_type="pve_challenge_reward",
-                reference_type="pve_challenge_session",
-                reference_id=session.id,
-            )
+        if session.problem_rating > 0:
+            if solved:
+                # AC reward
+                base_tokens = economy_svc.tokens_for_rating(session.problem_rating)
+                tokens_earned = await economy_svc.award_tokens(
+                    db, user, base_tokens,
+                    tx_type="pve_challenge_reward",
+                    reference_type="pve_challenge_session",
+                    reference_id=session.id,
+                )
 
-            # Time bonus: solved in > 20 min
-            if time_spent > economy_svc.TIME_BONUS_THRESHOLD_SECONDS:
-                time_bonus = economy_svc.time_bonus_for_rating(session.problem_rating)
-                if time_bonus > 0:
-                    bonus = await economy_svc.award_tokens(
-                        db, user, time_bonus,
-                        tx_type="time_bonus",
+                # Time bonus: solved in > 20 min
+                if time_spent > economy_svc.TIME_BONUS_THRESHOLD_SECONDS:
+                    time_bonus = economy_svc.time_bonus_for_rating(session.problem_rating)
+                    if time_bonus > 0:
+                        bonus = await economy_svc.award_tokens(
+                            db, user, time_bonus,
+                            tx_type="time_bonus",
+                            reference_type="pve_challenge_session",
+                            reference_id=session.id,
+                        )
+                        tokens_earned += bonus
+            else:
+                # Attempt reward for non-AC submissions
+                attempt_tokens = economy_svc.attempt_tokens_for_rating(session.problem_rating)
+                if attempt_tokens > 0:
+                    tokens_earned = await economy_svc.award_tokens(
+                        db, user, attempt_tokens,
+                        tx_type="pve_attempt_reward",
                         reference_type="pve_challenge_session",
                         reference_id=session.id,
                     )
-                    tokens_earned += bonus
 
         # Record Elo history
         reason = EloReason.CHALLENGE_WIN if solved else EloReason.CHALLENGE_LOSS

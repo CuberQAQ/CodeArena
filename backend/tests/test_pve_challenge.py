@@ -546,7 +546,7 @@ class TestACSettlement:
         assert result.solved is False
         assert result.s_value == 0.0
         assert result.elo_change < 0  # Lost
-        assert result.tokens_earned == 0  # No tokens for failure
+        assert result.tokens_earned == 3  # Attempt tokens for green-tier (1200) non-AC
 
     async def test_tokens_awarded_on_solve(self, db):
         """Tokens should be awarded based on problem rating tier."""
