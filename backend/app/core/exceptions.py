@@ -47,6 +47,11 @@ class ConflictException(AppException):
         super().__init__(code="CONFLICT", message=message, detail=detail, status_code=409)
 
 
+class ServiceUnavailableException(AppException):
+    def __init__(self, message: str = "Service temporarily unavailable", detail: str | None = None) -> None:
+        super().__init__(code="SERVICE_UNAVAILABLE", message=message, detail=detail, status_code=503)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register global exception handlers on the FastAPI application."""
 

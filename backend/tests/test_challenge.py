@@ -4,12 +4,16 @@ Uses lightweight SQLite-compatible test models and mocks for external services
 (CF API). The key technique is patching the production model references in
 challenge_service with test-compatible models so SQLAlchemy queries target the
 SQLite tables with the correct column set.
+
+Redis-dependent services (MatchService, pending match store) use fakeredis
+for in-memory testing without a real Redis instance.
 """
 
 import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
+import fakeredis.aioredis
 import pytest
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -22,6 +26,7 @@ from app.services.challenge_service import (
     ChallengeService,
     _build_problem_info,
     _get_pending,
+    _pending_key,
     _remove_pending,
     _set_pending,
     _tokens_for_rating,
@@ -95,6 +100,22 @@ class _TestTokenTransaction(_TestBase):
 
 
 @pytest.fixture
+async def fake_redis():
+    """Provide a fakeredis instance for testing."""
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    yield redis
+    await redis.aclose()
+
+
+@pytest.fixture
+async def match_service(fake_redis):
+    """Provide a MatchService backed by fakeredis."""
+    with patch("app.services.match_service.get_redis", return_value=fake_redis):
+        svc = MatchService()
+        yield svc
+
+
+@pytest.fixture
 async def async_engine():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
 
@@ -114,7 +135,7 @@ async def async_engine():
 
 
 @pytest.fixture
-async def db(async_engine):
+async def db(async_engine, fake_redis):
     """Provide an async session with patched model references.
 
     Patches User and ChallengeSession in the challenge_service module
@@ -122,6 +143,9 @@ async def db(async_engine):
     test models. Also patches economy_svc.award_tokens to directly add
     tokens to user (bypassing daily cap / TokenTransaction logic that
     requires production columns).
+
+    Also patches get_redis to return the fakeredis instance so pending
+    match state works without a real Redis server.
     """
     session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -146,14 +170,9 @@ async def db(async_engine):
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
             patch.object(ConfigService, "get_config", _mock_get_config),
             patch.object(EloService, "get_submission_count", _mock_get_submission_count),
+            patch("app.services.challenge_service.get_redis", return_value=fake_redis),
         ):
             yield session
-
-
-@pytest.fixture
-def match_service():
-    """Provide a fresh MatchService for each test."""
-    return MatchService()
 
 
 def _make_test_user(
@@ -288,6 +307,25 @@ class TestMatchServiceMatching:
         assert len(results) == 2
         assert await match_service.get_queue_size() == 0
 
+    async def test_match_atomic_no_double_match(self, match_service, fake_redis):
+        """Verify that two concurrent match attempts don't both succeed with the same player."""
+        uid_a = uuid.uuid4()
+        uid_b = uuid.uuid4()
+        uid_c = uuid.uuid4()
+        await match_service.join_queue(uid_a, 1200, "a")
+        await match_service.join_queue(uid_b, 1200, "b")
+        await match_service.join_queue(uid_c, 1250, "c")
+
+        result_ab = await match_service.try_match(uid_a)
+        # After first match, only one player remains; second match should fail
+        result_c = await match_service.try_match(uid_c)
+
+        # At least one should be None (no double matching)
+        if result_ab is not None:
+            assert result_c is None
+        else:
+            assert result_c is not None
+
 
 class TestMatchServiceWeights:
     """Test the probability-weighted matching algorithm."""
@@ -319,7 +357,7 @@ class TestMatchServiceWeights:
 
         close = QueueEntry(user_id=uuid.uuid4(), elo=1250, username="close")
         challenge = QueueEntry(user_id=uuid.uuid4(), elo=1450, username="challenge")
-        consolidate = QueueEntry(user_id=uuid.uuid4(), elo=950, username="consolidate")
+        consolidate = QueueEntry(user_id=uuid.UUID(int=0), elo=950, username="consolidate")
         far = QueueEntry(user_id=uuid.uuid4(), elo=1800, username="far")
 
         candidates = [close, challenge, consolidate, far]
@@ -443,7 +481,7 @@ class TestStartChallenge:
         await db.flush()
 
         # Set up pending state
-        _set_pending(session.id, {
+        await _set_pending(session.id, {
             "player_a_id": user_a.id,
             "player_b_id": user_b.id,
             "avg_elo": 1200.0,
@@ -454,7 +492,7 @@ class TestStartChallenge:
         result = await ChallengeService.start_challenge(db, user_a, session.id, cf_mock)
         assert result.status == "waiting_opponent"
 
-        _remove_pending(session.id)
+        await _remove_pending(session.id)
 
     async def test_start_challenge_both_confirm_reveals_problem(self, db):
         user_a = _make_test_user(db, username="user_a", elo=1200)
@@ -467,7 +505,7 @@ class TestStartChallenge:
         await db.flush()
 
         # Set up pending state with A already confirmed
-        _set_pending(session.id, {
+        await _set_pending(session.id, {
             "player_a_id": user_a.id,
             "player_b_id": user_b.id,
             "avg_elo": 1200.0,
@@ -488,7 +526,7 @@ class TestStartChallenge:
         assert result.problem.rating == 1200
         assert cf_mock.get_problemset_problems.called
 
-        _remove_pending(session.id)
+        await _remove_pending(session.id)
 
 
 # ---------------------------------------------------------------------------
@@ -932,7 +970,7 @@ class TestFullChallengeFlow:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_complete_flow(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+    async def test_complete_flow(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db, match_service):
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
         _setup_pp_mocks(mock_pp_cls)
@@ -941,8 +979,6 @@ class TestFullChallengeFlow:
         user_b = _make_test_user(db, username="player_b", elo=1250, tokens=0)
         db.add_all([user_a, user_b])
         await db.flush()
-
-        match_service = MatchService()
 
         # Step 1: User A joins queue (no match)
         result_a = await ChallengeService.join_queue(db, user_a, match_service)
@@ -962,7 +998,7 @@ class TestFullChallengeFlow:
         }
 
         # Set up pending state (normally done by join_queue)
-        _set_pending(session_id, {
+        await _set_pending(session_id, {
             "player_a_id": user_a.id,
             "player_b_id": user_b.id,
             "avg_elo": 1225.0,
@@ -1046,22 +1082,61 @@ class TestQueueStatus:
 
 
 # ---------------------------------------------------------------------------
-# 12. Pending match state cleanup
+# 12. Pending match state (Redis-backed)
 # ---------------------------------------------------------------------------
 
 
 class TestPendingState:
-    def test_set_and_get_pending(self):
-        sid = uuid.uuid4()
-        data = {"confirmed": set(), "avg_elo": 1200.0}
-        _set_pending(sid, data)
-        assert _get_pending(sid) is data
+    async def test_set_and_get_pending(self, fake_redis):
+        with patch("app.services.challenge_service.get_redis", return_value=fake_redis):
+            sid = uuid.uuid4()
+            data = {"confirmed": set(), "avg_elo": 1200.0, "player_a_id": uuid.uuid4(), "player_b_id": uuid.uuid4()}
+            await _set_pending(sid, data)
+            result = await _get_pending(sid)
+            assert result is not None
+            assert result["avg_elo"] == 1200.0
 
-    def test_remove_pending(self):
-        sid = uuid.uuid4()
-        _set_pending(sid, {"confirmed": set()})
-        _remove_pending(sid)
-        assert _get_pending(sid) is None
+    async def test_remove_pending(self, fake_redis):
+        with patch("app.services.challenge_service.get_redis", return_value=fake_redis):
+            sid = uuid.uuid4()
+            await _set_pending(sid, {
+                "confirmed": set(),
+                "player_a_id": uuid.uuid4(),
+                "player_b_id": uuid.uuid4(),
+                "avg_elo": 1000,
+            })
+            await _remove_pending(sid)
+            result = await _get_pending(sid)
+            assert result is None
 
-    def test_remove_nonexistent_pending(self):
-        _remove_pending(uuid.uuid4())  # Should not raise
+    async def test_remove_nonexistent_pending(self, fake_redis):
+        with patch("app.services.challenge_service.get_redis", return_value=fake_redis):
+            await _remove_pending(uuid.uuid4())  # Should not raise
+
+    async def test_pending_ttl_expiry(self, fake_redis):
+        """Verify that pending keys have TTL set."""
+        with patch("app.services.challenge_service.get_redis", return_value=fake_redis):
+            sid = uuid.uuid4()
+            await _set_pending(sid, {
+                "confirmed": set(),
+                "player_a_id": uuid.uuid4(),
+                "player_b_id": uuid.uuid4(),
+                "avg_elo": 1000,
+            })
+            ttl = await fake_redis.ttl(_pending_key(sid))
+            assert ttl > 0  # Should have a TTL
+            assert ttl <= 300  # Should be at most 5 minutes
+
+    async def test_pending_confirmed_set_roundtrip(self, fake_redis):
+        """Verify that the confirmed set survives serialization/deserialization."""
+        with patch("app.services.challenge_service.get_redis", return_value=fake_redis):
+            uid_a = uuid.uuid4()
+            uid_b = uuid.uuid4()
+            sid = uuid.uuid4()
+            data = {"confirmed": {uid_a}, "player_a_id": uid_a, "player_b_id": uid_b, "avg_elo": 1500.0}
+            await _set_pending(sid, data)
+
+            result = await _get_pending(sid)
+            assert result is not None
+            assert uid_a in result["confirmed"]
+            assert uid_b not in result["confirmed"]

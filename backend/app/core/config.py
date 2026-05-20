@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
 

@@ -8,6 +8,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import register_exception_handlers
+from app.core.redis import RedisUnavailableError, close_redis_pool, init_redis_pool
 from app.core.task_scheduler import scheduler as submission_scheduler
 from app.middleware import LoggingMiddleware, RateLimitMiddleware, setup_cors
 
@@ -42,8 +43,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start background submission tracking scheduler
     submission_scheduler.start(app)
 
+    # Initialize Redis connection pool
+    try:
+        await init_redis_pool()
+    except Exception as e:
+        logger.error("Failed to initialize Redis: %s", e)
+
     yield
     # Shutdown
+    await close_redis_pool()
     await submission_scheduler.stop()
     logger.info("Shutting down %s", settings.APP_NAME)
     await engine.dispose()
@@ -71,6 +79,19 @@ setup_cors(app)
 
 # Register global exception handlers
 register_exception_handlers(app)
+
+
+# Handle Redis unavailability as 503
+@app.exception_handler(RedisUnavailableError)
+async def redis_unavailable_handler(_request, exc):
+    from app.core.response import error_response
+
+    return error_response(
+        code="SERVICE_UNAVAILABLE",
+        message="Match service temporarily unavailable. Please try again.",
+        detail=str(exc),
+        status_code=503,
+    )
 
 # Mount API routes
 app.include_router(api_router, prefix="/api/v1")

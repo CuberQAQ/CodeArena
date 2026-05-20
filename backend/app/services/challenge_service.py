@@ -8,6 +8,7 @@ Handles the full challenge lifecycle:
 - Quit with penalty handling
 """
 
+import json
 import logging
 import random
 import uuid
@@ -17,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.redis import RedisUnavailableError, get_redis, safe_redis_call
 from app.models.challenge_session import ChallengeSession
 from app.models.user import User
 from app.schemas.challenge import (
@@ -67,24 +69,72 @@ _DEFAULT_RATING_OFFSET_RANGE = 200  # +/- 200 from average elo
 
 
 # ---------------------------------------------------------------------------
-# Pending match store (in-memory)
+# Pending match store (Redis-backed)
 # ---------------------------------------------------------------------------
 
 # Tracks matches that have been found but not yet both-confirmed.
-# Key: session_id, Value: dict with player confirmations
-_pending_matches: dict[uuid.UUID, dict] = {}
+# Stored in Redis Hash with TTL 5 minutes.
+# Key format: pending_match:{session_id}
+# Value: JSON with player confirmations
+
+_PENDING_TTL = 300  # 5 minutes
 
 
-def _get_pending(session_id: uuid.UUID) -> dict | None:
-    return _pending_matches.get(session_id)
+def _pending_key(session_id: uuid.UUID) -> str:
+    return f"pending_match:{session_id}"
 
 
-def _set_pending(session_id: uuid.UUID, data: dict) -> None:
-    _pending_matches[session_id] = data
+def _serialize_pending(data: dict) -> str:
+    """Serialize pending match data to JSON.
+
+    Converts UUID objects and sets to JSON-compatible types.
+    The 'confirmed' field is a set of UUIDs stored as a list of strings.
+    """
+    serializable = {
+        "player_a_id": str(data["player_a_id"]),
+        "player_b_id": str(data["player_b_id"]),
+        "avg_elo": data["avg_elo"],
+        "confirmed": [str(uid) for uid in data["confirmed"]],
+    }
+    return json.dumps(serializable)
 
 
-def _remove_pending(session_id: uuid.UUID) -> None:
-    _pending_matches.pop(session_id, None)
+def _deserialize_pending(raw: str) -> dict:
+    """Deserialize pending match data from JSON."""
+    obj = json.loads(raw)
+    return {
+        "player_a_id": uuid.UUID(obj["player_a_id"]),
+        "player_b_id": uuid.UUID(obj["player_b_id"]),
+        "avg_elo": obj["avg_elo"],
+        "confirmed": set(uuid.UUID(uid) for uid in obj["confirmed"]),
+    }
+
+
+async def _get_pending(session_id: uuid.UUID) -> dict | None:
+    """Get pending match data from Redis. Returns None if not found."""
+    try:
+        redis = get_redis()
+    except RuntimeError:
+        return None
+    raw = await safe_redis_call(redis.get(_pending_key(session_id)))
+    if raw is None:
+        return None
+    return _deserialize_pending(raw)
+
+
+async def _set_pending(session_id: uuid.UUID, data: dict) -> None:
+    """Store pending match data in Redis with TTL."""
+    redis = get_redis()
+    await safe_redis_call(redis.set(_pending_key(session_id), _serialize_pending(data), ex=_PENDING_TTL))
+
+
+async def _remove_pending(session_id: uuid.UUID) -> None:
+    """Remove pending match data from Redis."""
+    try:
+        redis = get_redis()
+    except RuntimeError:
+        return
+    await safe_redis_call(redis.delete(_pending_key(session_id)))
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +201,7 @@ class ChallengeService:
         await db.flush()
 
         # Store pending match info (problem not yet selected)
-        _set_pending(match_result.session_id, {
+        await _set_pending(match_result.session_id, {
             "player_a_id": match_result.player_a.user_id,
             "player_b_id": match_result.player_b.user_id,
             "avg_elo": match_result.avg_elo,
@@ -197,28 +247,43 @@ class ChallengeService:
         # Check if in queue
         in_queue = await match_service.is_in_queue(user.id)
 
-        # Check for a pending match involving this user
-        for session_id, pending in _pending_matches.items():
-            if user.id in (pending["player_a_id"], pending["player_b_id"]):
-                opponent_id = pending["player_b_id"] if user.id == pending["player_a_id"] else pending["player_a_id"]
-                opp_user = await db.get(User, opponent_id)
-                opponent_info = None
-                if opp_user:
-                    opponent_info = OpponentInfo(
-                        id=opp_user.id,
-                        username=opp_user.username,
-                        elo=opp_user.elo,
-                        cf_handle=opp_user.cf_handle,
-                    )
-                confirmed = pending["confirmed"]
-                both_ready = len(confirmed) == 2
-                return {
-                    "in_queue": False,
-                    "matched": True,
-                    "session_id": str(session_id),
-                    "opponent": opponent_info.model_dump(mode="json") if opponent_info else None,
-                    "both_ready": both_ready,
-                }
+        # Check for a pending match involving this user via Redis
+        try:
+            redis = get_redis()
+            # Scan for pending_match:* keys
+            async for key in redis.scan_iter(match="pending_match:*"):
+                raw = await safe_redis_call(redis.get(key))
+                if raw is None:
+                    continue
+                pending = _deserialize_pending(raw)
+                if user.id in (pending["player_a_id"], pending["player_b_id"]):
+                    # Extract session_id from key: pending_match:{session_id}
+                    session_id_str = key.split(":", 1)[1]
+                    if user.id == pending["player_a_id"]:
+                        opponent_id = pending["player_b_id"]
+                    else:
+                        opponent_id = pending["player_a_id"]
+                    opp_user = await db.get(User, opponent_id)
+                    opponent_info = None
+                    if opp_user:
+                        opponent_info = OpponentInfo(
+                            id=opp_user.id,
+                            username=opp_user.username,
+                            elo=opp_user.elo,
+                            cf_handle=opp_user.cf_handle,
+                        )
+                    confirmed = pending["confirmed"]
+                    both_ready = len(confirmed) == 2
+                    return {
+                        "in_queue": False,
+                        "matched": True,
+                        "session_id": session_id_str,
+                        "opponent": opponent_info.model_dump(mode="json") if opponent_info else None,
+                        "both_ready": both_ready,
+                    }
+        except (RuntimeError, RedisUnavailableError):
+            # Redis not initialized or unavailable -- skip pending check
+            pass
 
         # Check for active challenge sessions
         stmt = (
@@ -288,7 +353,7 @@ class ChallengeService:
         if session.status not in ("pending", "active"):
             raise BadRequestException(message="Challenge is not in a startable state")
 
-        pending = _get_pending(session_id)
+        pending = await _get_pending(session_id)
 
         # If session already active (problem already selected), return problem
         if session.status == "active" and session.problem_id:
@@ -302,6 +367,8 @@ class ChallengeService:
         # Mark this player as confirmed
         if pending is not None:
             pending["confirmed"].add(user.id)
+            # Persist updated confirmed set back to Redis
+            await _set_pending(session_id, pending)
 
             if len(pending["confirmed"]) < 2:
                 return StartChallengeResponse(
@@ -337,7 +404,7 @@ class ChallengeService:
         await db.flush()
 
         # Clean up pending state
-        _remove_pending(session_id)
+        await _remove_pending(session_id)
 
         problem_info = _build_problem_info(session.problem_id, session.problem_rating)
         return StartChallengeResponse(
@@ -531,7 +598,7 @@ class ChallengeService:
 
         await db.flush()
 
-        _remove_pending(session_id)
+        await _remove_pending(session_id)
 
         return {
             "session_id": str(session.id),

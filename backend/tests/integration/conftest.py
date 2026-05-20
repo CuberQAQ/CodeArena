@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
+import fakeredis.aioredis
 import pytest_asyncio
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, TypeDecorator, event
 from sqlalchemy.dialects.sqlite import JSON
@@ -250,6 +251,7 @@ from app.services import contest_simulation_service as _sim_mod
 from app.services import economy_service as _eco_mod
 from app.services import elo_service as _elo_mod
 from app.services import hint_service as _hint_mod
+from app.services import match_service as _match_mod
 from app.services import melo_service as _melo_mod
 from app.services import pp_service as _pp_mod
 from app.services import pve_challenge_service as _pve_mod
@@ -258,6 +260,14 @@ from app.services import training_service as _train_mod
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def fake_redis():
+    """Provide a shared fakeredis instance for integration tests."""
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    yield redis
+    await redis.aclose()
 
 
 @pytest_asyncio.fixture
@@ -302,11 +312,14 @@ async def _mock_get_submission_count(db, user_id):
     return 0
 
 
-def _apply_model_patches():
+def _apply_model_patches(fake_redis_instance=None):
     """Apply all model patches and return a list of patch objects.
 
     Uses start/stop pattern instead of context managers to avoid
     Python's static nesting depth limit.
+
+    If fake_redis_instance is provided, patches get_redis() in both
+    match_service and challenge_service modules.
     """
     patches_list = [
         # Security module uses User for get_current_user
@@ -354,6 +367,16 @@ def _apply_model_patches():
         patch.object(_melo_mod.MEloService, "update_melo", AsyncMock(return_value=None)),
         patch.object(_melo_mod.MEloService, "get_all_melos", AsyncMock(return_value=[])),
     ]
+
+    # Patch get_redis if a fake_redis instance is provided
+    if fake_redis_instance is not None:
+        patches_list.append(
+            patch.object(_match_mod, "get_redis", return_value=fake_redis_instance)
+        )
+        patches_list.append(
+            patch.object(_chal_mod, "get_redis", return_value=fake_redis_instance)
+        )
+
     for p in patches_list:
         p.start()
     return patches_list
@@ -366,14 +389,15 @@ def _stop_model_patches(patches_list):
 
 
 @pytest_asyncio.fixture
-async def db_session(db_engine):
+async def db_session(db_engine, fake_redis):
     """Provide an async database session with all model patches applied.
 
     Patches all service modules to use SQLite-compatible test models instead
-    of the PostgreSQL-specific production models.
+    of the PostgreSQL-specific production models. Also patches get_redis()
+    to use the shared fakeredis instance.
     """
     session_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
-    active_patches = _apply_model_patches()
+    active_patches = _apply_model_patches(fake_redis_instance=fake_redis)
 
     async with session_factory() as session:
         yield session

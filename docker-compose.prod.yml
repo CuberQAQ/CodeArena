@@ -37,6 +37,25 @@ services:
     networks:
       - internal
 
+  # ---- Redis ----
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - internal
+
   # ---- Backend ----
   backend:
     build:
@@ -46,10 +65,13 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-code_arena}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
