@@ -5,7 +5,7 @@ Each level provides progressively more specific guidance:
 
 - Level 1: Algorithm direction / category hint
 - Level 2: Specific method / key state definition
-- Level 3: Near-complete solution approach
+- Level 3: Boundary / edge case examples
 """
 
 import logging
@@ -36,12 +36,12 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "each state depend on previous ones?",
         ],
         3: [
-            "Initialize dp[0] as base case. For each i from 1 to n, "
-            "dp[i] = min/max of valid transitions from dp[j] (j<i).",
-            "Use DP: dp[i][j] = optimal for subproblem with params "
-            "i and j. Transition by considering each choice.",
-            "Classic interval DP. Define dp[l][r] for range [l, r]. "
-            "Compute in order of increasing interval length.",
+            "Edge case: when n=0 or n=1, the answer is trivial. "
+            "Also check if all elements are equal.",
+            "Boundary: what happens when the input array is already "
+            "sorted vs. reverse sorted? Test both extremes.",
+            "Watch for: n=2 (smallest non-trivial case), all elements "
+            "identical, and the maximum constraint value.",
         ],
     },
     "greedy": {
@@ -62,11 +62,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "maintaining a running result.",
         ],
         3: [
-            "Sort by the key criterion. Iterate and decide for each "
-            "whether to include based on current best answer. "
-            "Use a priority queue for efficient candidate management.",
-            "Sort elements by one property and greedily pair by "
-            "another. Correctness relies on exchange argument.",
+            "Edge case: n=1 (single element), all items identical, "
+            "and when the constraint is already satisfied by all items.",
+            "Boundary: test with min value only, max value only, and "
+            "a mix that triggers the tie-breaking rule.",
         ],
     },
     "math": {
@@ -86,10 +85,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "the answer efficiently.",
         ],
         3: [
-            "Use fast exponentiation with modulo for large powers. "
-            "Handle edge cases n=0 or n=1 separately.",
-            "Apply: result = pow(base, exp, mod) * coeff % mod. "
-            "Precompute factorials for combinatorics.",
+            "Edge case: n=0 or n=1 -- verify formula holds. "
+            "Check when result overflows int (need mod at each step).",
+            "Boundary: test with prime vs. composite modulus, and "
+            "when exponent equals 0 (anything^0 = 1).",
         ],
     },
     "graphs": {
@@ -110,11 +109,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "cycle detection.",
         ],
         3: [
-            "Build adjacency list. Run BFS from source with "
-            "distance array init to infinity. Update when shorter "
-            "path found. Answer = distance to target.",
-            "Construct graph and run Dijkstra with priority queue. "
-            "dist[source] = 0, process nodes by increasing distance.",
+            "Edge case: disconnected graph -- some nodes may be "
+            "unreachable. Test with isolated vertices and self-loops.",
+            "Boundary: single node graph, graph with all edges having "
+            "the same weight, and when source == target.",
         ],
     },
     "strings": {
@@ -134,11 +132,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "string matching.",
         ],
         3: [
-            "Precompute polynomial rolling hashes for prefixes. "
-            "Compare substrings via hash formula. "
-            "Use two moduli to avoid collisions.",
-            "Use Manacher's algorithm for palindromes: compute "
-            "odd/even radii in O(n). Or Z-function for patterns.",
+            "Edge case: empty string, single character, and when the "
+            "pattern is longer than the text. All return 0 matches.",
+            "Boundary: all characters identical (e.g. 'aaaa...a'), "
+            "string with repeated patterns like 'abcabcabc'.",
         ],
     },
     "data structures": {
@@ -158,11 +155,11 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "Consider a monotonic stack or deque for this problem.",
         ],
         3: [
-            "Build a segment tree where each node stores aggregate "
-            "for its range. Lazy propagation for updates. "
-            "Combine O(log n) nodes for queries.",
-            "Use DSU with path compression and union by rank. "
-            "Path compression during find makes ops nearly O(1).",
+            "Edge case: single element, already sorted data, and "
+            "when the query range covers the entire structure.",
+            "Boundary: maximum size input (n=10^5), all updates "
+            "happening at the same position, and alternating "
+            "update/query operations.",
         ],
     },
     "binary search": {
@@ -183,11 +180,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "with a monotonic predicate.",
         ],
         3: [
-            "Set lo/hi to bracket answer. While lo < hi: "
-            "mid = (lo+hi)/2. If check(mid): hi=mid, else lo=mid+1. "
-            "Answer is lo.",
-            "Binary search on answer. check() greedily verifies "
-            "candidate by scanning. Time: O(n log(range)).",
+            "Edge case: only one element satisfies the condition, "
+            "or none do. Also test when all elements satisfy it.",
+            "Boundary: answer is at the very low end or very high "
+            "end of the search space. Test lo and hi directly.",
         ],
     },
     "sortings": {
@@ -205,11 +201,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "for each element.",
         ],
         3: [
-            "Sort by primary key. Use sweep line or two-pointer: "
-            "for each element, find match via binary search or "
-            "running window.",
-            "Apply coordinate compression. After sorting, use "
-            "Fenwick tree for inversions or frequency tracking.",
+            "Edge case: already sorted input, reverse sorted input, "
+            "and array with all duplicate values.",
+            "Boundary: n=2 (smallest non-trivial), n=10^5 (max "
+            "constraint), and all elements equal.",
         ],
     },
     "constructive algorithms": {
@@ -230,11 +225,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "specific order to satisfy all constraints.",
         ],
         3: [
-            "Construct by placing all elements of one type first, "
-            "then filling gaps with another. Verify each constraint.",
-            "Arrange elements by property X, assign value per "
-            "formula. Key insight: arrangement guarantees "
-            "all constraints.",
+            "Edge case: n=1 or n=2 -- construction may need special "
+            "handling for very small sizes.",
+            "Boundary: test with all identical elements, alternating "
+            "pattern input, and the smallest valid construction.",
         ],
     },
     "number theory": {
@@ -254,11 +248,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "the answer.",
         ],
         3: [
-            "Precompute smallest prime factor (SPF) up to max_n "
-            "via modified sieve. Factorize by repeatedly "
-            "dividing by SPF[n].",
-            "Use formula: gcd(a,b) * lcm(a,b) = a * b. "
-            "Modular inverse via Fermat: a^(-1) = a^(p-2) mod p.",
+            "Edge case: n=1 (answer is trivially 1), n is prime "
+            "(only factors are 1 and n), n=2^k (pure power of 2).",
+            "Boundary: test with large primes near 10^9, n = 0 or "
+            "negative input if allowed, and gcd with 0.",
         ],
     },
     "trees": {
@@ -279,12 +272,10 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "queries on trees.",
         ],
         3: [
-            "Root at node 1. DFS to compute dp[u] for each node: "
-            "aggregate of dp[v] for children v. "
-            "Answer is root's dp or max/min across all nodes.",
-            "Use Euler tour to flatten tree into array. "
-            "Segment tree on Euler tour for subtree/path queries. "
-            "LCA via sparse table.",
+            "Edge case: single node tree (root only), linear tree "
+            "(chain), and star tree (all leaves connected to root).",
+            "Boundary: deeply nested tree (height = n), tree with "
+            "only two nodes, and when root is a leaf.",
         ],
     },
     "geometry": {
@@ -305,10 +296,11 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "line representation.",
         ],
         3: [
-            "Sort points by x then y. Build upper/lower hulls "
-            "via stack: pop on non-left turn. Merge hulls.",
-            "Use cross product for point-in-polygon via signed "
-            "triangle areas. Or ray casting for general queries.",
+            "Edge case: all points collinear (degenerate hull), "
+            "only 1 or 2 points, and duplicate points.",
+            "Boundary: points with identical x-coordinates, "
+            "points on a vertical line, and floating-point "
+            "precision near collinearity.",
         ],
     },
 }
@@ -330,10 +322,10 @@ _FALLBACK_HINTS: dict[int, list[str]] = {
         "Look for a pattern by working through small examples.",
     ],
     3: [
-        "Process each element, update state, track optimal. "
-        "Handle first/last edge cases separately.",
-        "Precompute needed values, iterate main structure "
-        "while maintaining state. Answer from final state.",
+        "Edge case: smallest input (n=0 or n=1), largest input "
+        "(n at max constraint), and all elements identical.",
+        "Boundary: test with sorted input, reverse sorted input, "
+        "and input where only one element differs from the rest.",
     ],
 }
 
