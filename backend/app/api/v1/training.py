@@ -30,7 +30,7 @@ from app.schemas.training import (
 )
 from app.services.cf_api_service import CFApiService
 from app.services.melo_service import MEloService
-from app.services.training_service import TrainingService
+from app.services.training_service import PREDEFINED_TOPICS, TrainingService
 
 router = APIRouter(prefix="/training", tags=["Training"])
 
@@ -242,8 +242,25 @@ async def get_melo(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get the user's all tag M-Elo records for radar chart visualization."""
-    melos = await MEloService.get_all_melos(db, user_id=current_user.id)
+    """Get the user's all tag M-Elo records for radar chart visualization.
+
+    Ensures every predefined topic has a corresponding M-Elo record so that
+    unpracticed topics appear on the Skill Radar instead of being omitted.
+    """
+    # Collect unique primary tags from all predefined topics
+    primary_tags: list[str] = []
+    seen: set[str] = set()
+    for topic in PREDEFINED_TOPICS:
+        tag = topic["cf_tags"][0]
+        if tag not in seen:
+            seen.add(tag)
+            primary_tags.append(tag)
+
+    # Ensure an M-Elo record exists for every predefined tag
+    melos = []
+    for tag in primary_tags:
+        melo = await MEloService.get_or_create_melo(db, current_user.id, tag)
+        melos.append(melo)
 
     melo_infos = [
         UserTagEloInfo(
