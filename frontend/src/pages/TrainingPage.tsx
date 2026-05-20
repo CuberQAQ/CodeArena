@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Dumbbell, Star, BookOpen, Shield } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { getRatingColor } from "@/utils";
+import { getRatingTierInfo, RATING_KEY_MAP } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, TopicInfo } from "@/types";
 
@@ -20,19 +20,6 @@ function StarRating({ count, max = 7 }: { count: number; max?: number }) {
   );
 }
 
-/** Calculate progress percentage from M-Elo.
- *  Maps [800, 2200] to [0%, 100%].
- */
-function meloToProgress(melo: number | null): number {
-  if (melo === null) return 0;
-  return Math.round(Math.max(0, Math.min(100, ((melo - 800) / 1400) * 100)));
-}
-
-/** Get progress bar color based on M-Elo and shield status. */
-function getProgressBarColor(melo: number | null, shieldActive: boolean): string {
-  if (shieldActive || melo === null) return "#9ca3af";
-  return getRatingColor(melo);
-}
 
 export default function TrainingPage() {
   const { t } = useTranslation("training");
@@ -83,9 +70,6 @@ export default function TrainingPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {topics.map((topic) => {
-            const progress = meloToProgress(topic.melo);
-            const barColor = getProgressBarColor(topic.melo, topic.shield_active);
-
             return (
               <Link
                 key={topic.id}
@@ -117,27 +101,33 @@ export default function TrainingPage() {
                       <Shield className="size-3 text-blue-400" />
                     )}
                     {topic.melo !== null ? (
-                      <span>{Math.round(topic.melo)}</span>
+                      (() => {
+                        const tierInfo = getRatingTierInfo(topic.melo);
+                        return (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-xs font-semibold"
+                            style={{
+                              backgroundColor: tierInfo.color + "20",
+                              color: tierInfo.color,
+                            }}
+                          >
+                            {t(RATING_KEY_MAP[tierInfo.name] || tierInfo.name)} {Math.round(topic.melo)}
+                          </span>
+                        );
+                      })()
                     ) : (
-                      <span>-</span>
+                      <span
+                        className="rounded-full px-2 py-0.5 text-xs font-semibold"
+                        style={{ backgroundColor: "#9ca3af20", color: "#9ca3af" }}
+                      >
+                        {t("notStarted")}
+                      </span>
                     )}
                     <span className="text-muted-foreground/50">
                       | {topic.solved_count}/{topic.total_problems}
                     </span>
                   </div>
                 </div>
-
-                {/* Progress bar based on M-Elo */}
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${progress}%`,
-                      backgroundColor: barColor,
-                    }}
-                  />
-                </div>
-                <p className="mt-1 text-right text-xs text-muted-foreground">{progress}%</p>
 
                 {topic.cf_tags.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">

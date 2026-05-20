@@ -61,7 +61,7 @@ export function getRatingColor(rating: number | null | undefined): string {
 }
 
 /** Rating tier name -> i18n key mapping for the rating namespace. */
-const RATING_KEY_MAP: Record<string, string> = {
+export const RATING_KEY_MAP: Record<string, string> = {
   "Newbie": "rating:newbie",
   "Pupil": "rating:pupil",
   "Specialist": "rating:specialist",

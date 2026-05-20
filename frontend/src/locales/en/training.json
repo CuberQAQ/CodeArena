@@ -20,5 +20,6 @@
   "failedAbandon": "Failed to abandon session",
   "trainingComplete": "Training Session Complete",
   "solvedOutOf": "Solved {{solved}} out of {{total}} problems",
-  "trainAgain": "Train Again"
+  "trainAgain": "Train Again",
+  "notStarted": "Not Started"
 }

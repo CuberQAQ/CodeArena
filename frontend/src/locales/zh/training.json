@@ -20,5 +20,6 @@
   "failedAbandon": "放弃会话失败",
   "trainingComplete": "训练会话完成",
   "solvedOutOf": "解决了 {{solved}} / {{total}} 道题",
-  "trainAgain": "再次训练"
+  "trainAgain": "再次训练",
+  "notStarted": "未开始"
 }
