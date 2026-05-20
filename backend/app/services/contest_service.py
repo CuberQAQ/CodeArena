@@ -12,7 +12,7 @@ Handles the virtual contest lifecycle:
 import logging
 import random
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -233,6 +233,7 @@ class ContestService:
             time_limit_minutes=cfg["duration_minutes"],
             started_at=now,
             remaining_seconds=float(cfg["duration_minutes"] * 60),
+            end_time=now + timedelta(minutes=cfg["duration_minutes"]),
             status="active",
         )
 
@@ -278,6 +279,11 @@ class ContestService:
             started_at=session.started_at,
             ended_at=session.ended_at,
             remaining_seconds=remaining,
+            end_time=(
+                ContestService._ensure_utc(session.started_at) + timedelta(minutes=session.time_limit)
+                if session.started_at and session.status == "active"
+                else None
+            ),
             status=session.status,
             elo_change=session.elo_change,
         )
@@ -319,6 +325,11 @@ class ContestService:
             started_at=session.started_at,
             ended_at=session.ended_at,
             remaining_seconds=remaining,
+            end_time=(
+                ContestService._ensure_utc(session.started_at) + timedelta(minutes=session.time_limit)
+                if session.started_at and session.status == "active"
+                else None
+            ),
             status=session.status,
             elo_change=session.elo_change,
         )

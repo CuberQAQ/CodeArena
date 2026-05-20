@@ -70,6 +70,7 @@ class ContestSessionInfo(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     remaining_seconds: float | None = None
+    end_time: datetime | None = None
     status: str = "active"
     elo_change: int | None = None
 

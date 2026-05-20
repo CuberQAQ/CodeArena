@@ -143,6 +143,7 @@ export default function ContestDetailPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [remaining, setRemaining] = useState<number>(0);
+  const [endTimeMs, setEndTimeMs] = useState<number | null>(null);
   const [selectedProblem, setSelectedProblem] = useState<string | null>(null);
   const [submitSolved, setSubmitSolved] = useState(true);
   const [submitAttempts, setSubmitAttempts] = useState(1);
@@ -215,7 +216,11 @@ export default function ContestDetailPage() {
           }
         } else {
           setPhase("active");
-          if (data.remaining_seconds != null) {
+          if (data.end_time) {
+            const ms = new Date(data.end_time).getTime();
+            setEndTimeMs(ms);
+            setRemaining(Math.max(0, Math.floor((ms - Date.now()) / 1000)));
+          } else if (data.remaining_seconds != null) {
             setRemaining(Math.max(0, data.remaining_seconds));
           }
           // Connect WebSocket for live leaderboard
@@ -232,19 +237,25 @@ export default function ContestDetailPage() {
   // Countdown timer
   useEffect(() => {
     if (phase !== "active") return;
-    timerRef.current = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          return 0;
+
+    const update = () => {
+      if (endTimeMs) {
+        const sec = Math.max(0, Math.floor((endTimeMs - Date.now()) / 1000));
+        setRemaining(sec);
+        if (sec <= 0 && timerRef.current) {
+          clearInterval(timerRef.current);
         }
-        return prev - 1;
-      });
-    }, 1000);
+      }
+    };
+
+    // Update every 250ms for smooth countdown
+    timerRef.current = setInterval(update, 250);
+    update(); // Initial update
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [phase]);
+  }, [phase, endTimeMs]);
 
   // Auto-end when timer reaches 0
   const prevRemainingRef = useRef(remaining);

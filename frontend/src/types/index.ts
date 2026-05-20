@@ -254,6 +254,7 @@ export interface ContestSessionInfo {
   started_at: string | null;
   ended_at: string | null;
   remaining_seconds: number | null;
+  end_time: string | null;
   status: string;
   elo_change: number | null;
 }
