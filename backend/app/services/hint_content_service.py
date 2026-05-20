@@ -138,7 +138,7 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "string with repeated patterns like 'abcabcabc'.",
         ],
     },
-    "data structures": {
+    "data_structures": {
         1: [
             "Consider an efficient data structure like segment "
             "tree, heap, or balanced BST.",
@@ -162,7 +162,7 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "update/query operations.",
         ],
     },
-    "binary search": {
+    "binary_search": {
         1: [
             "This problem can be solved with binary search "
             "on the answer.",
@@ -207,7 +207,7 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "constraint), and all elements equal.",
         ],
     },
-    "constructive algorithms": {
+    "constructive_algorithms": {
         1: [
             "Try constructing the answer directly with a "
             "clear pattern.",
@@ -231,7 +231,7 @@ _TAG_HINTS: dict[str, dict[str, list[str]]] = {
             "pattern input, and the smallest valid construction.",
         ],
     },
-    "number theory": {
+    "number_theory": {
         1: [
             "This involves number theory concepts like primes, "
             "gcd, or modular arithmetic.",

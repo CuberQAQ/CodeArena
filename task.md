@@ -944,3 +944,16 @@ P_i = base(rating) × f(wa, t)
 #### 修复方式
 - 修改 `hint_service.py` 中 Level 3 提示的生成逻辑或模板
 - 或通过管理员配置调整提示内容描述
+
+---
+
+### Task 21.4: 提示标签键名不匹配修复
+**状态**: 🟢 已完成
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+`hint_content_service.py` 中 `_TAG_HINTS` 字典键使用空格（如 `"binary search"`、`"data structures"`），但 `generate_hint` 方法将 tag 中的空格替换为下划线后查找，导致 4 个多词标签（binary search、data structures、constructive algorithms、number theory）永远无法匹配，回退到通用提示。
+
+#### 修复方式
+统一 `_TAG_HINTS` 的键名格式，使其与 `generate_hint` 的查找逻辑一致（空格替换为下划线后的格式）。
