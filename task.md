@@ -1167,7 +1167,7 @@ P_i = base(rating) × f(wa, t)
 > 需求文档: requirements.md Section 6.3 (i18n), 6.2 补充 (Profile Elo Chart), 6.4 (Rating 段位)
 
 ### Task 23.1: Rating 段位体系对标 Codeforces
-**状态**: 🔵 待开始
+**状态**: 🟢 已完成
 **优先级**: P0
 **依赖**: 无
 
@@ -1262,7 +1262,7 @@ P_i = base(rating) × f(wa, t)
 ---
 
 ### Task 23.2: Profile 页 Elo Chart 接入
-**状态**: 🔵 待开始
+**状态**: 🔵 进行中
 **优先级**: P1
 **依赖**: 无
 

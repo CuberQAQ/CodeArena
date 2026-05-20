@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   User,
@@ -14,8 +14,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { EloChart } from "@/components/charts/EloChart";
 import { extractApiError, getRatingColor, getDifficultyLabel, formatDate } from "@/utils";
 import api from "@/services/api";
+import type { EloHistoryPoint, ApiResponse } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Inner form component -- owns its own editing state, keyed by user.id
@@ -165,6 +167,31 @@ export default function ProfilePage() {
     await fetchUser();
   };
 
+  const [eloHistory, setEloHistory] = useState<EloHistoryPoint[]>([]);
+  const [eloLoading, setEloLoading] = useState(true);
+  const [eloError, setEloError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<ApiResponse<EloHistoryPoint[]>>("/auth/elo-history")
+      .then((res) => {
+        if (!cancelled) {
+          setEloHistory(res.data.data);
+          setEloLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEloError(true);
+          setEloLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (!user) {
     return <LoadingSpinner text="Loading profile..." className="py-20" />;
   }
@@ -228,16 +255,24 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Elo History Placeholder */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <h3 className="text-sm font-semibold text-foreground">Elo History</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Elo history chart will be available with data visualization components (Task 10.1).
-        </p>
-        <div className="mt-4 flex h-32 items-center justify-center rounded-lg border border-dashed border-border">
-          <span className="text-xs text-muted-foreground">Chart placeholder</span>
+      {/* Elo History */}
+      {eloLoading ? (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="mb-4 text-sm font-semibold text-foreground">Elo Trend</h3>
+          <div className="flex h-[220px] items-center justify-center">
+            <LoadingSpinner />
+          </div>
         </div>
-      </div>
+      ) : eloError ? (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="mb-4 text-sm font-semibold text-foreground">Elo Trend</h3>
+          <div className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">
+            Failed to load Elo history. Please try again later.
+          </div>
+        </div>
+      ) : (
+        <EloChart data={eloHistory} />
+      )}
 
       {/* PP Ranking Placeholder */}
       <div className="rounded-xl border border-border bg-card p-5">
