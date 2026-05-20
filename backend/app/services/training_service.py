@@ -44,6 +44,7 @@ from app.services.cf_api_service import CFApiService
 from app.services.hint_service import HintService
 from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
+from app.services.submission_tracker import SubmissionTracker
 
 logger = logging.getLogger("code_arena.training")
 

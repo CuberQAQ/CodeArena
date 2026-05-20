@@ -9,6 +9,8 @@ Covers:
   6. get_tracking_for_session: session lookup
   7. _find_matching_submission: matching logic
   8. TaskScheduler: start/stop lifecycle
+  9. _get_submission_stats: CF API stats extraction
+  10. settle_matched with cf_service: real data passing
 """
 
 import uuid
@@ -411,7 +413,7 @@ class TestPollSubmissions:
 
         matched = await SubmissionTracker.poll_submissions(db, cf_mock)
         assert matched == 1
-        cf_mock.get_user_status.assert_called_once_with(handle="testhandle", count=20)
+        cf_mock.get_user_status.assert_called_once_with(handle="testhandle", count=50)
 
     async def test_skips_user_without_cf_handle(self, db):
         """Should skip users that have no CF handle."""
@@ -836,3 +838,417 @@ class TestFullFlow:
 
         await db.refresh(tracking)
         assert tracking.status == "matched"
+
+
+# ---------------------------------------------------------------------------
+# 9. _get_submission_stats tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetSubmissionStats:
+    async def test_returns_accurate_error_count(self, db):
+        """Should count WA/TLE/RE submissions as errors."""
+        from app.services.submission_tracker import SubmissionStats
+
+        user = _make_user(cf_handle="statshandle")
+        db.add(user)
+        await db.flush()
+
+        now = datetime.now(UTC)
+        expected = now - timedelta(minutes=5)
+        tracking = _make_tracking(
+            user_id=user.id,
+            problem_id="800A",
+            expected_at=expected,
+            matched_at=now + timedelta(minutes=5),
+            status="matched",
+            cf_verdict="OK",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        # 2 WA + 1 TLE + 1 OK = 4 total, 3 errors
+        # All within window: expected=now-5min, window = [expected-5min, expected+30min]
+        cf_submissions = [
+            _make_cf_submission(submission_id=1, contest_id=800, index="A",
+                                verdict="WRONG_ANSWER", creation_time=now - timedelta(minutes=3)),
+            _make_cf_submission(submission_id=2, contest_id=800, index="A",
+                                verdict="WRONG_ANSWER", creation_time=now - timedelta(minutes=2)),
+            _make_cf_submission(submission_id=3, contest_id=800, index="A",
+                                verdict="TIME_LIMIT_EXCEEDED", creation_time=now - timedelta(minutes=1)),
+            _make_cf_submission(submission_id=4, contest_id=800, index="A",
+                                verdict="OK", creation_time=now),
+        ]
+
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.return_value = cf_submissions
+
+        stats = await SubmissionTracker._get_submission_stats(db, cf_mock, tracking)
+
+        assert isinstance(stats, SubmissionStats)
+        assert stats.total_submissions == 4
+        assert stats.error_count == 3
+        assert stats.last_ac_creation_time is not None
+        assert stats.time_spent > 0
+
+    async def test_no_ac_uses_matched_at_fallback(self, db):
+        """When no AC submission, time_spent falls back to matched_at - expected_at."""
+        user = _make_user(cf_handle="statshandle")
+        db.add(user)
+        await db.flush()
+
+        now = datetime.now(UTC)
+        expected = now - timedelta(minutes=10)
+        matched = now - timedelta(minutes=3)
+        tracking = _make_tracking(
+            user_id=user.id,
+            problem_id="800A",
+            expected_at=expected,
+            matched_at=matched,
+            status="matched",
+            cf_verdict="WRONG_ANSWER",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        # Only WA submissions
+        cf_submissions = [
+            _make_cf_submission(submission_id=1, contest_id=800, index="A",
+                                verdict="WRONG_ANSWER", creation_time=now - timedelta(minutes=4)),
+        ]
+
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.return_value = cf_submissions
+
+        stats = await SubmissionTracker._get_submission_stats(db, cf_mock, tracking)
+
+        assert stats.total_submissions == 1
+        assert stats.error_count == 1
+        assert stats.last_ac_creation_time is None
+        # Fallback: matched_at - expected_at = 7 minutes = 420 seconds
+        assert abs(stats.time_spent - 420) < 5
+
+    async def test_no_matching_subs_returns_defaults(self, db):
+        """When CF API returns no matching submissions, returns defaults."""
+        user = _make_user(cf_handle="statshandle")
+        db.add(user)
+        await db.flush()
+
+        now = datetime.now(UTC)
+        tracking = _make_tracking(
+            user_id=user.id,
+            problem_id="800A",
+            expected_at=now,
+            status="matched",
+            cf_verdict="OK",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        # Submissions for a different problem
+        cf_submissions = [
+            _make_cf_submission(contest_id=999, index="Z", verdict="OK",
+                                creation_time=now),
+        ]
+
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.return_value = cf_submissions
+
+        stats = await SubmissionTracker._get_submission_stats(db, cf_mock, tracking)
+
+        assert stats.total_submissions == 1
+        assert stats.error_count == 0
+        assert stats.time_spent == 0.0
+
+    async def test_cf_api_error_returns_defaults(self, db):
+        """When CF API fails, should return default stats."""
+        user = _make_user(cf_handle="statshandle")
+        db.add(user)
+        await db.flush()
+
+        tracking = _make_tracking(
+            user_id=user.id,
+            problem_id="800A",
+            expected_at=datetime.now(UTC),
+            status="matched",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.side_effect = Exception("CF API down")
+
+        stats = await SubmissionTracker._get_submission_stats(db, cf_mock, tracking)
+
+        assert stats.total_submissions == 1
+        assert stats.error_count == 0
+
+    async def test_time_spent_from_ac_creation_time(self, db):
+        """time_spent should be AC creation_time - expected_at."""
+        user = _make_user(cf_handle="statshandle")
+        db.add(user)
+        await db.flush()
+
+        now = datetime.now(UTC)
+        expected = now - timedelta(minutes=15)
+        ac_time = now - timedelta(minutes=2)  # AC came 13 min after expected
+
+        tracking = _make_tracking(
+            user_id=user.id,
+            problem_id="800A",
+            expected_at=expected,
+            matched_at=now,
+            status="matched",
+            cf_verdict="OK",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        cf_submissions = [
+            _make_cf_submission(submission_id=1, contest_id=800, index="A",
+                                verdict="WRONG_ANSWER", creation_time=now - timedelta(minutes=5)),
+            _make_cf_submission(submission_id=2, contest_id=800, index="A",
+                                verdict="OK", creation_time=ac_time),
+        ]
+
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.return_value = cf_submissions
+
+        stats = await SubmissionTracker._get_submission_stats(db, cf_mock, tracking)
+
+        assert stats.total_submissions == 2
+        assert stats.error_count == 1
+        # 13 minutes = 780 seconds
+        assert abs(stats.time_spent - 780) < 5
+        assert stats.last_ac_creation_time is not None
+
+    async def test_user_without_cf_handle_returns_defaults(self, db):
+        """User without CF handle should return defaults."""
+        user = _make_user(cf_handle=None)
+        db.add(user)
+        await db.flush()
+
+        tracking = _make_tracking(
+            user_id=user.id,
+            problem_id="800A",
+            expected_at=datetime.now(UTC),
+            status="matched",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        cf_mock = AsyncMock()
+
+        stats = await SubmissionTracker._get_submission_stats(db, cf_mock, tracking)
+
+        assert stats.total_submissions == 1
+        assert stats.error_count == 0
+        cf_mock.get_user_status.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 10. settle_matched with cf_service tests
+# ---------------------------------------------------------------------------
+
+
+class TestSettleWithStats:
+    async def test_settle_passes_real_stats_to_pve(self, db):
+        """settle_matched should pass real stats from CF API to PvE service."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        now = datetime.now(UTC)
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            status="matched",
+            cf_verdict="OK",
+            matched_at=now,
+            expected_at=now - timedelta(minutes=10),
+        )
+        db.add(tracking)
+        await db.flush()
+
+        # Mock CF service with stats
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.return_value = [
+            _make_cf_submission(submission_id=1, contest_id=800, index="A",
+                                verdict="WRONG_ANSWER", creation_time=now - timedelta(minutes=5)),
+            _make_cf_submission(submission_id=2, contest_id=800, index="A",
+                                verdict="OK", creation_time=now),
+        ]
+
+        with patch("app.services.pve_challenge_service.PvEChallengeService") as mock_pve:
+            mock_pve.submit_result = AsyncMock()
+            count = await SubmissionTracker.settle_matched(db, cf_service=cf_mock)
+
+        assert count == 1
+        assert tracking.status == "settled"
+
+        # Verify real data was passed
+        call_kwargs = mock_pve.submit_result.call_args
+        assert call_kwargs.kwargs["attempts"] == 2  # 2 submissions total
+        assert call_kwargs.kwargs["error_count"] == 1  # 1 WA
+        assert call_kwargs.kwargs["time_spent"] > 0
+
+    async def test_settle_without_cf_service_uses_defaults(self, db):
+        """settle_matched without cf_service should use default values."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            status="matched",
+            cf_verdict="OK",
+            matched_at=datetime.now(UTC),
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.pve_challenge_service.PvEChallengeService") as mock_pve:
+            mock_pve.submit_result = AsyncMock()
+            count = await SubmissionTracker.settle_matched(db)
+
+        assert count == 1
+        assert tracking.status == "settled"
+
+        call_kwargs = mock_pve.submit_result.call_args
+        assert call_kwargs.kwargs["attempts"] == 1  # Default
+        assert call_kwargs.kwargs["error_count"] == 0  # Default
+
+    async def test_settle_passes_real_stats_to_training(self, db):
+        """settle_matched should pass real stats to training service."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        now = datetime.now(UTC)
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="training",
+            status="matched",
+            cf_verdict="OK",
+            matched_at=now,
+            expected_at=now - timedelta(minutes=5),
+        )
+        db.add(tracking)
+        await db.flush()
+
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.return_value = [
+            _make_cf_submission(submission_id=1, contest_id=800, index="A",
+                                verdict="OK", creation_time=now),
+        ]
+
+        with patch("app.services.training_service.TrainingService") as mock_training:
+            mock_training.submit_problem = AsyncMock()
+            count = await SubmissionTracker.settle_matched(db, cf_service=cf_mock)
+
+        assert count == 1
+        call_kwargs = mock_training.submit_problem.call_args
+        assert call_kwargs.kwargs["attempts"] == 1
+        assert call_kwargs.kwargs["time_spent"] >= 0
+
+    async def test_settle_passes_real_stats_to_contest(self, db):
+        """settle_matched should pass real stats to contest service."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        now = datetime.now(UTC)
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="contest",
+            status="matched",
+            cf_verdict="OK",
+            matched_at=now,
+            expected_at=now - timedelta(minutes=8),
+        )
+        db.add(tracking)
+        await db.flush()
+
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.return_value = [
+            _make_cf_submission(submission_id=1, contest_id=800, index="A",
+                                verdict="TIME_LIMIT_EXCEEDED", creation_time=now - timedelta(minutes=2)),
+            _make_cf_submission(submission_id=2, contest_id=800, index="A",
+                                verdict="OK", creation_time=now),
+        ]
+
+        with patch("app.services.contest_service.ContestService") as mock_contest:
+            mock_contest.submit_problem = AsyncMock()
+            count = await SubmissionTracker.settle_matched(db, cf_service=cf_mock)
+
+        assert count == 1
+        call_kwargs = mock_contest.submit_problem.call_args
+        assert call_kwargs.kwargs["attempts"] == 2
+        assert call_kwargs.kwargs["time_spent"] > 0
+
+    async def test_settle_passes_real_stats_to_pvp(self, db):
+        """settle_matched should pass real stats to PvP challenge service."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        now = datetime.now(UTC)
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pvp",
+            status="matched",
+            cf_verdict="OK",
+            matched_at=now,
+            expected_at=now - timedelta(minutes=12),
+        )
+        db.add(tracking)
+        await db.flush()
+
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.return_value = [
+            _make_cf_submission(submission_id=1, contest_id=800, index="A",
+                                verdict="WRONG_ANSWER", creation_time=now - timedelta(minutes=10)),
+            _make_cf_submission(submission_id=2, contest_id=800, index="A",
+                                verdict="WRONG_ANSWER", creation_time=now - timedelta(minutes=8)),
+            _make_cf_submission(submission_id=3, contest_id=800, index="A",
+                                verdict="OK", creation_time=now),
+        ]
+
+        with patch("app.services.challenge_service.ChallengeService") as mock_pvp:
+            mock_pvp.submit_result = AsyncMock()
+            count = await SubmissionTracker.settle_matched(db, cf_service=cf_mock)
+
+        assert count == 1
+        call_kwargs = mock_pvp.submit_result.call_args
+        assert call_kwargs.kwargs["attempts"] == 3
+        assert call_kwargs.kwargs["time_spent"] > 0
+
+    async def test_settle_stats_error_falls_back_to_defaults(self, db):
+        """If stats extraction fails, should fall back to defaults."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            status="matched",
+            cf_verdict="OK",
+            matched_at=datetime.now(UTC),
+        )
+        db.add(tracking)
+        await db.flush()
+
+        # CF service that raises during stats extraction
+        cf_mock = AsyncMock()
+        cf_mock.get_user_status.side_effect = Exception("Stats error")
+
+        with patch("app.services.pve_challenge_service.PvEChallengeService") as mock_pve:
+            mock_pve.submit_result = AsyncMock()
+            count = await SubmissionTracker.settle_matched(db, cf_service=cf_mock)
+
+        assert count == 1
+        call_kwargs = mock_pve.submit_result.call_args
+        assert call_kwargs.kwargs["attempts"] == 1  # Default fallback
+        assert call_kwargs.kwargs["error_count"] == 0

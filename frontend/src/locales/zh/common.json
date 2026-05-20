@@ -36,6 +36,8 @@
   "loadingResult": "加载结果中...",
   "loadingProblem": "加载题目中...",
   "copied": "已复制到剪贴板！",
+  "waitingForCFResult": "等待 Codeforces 结果...",
+  "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。",
   "unsavedChanges_one": "{{count}} 个未保存的更改",
   "unsavedChanges_other": "{{count}} 个未保存的更改"
 }

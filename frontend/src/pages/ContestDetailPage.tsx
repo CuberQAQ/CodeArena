@@ -144,10 +144,8 @@ export default function ContestDetailPage() {
   const [loading, setLoading] = useState(false);
   const [remaining, setRemaining] = useState<number>(0);
   const [endTimeMs, setEndTimeMs] = useState<number | null>(null);
-  const [selectedProblem, setSelectedProblem] = useState<string | null>(null);
-  const [submitSolved, setSubmitSolved] = useState(true);
-  const [submitAttempts, setSubmitAttempts] = useState(1);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trackingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasFetchedRef = useRef(false);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
   const [showAchievements, setShowAchievements] = useState(false);
@@ -299,8 +297,57 @@ export default function ContestDetailPage() {
     return () => {
       disconnectWs();
       resetLive();
+      if (trackingPollRef.current) clearInterval(trackingPollRef.current);
     };
   }, [disconnectWs, resetLive]);
+
+  // Poll submission tracking status during active contest
+  useEffect(() => {
+    if (!contestId || phase !== "active") return;
+
+    const pollTracking = async () => {
+      try {
+        const res = await api.get(
+          `/submission-tracking/status?session_type=contest&session_id=${contestId}`,
+        );
+        const tracking = res.data?.data;
+        if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {
+          if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+          // Refresh contest status to show updated problem results
+          try {
+            const contestRes = await api.get<ApiResponse<ContestSessionInfo>>(
+              `/contest/${contestId}`,
+            );
+            const data = contestRes.data.data;
+            setContest(data);
+
+            // If contest was completed (e.g. all problems solved), transition
+            if (data.status === "completed" || data.status === "ended") {
+              setPhase("completed");
+              disconnectWs();
+              try {
+                const resultRes = await api.get<ApiResponse<ContestResult>>(
+                  `/contest/${contestId}/result`,
+                );
+                setResult(resultRes.data.data);
+              } catch {
+                // Use session info as fallback
+              }
+            }
+          } catch {
+            // Continue even if refresh fails
+          }
+        }
+      } catch {
+        // Continue polling on error
+      }
+    };
+
+    trackingPollRef.current = setInterval(pollTracking, 5000);
+    return () => {
+      if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+    };
+  }, [contestId, phase, disconnectWs]);
 
   // Show achievement popup when contest result has achievements
   useEffect(() => {
@@ -310,41 +357,6 @@ export default function ContestDetailPage() {
       return () => clearTimeout(timer);
     }
   }, [result?.achievements]);
-
-  const submitProblem = async () => {
-    if (!contestId || !selectedProblem) return;
-    setError("");
-    setLoading(true);
-    try {
-      await api.post(`/contest/${contestId}/submit`, {
-        problem_id: selectedProblem,
-        solved: submitSolved,
-        attempts: submitAttempts,
-        time_spent: 0,
-      });
-      setSelectedProblem(null);
-      // Refetch
-      const res = await api.get<ApiResponse<ContestSessionInfo>>(`/contest/${contestId}`);
-      const data = res.data.data;
-      setContest(data);
-      if (data.status === "completed" || data.status === "ended") {
-        setPhase("completed");
-        disconnectWs();
-        try {
-          const resultRes = await api.get<ApiResponse<ContestResult>>(
-            `/contest/${contestId}/result`,
-          );
-          setResult(resultRes.data.data);
-        } catch {
-          // fallback
-        }
-      }
-    } catch (err) {
-      setError(extractApiError(err, t("failedSubmit")));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // -- LOADING --
   if (phase === "loading") {
@@ -458,52 +470,16 @@ export default function ContestDetailPage() {
         <div className="grid gap-5 lg:grid-cols-2">
           {/* Left: Problems */}
           <div className="space-y-4">
-            {/* Submit panel */}
-            {selectedProblem && (
-              <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {t("reportingResult")}
-                </h3>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">{t("solvedQuestion")}</span>
-                  <Button
-                    size="sm"
-                    variant={submitSolved ? "default" : "outline"}
-                    onClick={() => setSubmitSolved(true)}
-                  >
-                    {t("common:yes", { ns: "common" })}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={!submitSolved ? "destructive" : "outline"}
-                    onClick={() => setSubmitSolved(false)}
-                  >
-                    {t("common:no", { ns: "common" })}
-                  </Button>
-                </div>
-                {submitSolved && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground">{t("common:attempts", { ns: "common" })}:</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={submitAttempts}
-                      onChange={(e) => setSubmitAttempts(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                    />
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={submitProblem} disabled={loading}>
-                    {loading && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                    {t("common:submit", { ns: "common" })}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedProblem(null)}>
-                    {t("common:cancel", { ns: "common" })}
-                  </Button>
+            {/* Auto-tracking info */}
+            <div className="rounded-xl border border-primary/30 bg-card p-4">
+              <div className="flex items-center gap-3">
+                <Loader2 className="size-4 animate-spin text-primary" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">{t("waitingForCFResult")}</p>
+                  <p className="text-xs text-muted-foreground">{t("waitingForCFResultDesc")}</p>
                 </div>
               </div>
-            )}
+            </div>
 
             {/* Problem list */}
             <div className="rounded-xl border border-border bg-card">
@@ -514,11 +490,10 @@ export default function ContestDetailPage() {
               </div>
               <div className="divide-y divide-border">
                 {contest.problems.map((problem) => {
-                  const isThis = problem.problem_id === selectedProblem;
                   return (
                     <div
                       key={problem.problem_id}
-                      className={`flex items-center gap-4 px-5 py-3 ${isThis ? "bg-primary/5" : ""}`}
+                      className="flex items-center gap-4 px-5 py-3"
                     >
                       {problem.solved ? (
                         <CheckCircle2 className="size-4 shrink-0 text-green-400" />
@@ -545,18 +520,8 @@ export default function ContestDetailPage() {
                         >
                           <ExternalLink className="size-4" />
                         </a>
-                        {!problem.solved && !selectedProblem && (
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedProblem(problem.problem_id);
-                              setSubmitSolved(true);
-                              setSubmitAttempts(1);
-                            }}
-                          >
-                            {t("common:report", { ns: "common" })}
-                          </Button>
+                        {!problem.solved && (
+                          <Loader2 className="size-4 animate-spin text-primary" title={t("waitingForCFResult")} />
                         )}
                       </div>
                     </div>

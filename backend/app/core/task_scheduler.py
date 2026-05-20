@@ -121,10 +121,12 @@ class TaskScheduler:
                     db, self._cf_service,
                 )
 
-                # 2. Settle matched records.
+                # 2. Settle matched records (pass cf_service for accurate stats).
                 settled_count = 0
                 if matched_count > 0:
-                    settled_count = await SubmissionTracker.settle_matched(db)
+                    settled_count = await SubmissionTracker.settle_matched(
+                        db, self._cf_service,
+                    )
 
                 # 3. Handle timed-out records.
                 timeout_count = await SubmissionTracker.handle_timeout(db)

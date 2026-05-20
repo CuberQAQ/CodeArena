@@ -37,6 +37,9 @@
   "newChallenge": "New Challenge",
   "tokensEarned": "Tokens Earned",
   "backToDashboard": "Back to Dashboard",
+  "waitingForCFResult": "Waiting for Codeforces result...",
+  "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result.",
+  "cfResultDetected": "Result detected from Codeforces",
   "pve": {
     "title": "Random Challenge (Solo)",
     "description": "Face a mystery problem with hidden difficulty and tags. Solve it to earn Elo, PP, and tokens -- with bonus rewards for beating problems above your level!",

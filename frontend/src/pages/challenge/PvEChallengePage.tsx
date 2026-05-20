@@ -14,7 +14,6 @@ import {
   Clock,
   ExternalLink,
   X,
-  CheckCircle2,
   XCircle,
   Trophy,
   Sparkles,
@@ -27,6 +26,8 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EloChange, CoinAnimation, AcceptedCelebration, AchievementPopup } from "@/components/animations";
 import { usePvEChallengeStore } from "@/stores/pveChallengeStore";
+import * as pveApi from "@/services/pveChallengeApi";
+import api from "@/services/api";
 import { formatTime, getRatingColor } from "@/utils";
 
 // ---------------------------------------------------------------------------
@@ -115,29 +116,56 @@ function IdlePhase() {
 
 function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
   const startResponse = usePvEChallengeStore((s) => s.startResponse);
-  const submitResultAction = usePvEChallengeStore((s) => s.submitResultAction);
   const quitChallengeAction = usePvEChallengeStore((s) => s.quitChallengeAction);
   const error = usePvEChallengeStore((s) => s.error);
   const phase = usePvEChallengeStore((s) => s.phase);
+  const sessionId = usePvEChallengeStore((s) => s.sessionId);
   const { t } = useTranslation(["challenge", "common"]);
 
   const elapsed = useElapsedTime(phase === "in_progress");
-  const [solved, setSolved] = useState(false);
-  const [attempts, setAttempts] = useState(1);
-  const [errorCount, setErrorCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const problem = startResponse?.problem;
 
-  const handleSubmit = async () => {
-    setSubmitting(true);
-    await submitResultAction(solved, elapsed, attempts, errorCount);
-    setSubmitting(false);
-  };
+  // Poll submission tracking status to auto-transition to result
+  useEffect(() => {
+    if (!sessionId || phase !== "in_progress") return;
+
+    const pollTracking = async () => {
+      try {
+        const res = await api.get(`/submission-tracking/status?session_type=pve&session_id=${sessionId}`);
+        const tracking = res.data?.data;
+        if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          // Fetch final challenge details and transition to result
+          const detail = await pveApi.getChallenge(sessionId);
+          // Check if challenge was completed by auto-settlement
+          if (detail.status === "completed" || detail.status === "quit") {
+            usePvEChallengeStore.getState().submitResultAction && undefined;
+            // Use the store to refresh and go to result
+            const store = usePvEChallengeStore.getState();
+            if (store.challenge?.status === "completed" || store.challenge?.status === "quit") {
+              return; // Already in result
+            }
+            // Fetch challenge to update state -- the store will transition
+            await usePvEChallengeStore.getState().fetchChallenge(sessionId);
+          }
+        }
+      } catch {
+        // Continue polling on error
+      }
+    };
+
+    pollRef.current = setInterval(pollTracking, 5000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [sessionId, phase]);
 
   const handleQuit = async () => {
     setSubmitting(true);
-    await quitChallengeAction(attempts > 0 ? attempts - 1 : 0);
+    await quitChallengeAction(0);
     setSubmitting(false);
   };
 
@@ -221,72 +249,19 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
         </div>
       </motion.div>
 
-      {/* Submit result panel */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground">{t("challenge:pve.reportYourResult")}</h3>
-
+      {/* Auto-tracking panel */}
+      <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
         <div className="flex items-center gap-3">
-          <label className="text-sm text-muted-foreground">{t("challenge:pve.didYouSolve")}</label>
-          <Button
-            size="sm"
-            variant={solved ? "default" : "outline"}
-            onClick={() => setSolved(true)}
-          >
-            <CheckCircle2 className="mr-1.5 size-3.5" />
-            {t("common:yes")}
-          </Button>
-          <Button
-            size="sm"
-            variant={!solved ? "destructive" : "outline"}
-            onClick={() => setSolved(false)}
-          >
-            <XCircle className="mr-1.5 size-3.5" />
-            {t("common:no")}
-          </Button>
+          <Loader2 className="size-5 animate-spin text-primary" />
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">{t("challenge:waitingForCFResult")}</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              {t("challenge:waitingForCFResultDesc")}
+            </p>
+          </div>
         </div>
 
-        {solved && (
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted-foreground">{t("common:attempts")}:</label>
-              <input
-                type="number"
-                min={1}
-                value={attempts || ""}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value);
-                  setAttempts(isNaN(v) ? 0 : v);
-                }}
-                onBlur={() => {
-                  if (!attempts || attempts < 1) setAttempts(1);
-                }}
-                className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted-foreground">{t("challenge:pve.errorsLabel")}</label>
-              <input
-                type="number"
-                min={0}
-                value={errorCount || ""}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value);
-                  setErrorCount(isNaN(v) ? 0 : v);
-                }}
-                onBlur={() => {
-                  if (isNaN(errorCount) || errorCount < 0) setErrorCount(0);
-                }}
-                className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-              />
-            </div>
-          </div>
-        )}
-
         <div className="flex gap-3">
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-            {t("challenge:pve.submitResult")}
-          </Button>
           <Button variant="destructive" onClick={handleQuit} disabled={submitting}>
             {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
             {t("challenge:pve.quit")}

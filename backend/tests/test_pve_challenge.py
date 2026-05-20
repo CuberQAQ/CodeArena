@@ -21,6 +21,7 @@ from app.services import pve_challenge_service as pve_svc_module
 from app.services.hint_service import HintService as _RealHintService
 from app.services.pp_service import PPService as _RealPPService
 from app.services.pve_challenge_service import PvEChallengeService
+from app.services.submission_tracker import SubmissionTracker
 
 
 class JSONText(TypeDecorator):
@@ -183,6 +184,7 @@ async def db(async_engine):
             patch.object(pve_svc_module, "EloService") as mock_elo_cls,
             patch.object(pve_svc_module, "PPService") as mock_pp_cls,
             patch.object(pve_svc_module, "HintService") as mock_hint_cls,
+            patch.object(SubmissionTracker, "register_pending", AsyncMock()),
         ):
             mock_config_cls.get_config = _mock_get_config
             mock_elo_cls.get_submission_count = _mock_get_submission_count

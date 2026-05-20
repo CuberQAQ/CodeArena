@@ -25,6 +25,7 @@ from app.services.config_service import ConfigService
 from app.services.contest_service import TIER_CONFIGS, ContestService, _tokens_for_rating
 from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
+from app.services.submission_tracker import SubmissionTracker
 
 # ---------------------------------------------------------------------------
 # Lightweight SQLite-compatible test models
@@ -212,6 +213,8 @@ async def db(async_engine):
                 "calculate_performance_rating",
                 AsyncMock(side_effect=lambda db, contest_id, player_solved: 800 + player_solved * 400),
             ),
+            # Patch SubmissionTracker.register_pending to avoid submission_tracking table
+            patch.object(SubmissionTracker, "register_pending", AsyncMock()),
         ):
             yield session
 

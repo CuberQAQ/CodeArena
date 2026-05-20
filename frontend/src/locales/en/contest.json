@@ -48,5 +48,7 @@
   "failedLoadContest": "Failed to load contest",
   "failedSubmit": "Failed to submit result",
   "newContest": "New Contest",
-  "dashboard": "Dashboard"
+  "dashboard": "Dashboard",
+  "waitingForCFResult": "Waiting for Codeforces result...",
+  "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result."
 }

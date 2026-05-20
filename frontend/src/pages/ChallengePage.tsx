@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle, Sparkles, Coins } from "lucide-react";
+import { Swords, Loader2, Clock, Trophy, ExternalLink, X, Sparkles, Coins } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
@@ -17,7 +17,6 @@ import type {
   QueueStatus,
   StartChallengeResponse,
   ChallengeDetail,
-  SubmitResultResponse,
   QuitChallengeResponse,
 } from "@/types";
 
@@ -35,10 +34,8 @@ export default function ChallengePage() {
   const [elapsed, setElapsed] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trackingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasResumedRef = useRef(false);
-  const [solved, setSolved] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [quitSubmissions, setQuitSubmissions] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
   const [eloTriggerKey, setEloTriggerKey] = useState(0);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
@@ -114,6 +111,7 @@ export default function ChallengePage() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (trackingPollRef.current) clearInterval(trackingPollRef.current);
     };
   }, []);
 
@@ -135,6 +133,41 @@ export default function ChallengePage() {
       }
     }, 2000);
   }, [navigate]);
+
+  // Poll submission tracking status during active challenge
+  useEffect(() => {
+    if (!sessionId || phase !== "in_progress") return;
+
+    const pollTracking = async () => {
+      try {
+        const res = await api.get(
+          `/submission-tracking/status?session_type=pvp&session_id=${sessionId}`,
+        );
+        const tracking = res.data?.data;
+        if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {
+          if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+          // Fetch updated challenge details and transition to result
+          const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
+            `/challenge/${sessionId}`,
+          );
+          const detail = detailRes.data.data;
+          if (detail.status === "completed" || detail.result) {
+            setChallenge(detail);
+            setEloTriggerKey((k) => k + 1);
+            if (timerRef.current) clearInterval(timerRef.current);
+            setPhase("result");
+          }
+        }
+      } catch {
+        // Continue polling on error
+      }
+    };
+
+    trackingPollRef.current = setInterval(pollTracking, 5000);
+    return () => {
+      if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+    };
+  }, [sessionId, phase]);
 
   // Timer for in-progress phase
   const startTimer = useCallback(() => {
@@ -208,59 +241,6 @@ export default function ChallengePage() {
     }
   };
 
-  // Submit result
-  const handleSubmit = async () => {
-    setError("");
-    setLoading(true);
-    try {
-      const res = await api.post<ApiResponse<SubmitResultResponse>>(
-        `/challenge/${sessionId}/submit`,
-        { solved, time_spent: elapsed, attempts },
-      );
-      const data = res.data.data;
-      if (data.settled) {
-        if (timerRef.current) clearInterval(timerRef.current);
-        // Fetch final details
-        const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
-          `/challenge/${sessionId}`,
-        );
-        setChallenge(detailRes.data.data);
-        setEloTriggerKey((k) => k + 1);
-        if (data.elo_change != null && data.elo_change > 0) {
-          setShowCelebration(true);
-        }
-        if (data.achievements && data.achievements.length > 0) {
-          setAchievements(data.achievements);
-          setTimeout(() => setShowAchievements(true), 1500);
-        }
-        setPhase("result");
-      } else {
-        // Waiting for opponent
-        setPhase("result");
-        if (timerRef.current) clearInterval(timerRef.current);
-        // Poll for final result
-        const pollResult = setInterval(async () => {
-          try {
-            const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
-              `/challenge/${sessionId}`,
-            );
-            const detail = detailRes.data.data;
-            if (detail.status === "completed" || detail.result) {
-              clearInterval(pollResult);
-              setChallenge(detail);
-            }
-          } catch {
-            // Continue polling
-          }
-        }, 3000);
-      }
-    } catch (err) {
-      setError(extractApiError(err, t("failedSubmit")));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Quit challenge
   const handleQuit = async () => {
     setError("");
@@ -268,7 +248,7 @@ export default function ChallengePage() {
     try {
       await api.post<ApiResponse<QuitChallengeResponse>>(
         `/challenge/${sessionId}/quit`,
-        { submissions: quitSubmissions },
+        { submissions: 0 },
       );
       if (timerRef.current) clearInterval(timerRef.current);
       const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
@@ -290,9 +270,6 @@ export default function ChallengePage() {
     setChallenge(null);
     setElapsed(0);
     setError("");
-    setSolved(false);
-    setAttempts(0);
-    setQuitSubmissions(0);
     setShowCelebration(false);
     setAchievements([]);
     setShowAchievements(false);
@@ -482,54 +459,19 @@ export default function ChallengePage() {
           </div>
         )}
 
-        {/* Submit result */}
-        <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">{t("reportYourResult")}</h3>
-
+        {/* Auto-tracking panel */}
+        <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
           <div className="flex items-center gap-3">
-            <label className="text-sm text-muted-foreground">{t("didYouSolve")}</label>
-            <Button
-              size="sm"
-              variant={solved ? "default" : "outline"}
-              onClick={() => setSolved(true)}
-            >
-              <CheckCircle2 className="mr-1.5 size-3.5" />
-              {t("common:yes", { ns: "common" })}
-            </Button>
-            <Button
-              size="sm"
-              variant={!solved ? "destructive" : "outline"}
-              onClick={() => setSolved(false)}
-            >
-              <XCircle className="mr-1.5 size-3.5" />
-              {t("common:no", { ns: "common" })}
-            </Button>
+            <Loader2 className="size-5 animate-spin text-primary" />
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">{t("waitingForCFResult")}</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("waitingForCFResultDesc")}
+              </p>
+            </div>
           </div>
 
-          {solved && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted-foreground">{t("common:attempts", { ns: "common" })}:</label>
-              <input
-                type="number"
-                min={1}
-                value={attempts || ""}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value);
-                  setAttempts(isNaN(v) ? 0 : v);
-                }}
-                onBlur={() => {
-                  if (!attempts || attempts < 1) setAttempts(1);
-                }}
-                className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-              />
-            </div>
-          )}
-
           <div className="flex gap-3">
-            <Button onClick={handleSubmit} disabled={loading}>
-              {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-              {t("submitResult")}
-            </Button>
             <Button variant="destructive" onClick={handleQuit} disabled={loading}>
               {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
               {t("quit")}

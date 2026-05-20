@@ -9,8 +9,8 @@ Key guarantees:
     enforces a minimum 2-second interval between requests.
   - Idempotent settlement: each tracking record transitions through
     ``pending -> matched -> settled`` (or ``timeout``) exactly once.
-  - Non-destructive: this is an optional enhancement.  The existing manual
-    submit/quit flows continue to work independently.
+  - Accurate stats: WA/TLE counts and time_spent are derived from actual
+    CF API submission data, not hardcoded estimates.
 
 Matching logic:
   A CF submission matches a pending record when:
@@ -29,6 +29,7 @@ Non-final verdicts (keep polling):
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, select, update
@@ -78,8 +79,28 @@ _VERDICT_LABEL: dict[str, str] = {
     "SKIPPED": "SKIPPED",
 }
 
+# CF verdicts that count as errors (used for error_count computation).
+_ERROR_VERDICTS: set[str] = {
+    "WRONG_ANSWER",
+    "TIME_LIMIT_EXCEEDED",
+    "MEMORY_LIMIT_EXCEEDED",
+    "RUNTIME_ERROR",
+    "COMPILATION_ERROR",
+    "CHALLENGED",
+}
+
 # How many recent CF submissions to fetch per user per poll.
-_POLL_COUNT = 20
+_POLL_COUNT = 50
+
+
+@dataclass
+class SubmissionStats:
+    """Aggregated submission statistics derived from CF API data."""
+
+    total_submissions: int
+    error_count: int
+    time_spent: float
+    last_ac_creation_time: datetime | None
 
 
 class SubmissionTracker:
@@ -259,15 +280,26 @@ class SubmissionTracker:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def settle_matched(db: AsyncSession) -> int:
+    async def settle_matched(
+        db: AsyncSession,
+        cf_service: CFApiService | None = None,
+    ) -> int:
         """Settle all tracking records in ``matched`` status.
 
-        For each matched record, the appropriate session service is called
-        to apply Elo/PP/token changes based on the CF verdict.  After
-        settlement, the status transitions to ``settled``.
+        For each matched record, fetches accurate submission statistics from
+        the CF API (total attempts, error count, time_spent) and calls the
+        appropriate session service to apply Elo/PP/token changes.
 
         This method is idempotent -- it only processes records with
         ``status='matched'``.
+
+        Parameters
+        ----------
+        db:
+            Async database session.
+        cf_service:
+            CF API service instance for fetching submission stats.
+            If None, falls back to default values.
 
         Returns
         -------
@@ -287,7 +319,7 @@ class SubmissionTracker:
         settled_count = 0
         for record in matched_records:
             try:
-                await SubmissionTracker._settle_one(db, record)
+                await SubmissionTracker._settle_one(db, record, cf_service)
                 settled_count += 1
             except Exception:
                 logger.exception(
@@ -362,6 +394,132 @@ class SubmissionTracker:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _get_submission_stats(
+        db: AsyncSession,
+        cf_service: CFApiService,
+        tracking: SubmissionTracking,
+    ) -> SubmissionStats:
+        """Fetch all submissions for the tracked problem within the time window
+        and compute accurate statistics.
+
+        Returns a ``SubmissionStats`` with:
+          - ``total_submissions``: total number of submissions for this problem
+            in the window (including the final AC).
+          - ``error_count``: number of submissions with non-AC final verdicts
+            (WA, TLE, MLE, RE, CE, CHALLENGED).
+          - ``time_spent``: seconds from ``expected_at`` to the last AC
+            submission's ``creationTimeSeconds``.  Falls back to
+            ``matched_at - expected_at`` if no AC found.
+          - ``last_ac_creation_time``: the ``creationTimeSeconds`` of the last
+            AC submission, or None.
+        """
+        user = await db.get(User, tracking.user_id)
+        if user is None or not user.cf_handle:
+            return SubmissionStats(
+                total_submissions=1,
+                error_count=0,
+                time_spent=0.0,
+                last_ac_creation_time=None,
+            )
+
+        # Ensure expected_at is timezone-aware.
+        expected_at = tracking.expected_at
+        if expected_at.tzinfo is None:
+            expected_at = expected_at.replace(tzinfo=UTC)
+
+        window_start = expected_at - _MATCH_WINDOW_BEFORE
+        window_end = expected_at + _MATCH_WINDOW_AFTER
+
+        try:
+            cf_submissions = await cf_service.get_user_status(
+                handle=user.cf_handle,
+                count=_POLL_COUNT,
+            )
+        except Exception:
+            logger.warning(
+                "CF API error fetching submissions for %s during stats extraction",
+                user.cf_handle,
+            )
+            return SubmissionStats(
+                total_submissions=1,
+                error_count=0,
+                time_spent=0.0,
+                last_ac_creation_time=None,
+            )
+
+        if not cf_submissions:
+            return SubmissionStats(
+                total_submissions=1,
+                error_count=0,
+                time_spent=0.0,
+                last_ac_creation_time=None,
+            )
+
+        # Filter submissions matching the problem and within the time window.
+        matching_subs: list[dict] = []
+        for sub in cf_submissions:
+            contest_id = sub.get("contestId", 0)
+            index = sub.get("problem", {}).get("index", "")
+            cf_problem_id = f"{contest_id}{index}"
+
+            if cf_problem_id != tracking.problem_id:
+                continue
+
+            creation_time = sub.get("creationTimeSeconds")
+            if creation_time is None:
+                continue
+
+            sub_time = datetime.fromtimestamp(creation_time, tz=UTC)
+            if sub_time < window_start or sub_time > window_end:
+                continue
+
+            matching_subs.append(sub)
+
+        if not matching_subs:
+            return SubmissionStats(
+                total_submissions=1,
+                error_count=0,
+                time_spent=0.0,
+                last_ac_creation_time=None,
+            )
+
+        # Count errors (non-AC final verdicts).
+        error_count = sum(
+            1 for sub in matching_subs
+            if sub.get("verdict") in _ERROR_VERDICTS
+        )
+        total_submissions = len(matching_subs)
+
+        # Find the last AC submission's creation time for accurate time_spent.
+        last_ac_time: datetime | None = None
+        for sub in matching_subs:
+            if sub.get("verdict") == "OK":
+                creation_ts = sub.get("creationTimeSeconds")
+                if creation_ts is not None:
+                    sub_dt = datetime.fromtimestamp(creation_ts, tz=UTC)
+                    if last_ac_time is None or sub_dt > last_ac_time:
+                        last_ac_time = sub_dt
+
+        # Calculate time_spent.
+        if last_ac_time is not None:
+            time_spent = max(0.0, (last_ac_time - expected_at).total_seconds())
+        elif tracking.matched_at is not None:
+            # Fallback: matched_at - expected_at.
+            matched_at = tracking.matched_at
+            if matched_at.tzinfo is None:
+                matched_at = matched_at.replace(tzinfo=UTC)
+            time_spent = max(0.0, (matched_at - expected_at).total_seconds())
+        else:
+            time_spent = 0.0
+
+        return SubmissionStats(
+            total_submissions=total_submissions,
+            error_count=error_count,
+            time_spent=time_spent,
+            last_ac_creation_time=last_ac_time,
+        )
 
     @staticmethod
     async def _poll_for_user(
@@ -484,41 +642,61 @@ class SubmissionTracker:
     async def _settle_one(
         db: AsyncSession,
         tracking: SubmissionTracking,
+        cf_service: CFApiService | None = None,
     ) -> None:
         """Settle a single matched tracking record.
 
-        Dispatches to the appropriate session service based on
-        ``session_type`` and ``cf_verdict``.
+        Fetches accurate submission statistics from CF API (if cf_service
+        is provided) and dispatches to the appropriate session service.
         """
         verdict = tracking.cf_verdict or "UNKNOWN"
         is_solved = verdict in _SOLVED_VERDICTS
 
+        # Fetch accurate stats from CF API if possible.
+        stats: SubmissionStats | None = None
+        if cf_service is not None:
+            try:
+                stats = await SubmissionTracker._get_submission_stats(
+                    db, cf_service, tracking,
+                )
+            except Exception:
+                logger.exception(
+                    "Error fetching submission stats for tracking %s, using defaults",
+                    tracking.id,
+                )
+
+        # Use real stats or fall back to minimal defaults.
+        attempts = stats.total_submissions if stats else 1
+        error_count = stats.error_count if stats else 0
+        time_spent = stats.time_spent if stats else 0.0
+
         logger.info(
-            "Settling tracking %s: session=%s/%s verdict=%s solved=%s",
+            "Settling tracking %s: session=%s/%s verdict=%s solved=%s "
+            "attempts=%d error_count=%d time_spent=%.1f",
             tracking.id, tracking.session_type, tracking.session_id,
-            verdict, is_solved,
+            verdict, is_solved, attempts, error_count, time_spent,
         )
 
-        # For now, settlement dispatches based on session_type.
-        # Each session service exposes a settlement method that the tracker
-        # calls.  If the session is already settled (e.g. via manual submit),
-        # the settlement method should be a no-op.
         try:
             if tracking.session_type == "pve":
                 await SubmissionTracker._settle_pve(
                     db, tracking, is_solved, verdict,
+                    attempts=attempts, error_count=error_count, time_spent=time_spent,
                 )
             elif tracking.session_type == "training":
                 await SubmissionTracker._settle_training(
                     db, tracking, is_solved, verdict,
+                    attempts=attempts, time_spent=time_spent,
                 )
             elif tracking.session_type == "contest":
                 await SubmissionTracker._settle_contest(
                     db, tracking, is_solved, verdict,
+                    attempts=attempts, time_spent=time_spent,
                 )
             elif tracking.session_type == "pvp":
                 await SubmissionTracker._settle_pvp(
                     db, tracking, is_solved, verdict,
+                    attempts=attempts, time_spent=time_spent,
                 )
             else:
                 logger.warning(
@@ -542,29 +720,22 @@ class SubmissionTracker:
         tracking: SubmissionTracking,
         is_solved: bool,
         verdict: str,
+        *,
+        attempts: int = 1,
+        error_count: int = 0,
+        time_spent: float = 0.0,
     ) -> None:
         """Settle a PvE challenge session based on CF verdict.
 
-        Calls the PvE challenge service's auto-settle endpoint.
+        Calls the PvE challenge service's auto-settle endpoint with
+        accurate stats derived from CF API data.
         """
         from app.services.pve_challenge_service import PvEChallengeService
 
-        # Fetch user and session.
         user = await db.get(User, tracking.user_id)
         if user is None:
             logger.error("User %s not found for PvE settlement", tracking.user_id)
             return
-
-        # Calculate time spent from tracking timestamps.
-        time_spent = 0.0
-        if tracking.matched_at and tracking.expected_at:
-            delta = tracking.matched_at - tracking.expected_at
-            time_spent = max(0.0, abs(delta.total_seconds()))
-
-        # Estimate error count from CF verdict (WA/TLE/RE count).
-        # For auto-settlement we use 0 errors by default since we can't
-        # determine the exact count from the verdict alone.
-        error_count = 0
 
         await PvEChallengeService.submit_result(
             db=db,
@@ -572,7 +743,7 @@ class SubmissionTracker:
             session_id=tracking.session_id,
             solved=is_solved,
             time_spent=time_spent,
-            attempts=1,
+            attempts=attempts,
             error_count=error_count,
         )
 
@@ -582,10 +753,14 @@ class SubmissionTracker:
         tracking: SubmissionTracking,
         is_solved: bool,
         verdict: str,
+        *,
+        attempts: int = 1,
+        time_spent: float = 0.0,
     ) -> None:
         """Settle a training session problem record.
 
-        Training problem settlement is handled by the training service.
+        Training problem settlement is handled by the training service with
+        accurate stats derived from CF API data.
         """
         from app.services.training_service import TrainingService
 
@@ -594,19 +769,13 @@ class SubmissionTracker:
             logger.error("User %s not found for training settlement", tracking.user_id)
             return
 
-        # Calculate time spent from tracking timestamps.
-        time_spent = 0.0
-        if tracking.matched_at and tracking.expected_at:
-            delta = tracking.matched_at - tracking.expected_at
-            time_spent = max(0.0, abs(delta.total_seconds()))
-
         await TrainingService.submit_problem(
             db=db,
             user=user,
             session_id=tracking.session_id,
             problem_id=tracking.problem_id,
             solved=is_solved,
-            attempts=1,
+            attempts=attempts,
             time_spent=time_spent,
         )
 
@@ -616,8 +785,11 @@ class SubmissionTracker:
         tracking: SubmissionTracking,
         is_solved: bool,
         verdict: str,
+        *,
+        attempts: int = 1,
+        time_spent: float = 0.0,
     ) -> None:
-        """Settle a contest problem record."""
+        """Settle a contest problem record with accurate CF API stats."""
         from app.services.contest_service import ContestService
 
         user = await db.get(User, tracking.user_id)
@@ -625,19 +797,13 @@ class SubmissionTracker:
             logger.error("User %s not found for contest settlement", tracking.user_id)
             return
 
-        # Calculate time spent from tracking timestamps.
-        time_spent = 0.0
-        if tracking.matched_at and tracking.expected_at:
-            delta = tracking.matched_at - tracking.expected_at
-            time_spent = max(0.0, abs(delta.total_seconds()))
-
         await ContestService.submit_problem(
             db=db,
             user=user,
             contest_id=tracking.session_id,
             problem_id=tracking.problem_id,
             solved=is_solved,
-            attempts=1,
+            attempts=attempts,
             time_spent=time_spent,
         )
 
@@ -647,8 +813,11 @@ class SubmissionTracker:
         tracking: SubmissionTracking,
         is_solved: bool,
         verdict: str,
+        *,
+        attempts: int = 1,
+        time_spent: float = 0.0,
     ) -> None:
-        """Settle a PvP challenge session."""
+        """Settle a PvP challenge session with accurate CF API stats."""
         from app.services.challenge_service import ChallengeService
 
         user = await db.get(User, tracking.user_id)
@@ -656,17 +825,11 @@ class SubmissionTracker:
             logger.error("User %s not found for PvP settlement", tracking.user_id)
             return
 
-        # Calculate time spent from tracking timestamps.
-        time_spent = 0.0
-        if tracking.matched_at and tracking.expected_at:
-            delta = tracking.matched_at - tracking.expected_at
-            time_spent = max(0.0, abs(delta.total_seconds()))
-
         await ChallengeService.submit_result(
             db=db,
             user=user,
             session_id=tracking.session_id,
             solved=is_solved,
             time_spent=time_spent,
-            attempts=1,
+            attempts=attempts,
         )

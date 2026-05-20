@@ -36,6 +36,7 @@ from app.services.challenge_service import (
 from app.services.config_service import ConfigService
 from app.services.elo_service import EloService
 from app.services.match_service import MatchResult, MatchService, QueueEntry
+from app.services.submission_tracker import SubmissionTracker
 
 # ---------------------------------------------------------------------------
 # Lightweight SQLite-compatible test models
@@ -176,6 +177,7 @@ async def db(async_engine, fake_redis):
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
             patch.object(ConfigService, "get_config", _mock_get_config),
             patch.object(EloService, "get_submission_count", _mock_get_submission_count),
+            patch.object(SubmissionTracker, "register_pending", AsyncMock()),
             patch("app.services.challenge_service.get_redis", return_value=fake_redis),
         ):
             yield session

@@ -24,7 +24,6 @@ import type {
   AchievementEvent,
   TopicDetail,
   TrainingSessionInfo,
-  SubmitTrainingResponse,
 } from "@/types";
 
 type Phase = "loading" | "topic" | "session" | "result";
@@ -39,10 +38,8 @@ export default function TrainingDetailPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [selectedProblem, setSelectedProblem] = useState<string | null>(null);
-  const [submitSolved, setSubmitSolved] = useState(true);
-  const [submitAttempts, setSubmitAttempts] = useState(1);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trackingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lastTokensEarned, setLastTokensEarned] = useState(0);
   const [tokenTriggerKey, setTokenTriggerKey] = useState(0);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
@@ -65,8 +62,53 @@ export default function TrainingDetailPage() {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (trackingPollRef.current) clearInterval(trackingPollRef.current);
     };
   }, []);
+
+  // Poll submission tracking status during active training session
+  useEffect(() => {
+    if (!session || phase !== "session") return;
+
+    const pollTracking = async () => {
+      try {
+        const res = await api.get(
+          `/submission-tracking/status?session_type=training&session_id=${session.id}`,
+        );
+        const tracking = res.data?.data;
+        if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {
+          if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+          // Refresh topic details to show updated solved status
+          if (topicId) {
+            try {
+              const topicRes = await api.get<ApiResponse<TopicDetail>>(
+                `/training/topics/${topicId}`,
+              );
+              setTopic(topicRes.data.data);
+            } catch {
+              // Continue even if refresh fails
+            }
+          }
+          // Refresh session status
+          try {
+            const sessionRes = await api.get<ApiResponse<TrainingSessionInfo>>(
+              `/training/session/${session.id}`,
+            );
+            setSession(sessionRes.data.data);
+          } catch {
+            // Continue even if refresh fails
+          }
+        }
+      } catch {
+        // Continue polling on error
+      }
+    };
+
+    trackingPollRef.current = setInterval(pollTracking, 5000);
+    return () => {
+      if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+    };
+  }, [session, phase, topicId]);
 
   const startSession = async () => {
     if (!topicId) return;
@@ -82,49 +124,6 @@ export default function TrainingDetailPage() {
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
     } catch (err) {
       setError(extractApiError(err, t("training:failedStartSession")));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const submitProblem = async () => {
-    if (!session || !selectedProblem) return;
-    setError("");
-    setLoading(true);
-    try {
-      const res = await api.post<ApiResponse<SubmitTrainingResponse>>(
-        `/training/session/${session.id}/submit`,
-        {
-          problem_id: selectedProblem,
-          solved: submitSolved,
-          attempts: submitAttempts,
-          time_spent: elapsed,
-        },
-      );
-      const data = res.data.data;
-      // Trigger coin animation if tokens earned
-      if (data.tokens_earned > 0) {
-        setLastTokensEarned(data.tokens_earned);
-        setTokenTriggerKey((k) => k + 1);
-      }
-      // Trigger achievement popup if achievements are present
-      if (data.achievements && data.achievements.length > 0) {
-        setAchievements(data.achievements);
-        setTimeout(() => setShowAchievements(true), 1500);
-      }
-      // Refresh session
-      const sessRes = await api.get<ApiResponse<TrainingSessionInfo>>(
-        `/training/session/${session.id}`,
-      );
-      setSession(sessRes.data.data);
-      setSelectedProblem(null);
-      // Refresh topic for updated solved counts
-      if (topicId) {
-        const topicRes = await api.get<ApiResponse<TopicDetail>>(`/training/topics/${topicId}`);
-        setTopic(topicRes.data.data);
-      }
-    } catch (err) {
-      setError(extractApiError(err, t("training:failedSubmit")));
     } finally {
       setLoading(false);
     }
@@ -147,7 +146,6 @@ export default function TrainingDetailPage() {
 
   const handleReset = () => {
     setSession(null);
-    setSelectedProblem(null);
     setPhase("topic");
     setElapsed(0);
     setError("");
@@ -333,9 +331,8 @@ export default function TrainingDetailPage() {
           </div>
           <div className="divide-y divide-border">
             {topic.problems?.map((problem) => {
-              const isThis = problem.problem_id === selectedProblem;
               return (
-                <div key={problem.problem_id} className={isThis ? "bg-primary/5" : ""}>
+                <div key={problem.problem_id}>
                   <div className="flex items-center gap-4 px-5 py-3">
                     {problem.solved ? (
                       <CheckCircle2 className="size-4 shrink-0 text-green-400" />
@@ -347,6 +344,11 @@ export default function TrainingDetailPage() {
                         {problem.contest_id}
                         {problem.index} - {problem.name}
                       </p>
+                      {problem.solved && problem.time_spent != null && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("training:solvedIn", { time: formatTime(problem.time_spent), attempts: problem.attempts })}
+                        </p>
+                      )}
                     </div>
                     {problem.rating && (
                       <span
@@ -365,69 +367,11 @@ export default function TrainingDetailPage() {
                       >
                         <ExternalLink className="size-4" />
                       </a>
-                      {!problem.solved && !selectedProblem && (
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedProblem(problem.problem_id);
-                            setSubmitSolved(true);
-                            setSubmitAttempts(1);
-                          }}
-                        >
-                          {t("common:report", { ns: "common" })}
-                        </Button>
+                      {!problem.solved && (
+                        <Loader2 className="size-4 animate-spin text-primary" title={t("training:waitingForCFResult")} />
                       )}
                     </div>
                   </div>
-                  {isThis && (
-                    <div className="border-t border-border px-5 py-4 space-y-3 bg-primary/5">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-muted-foreground">{t("challenge:didYouSolve", { ns: "challenge" })}</span>
-                        <Button
-                          size="sm"
-                          variant={submitSolved ? "default" : "outline"}
-                          onClick={() => setSubmitSolved(true)}
-                        >
-                          {t("common:yes", { ns: "common" })}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={!submitSolved ? "destructive" : "outline"}
-                          onClick={() => setSubmitSolved(false)}
-                        >
-                          {t("common:no", { ns: "common" })}
-                        </Button>
-                      </div>
-                      {submitSolved && (
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm text-muted-foreground">{t("common:attempts", { ns: "common" })}:</span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={submitAttempts || ""}
-                            onChange={(e) => {
-                              const v = parseInt(e.target.value);
-                              setSubmitAttempts(isNaN(v) ? 0 : v);
-                            }}
-                            onBlur={() => {
-                              if (!submitAttempts || submitAttempts < 1) setSubmitAttempts(1);
-                            }}
-                            className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                          />
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={submitProblem} disabled={loading}>
-                          {loading && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                          {t("common:submit", { ns: "common" })}
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setSelectedProblem(null)}>
-                          {t("common:cancel", { ns: "common" })}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}

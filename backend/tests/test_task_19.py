@@ -29,6 +29,7 @@ from app.services.config_service import ConfigService
 from app.services.contest_service import ContestService
 from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
+from app.services.submission_tracker import SubmissionTracker
 
 # ---------------------------------------------------------------------------
 # Lightweight SQLite-compatible test models
@@ -266,6 +267,8 @@ async def contest_db(async_engine):
             patch.object(EloService, "get_submission_count", _mock_get_submission_count),
             patch.object(ContestSimulationService, "generate_bots", AsyncMock(return_value=[])),
             patch.object(ContestSimulationService, "stop_simulation", AsyncMock(return_value=False)),
+            patch.object(ContestSimulationService, "start_simulation", AsyncMock(return_value=None)),
+            patch.object(SubmissionTracker, "register_pending", AsyncMock()),
         ):
             session._recorded_transactions = recorded_transactions
             yield session

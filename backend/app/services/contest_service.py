@@ -40,6 +40,7 @@ from app.services.contest_simulation_service import ContestSimulationService
 from app.services.elo_service import EloService
 from app.services.hint_service import HintService
 from app.services.pp_service import PPService
+from app.services.submission_tracker import SubmissionTracker
 
 logger = logging.getLogger("code_arena.contest")
 
@@ -216,6 +217,20 @@ class ContestService:
             contest_id=session.id,
             user_elo=user.elo,
         )
+
+        # Register pending submission tracking for each contest problem
+        # so the CF API poller can automatically detect submissions.
+        now_for_tracking = datetime.now(UTC)
+        for p in problems:
+            if p.problem_id:
+                await SubmissionTracker.register_pending(
+                    db=db,
+                    user_id=user.id,
+                    session_type="contest",
+                    session_id=session.id,
+                    problem_id=p.problem_id,
+                    expected_at=now_for_tracking,
+                )
 
         # Start background simulation so bots make progress over time
         await ContestSimulationService.start_simulation(

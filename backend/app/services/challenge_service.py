@@ -36,6 +36,7 @@ from app.services.config_service import ConfigService
 from app.services.elo_service import EloService
 from app.services.match_service import MatchService
 from app.services.pp_service import PPService
+from app.services.submission_tracker import SubmissionTracker
 
 logger = logging.getLogger("code_arena.challenge")
 
@@ -404,6 +405,25 @@ class ChallengeService:
         session.problem_name = problem.get("name", "")
         session.status = "active"
         await db.flush()
+
+        # Register pending submission tracking for both players so the
+        # CF API poller can automatically detect submissions.
+        await SubmissionTracker.register_pending(
+            db=db,
+            user_id=session.challenger_id,
+            session_type="pvp",
+            session_id=session.id,
+            problem_id=session.problem_id,
+            expected_at=datetime.now(UTC),
+        )
+        await SubmissionTracker.register_pending(
+            db=db,
+            user_id=session.opponent_id,
+            session_type="pvp",
+            session_id=session.id,
+            problem_id=session.problem_id,
+            expected_at=datetime.now(UTC),
+        )
 
         # Clean up pending state
         await _remove_pending(session_id)

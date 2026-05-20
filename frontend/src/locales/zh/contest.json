@@ -48,5 +48,7 @@
   "failedLoadContest": "加载比赛失败",
   "failedSubmit": "提交结果失败",
   "newContest": "新比赛",
-  "dashboard": "仪表盘"
+  "dashboard": "仪表盘",
+  "waitingForCFResult": "等待 Codeforces 结果...",
+  "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。"
 }

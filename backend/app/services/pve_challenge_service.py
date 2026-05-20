@@ -35,6 +35,7 @@ from app.services.config_service import ConfigService
 from app.services.elo_service import EloReason, EloService
 from app.services.hint_service import HintService
 from app.services.pp_service import PPService
+from app.services.submission_tracker import SubmissionTracker
 
 logger = logging.getLogger("code_arena.pve_challenge")
 
@@ -114,6 +115,17 @@ class PvEChallengeService:
         )
         db.add(session)
         await db.flush()
+
+        # Register pending submission tracking so the CF API poller can
+        # automatically detect when the user submits on Codeforces.
+        await SubmissionTracker.register_pending(
+            db=db,
+            user_id=user.id,
+            session_type="pve",
+            session_id=session.id,
+            problem_id=problem_id,
+            expected_at=datetime.now(UTC),
+        )
 
         problem_info = PvEChallengeService._build_problem_info(problem)
         return PvEStartResponse(

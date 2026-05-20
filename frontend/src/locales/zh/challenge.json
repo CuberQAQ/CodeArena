@@ -37,6 +37,9 @@
   "newChallenge": "新对战",
   "tokensEarned": "获得代币",
   "backToDashboard": "返回仪表盘",
+  "waitingForCFResult": "等待 Codeforces 结果...",
+  "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。",
+  "cfResultDetected": "已检测到 Codeforces 结果",
   "pve": {
     "title": "随机挑战（单人）",
     "description": "面对隐藏难度和标签的神秘题目。解题可赢得 Elo、PP 和代币 -- 击败超出你水平的题目还有额外奖励！",

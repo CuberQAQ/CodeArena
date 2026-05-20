@@ -36,6 +36,8 @@
   "loadingResult": "Loading result...",
   "loadingProblem": "Loading problem...",
   "copied": "Copied to clipboard!",
+  "waitingForCFResult": "Waiting for Codeforces result...",
+  "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result.",
   "unsavedChanges_one": "{{count}} unsaved change",
   "unsavedChanges_other": "{{count}} unsaved changes"
 }
