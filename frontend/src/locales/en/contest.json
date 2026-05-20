@@ -10,6 +10,7 @@
   "problemsCount": "Problems",
   "ratingRange": "Rating Range",
   "minElo": "Min Elo",
+  "noMinElo": "No minimum",
   "starting": "Starting...",
   "activeContestBtn": "Active Contest Running",
   "eloRequired": "Elo Required",

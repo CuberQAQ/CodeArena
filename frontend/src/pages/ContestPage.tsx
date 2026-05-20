@@ -130,14 +130,14 @@ export default function ContestPage() {
             return (
               <div
                 key={tier.tier}
-                className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/30"
+                className="flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/30"
               >
                 <div className="flex items-center gap-3">
                   <div className={`flex size-12 items-center justify-center rounded-xl ${bg}`}>
                     <Icon className={`size-6 ${color}`} />
                   </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-foreground">{tier.name}</h3>
+                  <div className="min-w-0">
+                    <h3 className="whitespace-nowrap text-lg font-bold text-foreground">{tier.name}</h3>
                     <p className="text-xs text-muted-foreground capitalize">{tier.tier}</p>
                   </div>
                 </div>
@@ -157,16 +157,16 @@ export default function ContestPage() {
                       {tier.rating_range[0]} - {tier.rating_range[1]}
                     </span>
                   </div>
-                  {tier.min_elo != null && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("minElo")}</span>
-                      <span className="text-foreground">{tier.min_elo}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{t("minElo")}</span>
+                    <span className="text-foreground">
+                      {tier.min_elo != null ? tier.min_elo : t("noMinElo")}
+                    </span>
+                  </div>
                 </div>
 
                 <Button
-                  className="mt-4 w-full"
+                  className="mt-auto w-full"
                   onClick={() => handleStart(tier.tier)}
                   disabled={isStarting || !tier.eligible || hasActiveContest}
                 >

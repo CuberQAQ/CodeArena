@@ -10,6 +10,7 @@
   "problemsCount": "题目数",
   "ratingRange": "分数范围",
   "minElo": "最低 Elo",
+  "noMinElo": "无限制",
   "starting": "开始中...",
   "activeContestBtn": "比赛进行中",
   "eloRequired": "Elo 不足",
