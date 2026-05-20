@@ -542,3 +542,55 @@ export interface ContestEndedMessage {
   type: "contest_ended";
   leaderboard: LeaderboardResponse;
 }
+
+// ---------------------------------------------------------------------------
+// Free Play
+// ---------------------------------------------------------------------------
+
+export interface FreePlayProblemInfo {
+  contest_id: number;
+  index: string;
+  name: string;
+  rating: number | null;
+  tags: string[];
+  url: string;
+}
+
+export interface FreePlaySearchResponse {
+  problem: FreePlayProblemInfo | null;
+  found: boolean;
+  message: string;
+}
+
+export interface FreePlayRecommendResponse {
+  problem: FreePlayProblemInfo | null;
+  found: boolean;
+  message: string;
+  recommended_tag: string | null;
+}
+
+export interface FreePlayStartResponse {
+  session_id: string;
+  problem: FreePlayProblemInfo;
+  status: string;
+}
+
+export interface FreePlaySubmitResponse {
+  session_id: string;
+  solved: boolean;
+  status: string;
+  elo_change: number | null;
+  pp_change: number | null;
+  s_value: number | null;
+  tokens_earned: number;
+  overkill_multiplier: number;
+  achievements: AchievementEvent[];
+}
+
+export interface FreePlayQuitResponse {
+  session_id: string;
+  status: string;
+  elo_change: number | null;
+  new_elo: number | null;
+  penalty: number | null;
+}

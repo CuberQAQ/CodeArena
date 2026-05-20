@@ -9,6 +9,7 @@ import {
   Menu,
   X,
   Home,
+  Compass,
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,6 +25,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 const navItems = [
   { to: "/dashboard", labelKey: "nav:dashboard", icon: Home },
   { to: "/challenge", labelKey: "nav:challenge", icon: Swords },
+  { to: "/free-play", labelKey: "nav:freePlay", icon: Compass },
   { to: "/training", labelKey: "nav:training", icon: Dumbbell },
   { to: "/contest", labelKey: "nav:contest", icon: Trophy },
   { to: "/leaderboard", labelKey: "nav:leaderboard", icon: BarChart3 },

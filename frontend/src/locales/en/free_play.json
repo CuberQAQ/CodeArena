@@ -1,0 +1,51 @@
+{
+  "title": "Free Play",
+  "description": "Choose any Codeforces problem to practice. Filter by rating range and tags, or get an adaptive recommendation based on your M-Elo.",
+  "tabs": {
+    "manual": "Manual Filter",
+    "recommend": "Adaptive Recommend"
+  },
+  "ratingRange": "Rating Range",
+  "minRating": "Min Rating",
+  "maxRating": "Max Rating",
+  "tags": "Tags",
+  "moreTags": "More Tags",
+  "moreTagsTitle": "Select Tags",
+  "searchTagsPlaceholder": "Search tags...",
+  "searchProblems": "Search Problems",
+  "searching": "Searching...",
+  "recommendProblem": "Recommend a Problem",
+  "recommending": "Recommending...",
+  "recommendReason": "Based on your {{tag}} M-Elo {{elo}}",
+  "noProblemFound": "No problem found. Try adjusting your filters.",
+  "problemInfo": "Problem Info",
+  "startProblem": "Start Problem",
+  "starting": "Starting...",
+  "session": {
+    "title": "Free Play Session",
+    "timer": "Timer",
+    "autoTracking": "Auto Tracking",
+    "autoTrackingDesc": "Submit your solution on Codeforces. We will automatically detect your result.",
+    "quit": "Give Up",
+    "quitting": "Quitting...",
+    "completed": "Session Complete",
+    "abandoned": "Session Abandoned",
+    "notSolved": "Not Solved"
+  },
+  "result": {
+    "eloChange": "Elo Change",
+    "ppChange": "PP Change",
+    "tokensEarned": "Tokens Earned",
+    "overkillBonus": "Overkill Bonus!",
+    "overkillDesc": "You conquered a problem above your level! Token multiplier: x{{multiplier}}",
+    "newSession": "New Free Play",
+    "backToDashboard": "Back to Dashboard"
+  },
+  "error": {
+    "searchFailed": "Failed to search problems",
+    "recommendFailed": "Failed to get recommendation",
+    "startFailed": "Failed to start session",
+    "submitFailed": "Failed to submit result",
+    "quitFailed": "Failed to quit session"
+  }
+}

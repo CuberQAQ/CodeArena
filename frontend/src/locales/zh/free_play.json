@@ -1,0 +1,51 @@
+{
+  "title": "自由选题",
+  "description": "选择任意 Codeforces 题目进行练习。按 Rating 范围和标签筛选，或根据你的 M-Elo 获取自适应推荐。",
+  "tabs": {
+    "manual": "手动筛选",
+    "recommend": "自适应推荐"
+  },
+  "ratingRange": "Rating 范围",
+  "minRating": "最低 Rating",
+  "maxRating": "最高 Rating",
+  "tags": "标签",
+  "moreTags": "更多标签",
+  "moreTagsTitle": "选择标签",
+  "searchTagsPlaceholder": "搜索标签...",
+  "searchProblems": "搜索题目",
+  "searching": "搜索中...",
+  "recommendProblem": "推荐一道题",
+  "recommending": "推荐中...",
+  "recommendReason": "基于你的 {{tag}} M-Elo {{elo}} 推荐",
+  "noProblemFound": "未找到题目，请调整筛选条件。",
+  "problemInfo": "题目信息",
+  "startProblem": "开始做题",
+  "starting": "开始中...",
+  "session": {
+    "title": "自由做题",
+    "timer": "计时器",
+    "autoTracking": "自动追踪",
+    "autoTrackingDesc": "在 Codeforces 上提交你的解答，我们会自动检测你的结果。",
+    "quit": "放弃",
+    "quitting": "放弃中...",
+    "completed": "做题完成",
+    "abandoned": "已放弃",
+    "notSolved": "未解决"
+  },
+  "result": {
+    "eloChange": "Elo 变化",
+    "ppChange": "PP 变化",
+    "tokensEarned": "获得代币",
+    "overkillBonus": "越级奖励！",
+    "overkillDesc": "你征服了一道高于你水平的题目！代币倍率：x{{multiplier}}",
+    "newSession": "新的自由选题",
+    "backToDashboard": "返回仪表盘"
+  },
+  "error": {
+    "searchFailed": "搜索题目失败",
+    "recommendFailed": "获取推荐失败",
+    "startFailed": "开始做题失败",
+    "submitFailed": "提交结果失败",
+    "quitFailed": "放弃做题失败"
+  }
+}

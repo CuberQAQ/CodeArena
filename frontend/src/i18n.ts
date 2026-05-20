@@ -14,6 +14,7 @@ import enProfile from "./locales/en/profile.json";
 import enLeaderboard from "./locales/en/leaderboard.json";
 import enAdmin from "./locales/en/admin.json";
 import enRating from "./locales/en/rating.json";
+import enFreePlay from "./locales/en/free_play.json";
 
 // Chinese
 import zhCommon from "./locales/zh/common.json";
@@ -27,6 +28,7 @@ import zhProfile from "./locales/zh/profile.json";
 import zhLeaderboard from "./locales/zh/leaderboard.json";
 import zhAdmin from "./locales/zh/admin.json";
 import zhRating from "./locales/zh/rating.json";
+import zhFreePlay from "./locales/zh/free_play.json";
 
 const resources = {
   en: {
@@ -41,6 +43,7 @@ const resources = {
     leaderboard: enLeaderboard,
     admin: enAdmin,
     rating: enRating,
+    free_play: enFreePlay,
   },
   zh: {
     common: zhCommon,
@@ -54,6 +57,7 @@ const resources = {
     leaderboard: zhLeaderboard,
     admin: zhAdmin,
     rating: zhRating,
+    free_play: zhFreePlay,
   },
 };
 
@@ -69,6 +73,7 @@ const namespaces = [
   "leaderboard",
   "admin",
   "rating",
+  "free_play",
 ];
 
 i18n
