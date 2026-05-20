@@ -87,6 +87,8 @@ class ChallengeDetail(BaseModel):
     status: str = "active"
     result: str | None = None
     elo_change: int | None = None
+    opponent_elo_change: int | None = None
+    opponent_tokens_earned: int | None = None
     created_at: datetime | None = None
     completed_at: datetime | None = None
 

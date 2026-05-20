@@ -75,6 +75,9 @@ class _TestChallengeSession(_TestBase):
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     result: Mapped[str | None] = mapped_column(String(20), nullable=True)
     elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    opponent_elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    opponent_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    problem_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     hints_used_challenger: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     hints_used_opponent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1140,3 +1143,200 @@ class TestPendingState:
             assert result is not None
             assert uid_a in result["confirmed"]
             assert uid_b not in result["confirmed"]
+
+
+# ---------------------------------------------------------------------------
+# 13. Problem name persistence
+# ---------------------------------------------------------------------------
+
+
+class TestProblemNamePersistence:
+    async def test_problem_name_saved_on_start(self, db):
+        """When both confirm start and a problem is selected, problem_name is saved to session."""
+        user_a = _make_test_user(db, username="user_a", elo=1200)
+        user_b = _make_test_user(db, username="user_b", elo=1200)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, status="pending")
+        db.add(session)
+        await db.flush()
+
+        # Set up pending state with A already confirmed
+        await _set_pending(session.id, {
+            "player_a_id": user_a.id,
+            "player_b_id": user_b.id,
+            "avg_elo": 1200.0,
+            "confirmed": {user_a.id},
+        })
+
+        cf_mock = AsyncMock()
+        cf_mock.get_problemset_problems.return_value = {
+            "problems": [
+                {
+                    "contestId": 1234,
+                    "index": "B",
+                    "name": "Interesting Problem Name",
+                    "rating": 1200,
+                    "tags": ["dp"],
+                },
+            ],
+        }
+
+        # B confirms -> both confirmed -> problem selected
+        result = await ChallengeService.start_challenge(db, user_b, session.id, cf_mock)
+        assert result.status == "problem_revealed"
+        assert result.problem.name == "Interesting Problem Name"
+
+        # Verify problem_name persisted to DB
+        await db.refresh(session)
+        assert session.problem_name == "Interesting Problem Name"
+
+        await _remove_pending(session.id)
+
+    async def test_problem_name_in_detail(self, db):
+        """get_challenge_detail returns the persisted problem_name."""
+        user_a = _make_test_user(db, username="user_a")
+        user_b = _make_test_user(db, username="user_b")
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id)
+        session.problem_name = "Persisted Problem Name"
+        db.add(session)
+        await db.flush()
+
+        detail = await ChallengeService.get_challenge_detail(db, user_a, session.id)
+        assert detail.problem is not None
+        assert detail.problem.name == "Persisted Problem Name"
+
+    async def test_problem_name_fallback_to_problem_id(self, db):
+        """When problem_name is null, _build_problem_info falls back to problem_id."""
+        user_a = _make_test_user(db, username="user_a")
+        user_b = _make_test_user(db, username="user_b")
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_id="1234C")
+        # problem_name is None (default)
+        db.add(session)
+        await db.flush()
+
+        detail = await ChallengeService.get_challenge_detail(db, user_a, session.id)
+        assert detail.problem is not None
+        assert detail.problem.name == "1234C"  # Falls back to problem_id
+
+    def test_build_problem_info_with_name(self):
+        """_build_problem_info uses provided problem_name."""
+        info = _build_problem_info("1234A", 1200, problem_name="Theatre Square")
+        assert info.name == "Theatre Square"
+        assert info.contest_id == 1234
+        assert info.index == "A"
+
+    def test_build_problem_info_without_name(self):
+        """_build_problem_info falls back to problem_id when name is None."""
+        info = _build_problem_info("1234A", 1200)
+        assert info.name == "1234A"
+
+
+# ---------------------------------------------------------------------------
+# 14. Settlement stores opponent fields
+# ---------------------------------------------------------------------------
+
+
+class TestSettlementOpponentFields:
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_stores_opponent_elo_change(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        """_settle_challenge saves opponent_elo_change to the session."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1300, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1200)
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1270, 30, -30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        result = await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+        assert result.settled is True
+
+        await db.refresh(session)
+        assert session.elo_change == 30
+        assert session.opponent_elo_change == -30
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_stores_opponent_tokens_earned(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        """_settle_challenge saves opponent_tokens_earned to the session."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1200)
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.submit_result(db, user_a, session.id, False, 120.0, 3)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1170, 1230, -30, 30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        # Opponent wins -> gets tokens
+        result = await ChallengeService.submit_result(db, user_b, session.id, True, 60.0, 1)
+        assert result.settled is True
+        assert result.result == "opponent_win"
+
+        await db.refresh(session)
+        # Rating 1200 -> green tier -> 20 tokens for winner
+        assert session.opponent_tokens_earned == 20
+        # Challenger got 0 tokens (lost)
+        assert session.elo_change == -30
+
+    @patch.object(challenge_svc_module, "ConfigService")
+    @patch.object(challenge_svc_module, "PPService")
+    @patch.object(challenge_svc_module, "EloService")
+    async def test_settlement_detail_includes_opponent_fields(self, mock_elo_cls, mock_pp_cls, mock_config_cls, db):
+        """get_challenge_detail returns opponent_elo_change and opponent_tokens_earned."""
+        _setup_config_mocks(mock_config_cls)
+        _setup_elo_mocks(mock_elo_cls)
+        _setup_pp_mocks(mock_pp_cls)
+
+        user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
+        user_b = _make_test_user(db, username="user_b", elo=1200, tokens=0)
+        db.add_all([user_a, user_b])
+        await db.flush()
+
+        session = _make_test_session(user_a.id, user_b.id, problem_rating=1400)
+        db.add(session)
+        await db.flush()
+
+        await ChallengeService.submit_result(db, user_a, session.id, True, 60.0, 1)
+
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
+        mock_pp_cls.record_pp = AsyncMock()
+
+        await ChallengeService.submit_result(db, user_b, session.id, False, 120.0, 3)
+
+        # Now fetch the detail
+        detail = await ChallengeService.get_challenge_detail(db, user_a, session.id)
+        assert detail.opponent_elo_change == -30
+        # Opponent lost but made 3 submissions -> gets attempt tokens
+        # Rating 1400 -> cyan tier -> attempt_tokens = 4
+        assert detail.opponent_tokens_earned == 4

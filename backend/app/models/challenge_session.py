@@ -32,6 +32,9 @@ class ChallengeSession(Base, UUIDPrimaryKeyMixin):
     status: Mapped[str] = mapped_column(String(20), server_default="active", nullable=False)
     result: Mapped[str | None] = mapped_column(String(20), nullable=True)
     elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    opponent_elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    opponent_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    problem_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     hints_used_challenger: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     hints_used_opponent: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(

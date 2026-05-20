@@ -357,7 +357,7 @@ class ChallengeService:
 
         # If session already active (problem already selected), return problem
         if session.status == "active" and session.problem_id:
-            problem = _build_problem_info(session.problem_id, session.problem_rating)
+            problem = _build_problem_info(session.problem_id, session.problem_rating, session.problem_name)
             return StartChallengeResponse(
                 session_id=session.id,
                 problem=problem,
@@ -400,13 +400,14 @@ class ChallengeService:
         # Update session
         session.problem_id = problem["id"]
         session.problem_rating = problem.get("rating", 0)
+        session.problem_name = problem.get("name", "")
         session.status = "active"
         await db.flush()
 
         # Clean up pending state
         await _remove_pending(session_id)
 
-        problem_info = _build_problem_info(session.problem_id, session.problem_rating)
+        problem_info = _build_problem_info(session.problem_id, session.problem_rating, session.problem_name)
         return StartChallengeResponse(
             session_id=session.id,
             problem=problem_info,
@@ -493,7 +494,7 @@ class ChallengeService:
 
         problem_info = None
         if session.problem_id:
-            problem_info = _build_problem_info(session.problem_id, session.problem_rating)
+            problem_info = _build_problem_info(session.problem_id, session.problem_rating, session.problem_name)
 
         return ChallengeDetail(
             id=session.id,
@@ -511,6 +512,8 @@ class ChallengeService:
             status=session.status,
             result=session.result,
             elo_change=session.elo_change,
+            opponent_elo_change=session.opponent_elo_change,
+            opponent_tokens_earned=session.opponent_tokens_earned,
             created_at=session.created_at,
             completed_at=session.completed_at,
         )
@@ -691,11 +694,17 @@ async def _select_problem(
     }
 
 
-def _build_problem_info(problem_id: str, problem_rating: int) -> ProblemInfo:
-    """Build a ProblemInfo from stored problem_id and rating.
+def _build_problem_info(
+    problem_id: str,
+    problem_rating: int,
+    problem_name: str | None = None,
+) -> ProblemInfo:
+    """Build a ProblemInfo from stored problem_id, rating, and optional name.
 
     The problem_id is stored as "contestIdindex" (e.g., "1234A").
     We parse it back to extract contest_id and index.
+    If problem_name is provided, it is used as the display name;
+    otherwise the raw problem_id is used as fallback.
     """
     # Try to split numeric prefix from alpha suffix
     contest_id = 0
@@ -715,7 +724,7 @@ def _build_problem_info(problem_id: str, problem_rating: int) -> ProblemInfo:
     return ProblemInfo(
         contest_id=contest_id,
         index=index,
-        name=problem_id,
+        name=problem_name or problem_id,
         rating=problem_rating,
         url=url,
     )
@@ -929,6 +938,8 @@ async def _settle_challenge(
     session.status = "completed"
     session.result = result
     session.elo_change = challenger_elo_change
+    session.opponent_elo_change = _opponent_elo_change
+    session.opponent_tokens_earned = tokens_opponent
     session.completed_at = datetime.now(UTC)
     await db.flush()
 
