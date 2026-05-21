@@ -294,7 +294,7 @@ export default function ChallengePage() {
         );
         setChallenge(detailRes.data.data);
         setEloTriggerKey((k) => k + 1);
-        if (data.elo_change != null && data.elo_change > 0) {
+        if (data.elo_change != null && data.elo_change > 0 && data.result === "win") {
           setShowCelebration(true);
         }
         if (data.achievements && data.achievements.length > 0) {
