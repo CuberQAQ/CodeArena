@@ -892,3 +892,30 @@
 - [ ] **比赛使用提示**: AC 后 Elo 变化不受提示使用影响
 - [ ] **其他模式不变**: PvE/PvP/Training/FreePlay 仍然应用 hint_attenuation
 - [ ] **time_factor 仍生效**: 比赛模式 time_factor 继续生效
+
+---
+
+## 阶段 35: 站内题面展示系统 (FR-14)
+
+### Task 35.1: 题面数据模型 + Migration (FR-14.1, 14.4)
+**状态**: 🟢 已完成
+**优先级**: P0
+新建 `problem_statements` 数据库表，problem_id UNIQUE 约束 + contest_id/index 联合索引。
+
+### Task 35.2: 题面爬取服务 + API (FR-14.2, 14.3, 14.5)
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: Task 35.1
+Playwright 爬取服务 + 按需缓存 API（GET /problem/{problem_id}/statement），爬取失败 503 + fallback_url 降级。
+
+### Task 35.3: 前端题面展示组件 (FR-14.5, 14.6, 14.7)
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: Task 35.2
+ProblemStatementViewer 组件：KaTeX 渲染 LaTeX、样例复制、加载/错误状态、盲盒模式兼容。ProblemViewer 重写为精简封装。
+
+### Task 35.4: 全模式接入题面展示 (FR-14.8)
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: Task 35.3
+5 个模式全部接入。PvP 替换 window.open 为 ProblemViewer。PvE 重构盲盒 UI 为 ProblemViewer blindBox 状态控制。训练/比赛/自由练习确认兼容。
