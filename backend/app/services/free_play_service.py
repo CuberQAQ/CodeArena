@@ -531,17 +531,61 @@ class FreePlayService:
         user: User,
         session_id: uuid.UUID,
     ) -> FreePlayQuitResponse:
-        """Quit an active Free Play session.
+        """Quit an active Free Play session with graduated penalty (FR-4.6).
 
-        Since free play has no opponent, the quit penalty is simpler:
-        the session is abandoned with no Elo change.
+        Penalty rules (applies to all modes):
+          - 0 submissions: no Elo change
+          - 1-2 submissions: Elo drops 5-10 (random)
+          - 3+ submissions: normal failure (S=0, full Elo calculation)
         """
         session = await FreePlayService._get_session_or_raise(
             db, session_id, user.id, required_status="active",
         )
 
-        # No Elo penalty for quitting free play (no opponent affected)
-        elo_change = 0
+        # Determine submission count from tracking record
+        tracking = await SubmissionTracker.get_tracking_for_session(
+            db, user.id, "free_play", session_id,
+        )
+        # If tracking was matched/settled, user submitted at least once.
+        # Use error_count as proxy for non-AC attempts; +1 if tracking was matched.
+        if tracking and tracking.status in ("matched", "settled"):
+            submissions = max(1, session.error_count + 1)
+        else:
+            submissions = 0
+
+        current_elo = user.elo
+
+        if submissions == 0:
+            elo_change = 0
+            new_elo = current_elo
+        elif submissions <= 2:
+            elo_change = random.randint(-10, -5)
+            new_elo = current_elo + elo_change
+        else:
+            elo_config = await ConfigService.get_config(db, "elo")
+            k_factor_config = {
+                "k_newbie": elo_config.get("k_newbie", 40),
+                "k_veteran": elo_config.get("k_veteran", 20),
+                "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
+                "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
+            }
+            user_sub_count = await EloService.get_submission_count(db, user.id)
+            k_factor = EloService.calculate_k_factor(user_sub_count, k_factor_config)
+
+            expected_score = EloService.calculate_expected_score(current_elo, session.problem_rating)
+            s_value = 0.0
+            new_elo = round(current_elo + k_factor * (s_value - expected_score))
+            elo_change = new_elo - current_elo
+
+        penalty = abs(elo_change)
+
+        # Record Elo history
+        await EloService.record_elo_history(
+            db, user.id, current_elo, new_elo, EloReason.QUIT_PENALTY, session.id,
+        )
+
+        # Update user Elo
+        user.elo = new_elo
 
         session.status = "quit"
         session.elo_change = elo_change
@@ -549,16 +593,16 @@ class FreePlayService:
         await db.flush()
 
         logger.info(
-            "Free play quit: session=%s elo_change=%d",
-            session.id, elo_change,
+            "Free play quit: session=%s submissions=%d elo_change=%d",
+            session.id, submissions, elo_change,
         )
 
         return FreePlayQuitResponse(
             session_id=session.id,
             status="quit",
             elo_change=elo_change,
-            new_elo=user.elo,
-            penalty=0,
+            new_elo=new_elo,
+            penalty=penalty,
         )
 
     # ------------------------------------------------------------------

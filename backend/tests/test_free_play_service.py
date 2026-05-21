@@ -636,8 +636,8 @@ class TestQuitSession:
     """Tests for FreePlayService.quit_session."""
 
     @pytest.mark.asyncio
-    async def test_quit_session_success(self):
-        """Quitting a session sets status to quit with no Elo change."""
+    async def test_quit_session_no_submissions(self):
+        """Quitting with 0 submissions: no Elo change (FR-4.6)."""
         db = AsyncMock(spec=AsyncSession)
         user = _make_user(elo=1200)
         session_id = uuid.uuid4()
@@ -651,10 +651,15 @@ class TestQuitSession:
             problem_rating=1500,
             problem_tags=["dp"],
             status="active",
+            error_count=0,
         )
         session.id = session_id
 
-        with patch.object(FreePlayService, "_get_session_or_raise", return_value=session):
+        with (
+            patch.object(FreePlayService, "_get_session_or_raise", return_value=session),
+            patch("app.services.free_play_service.SubmissionTracker") as mock_tracker,
+        ):
+            mock_tracker.get_tracking_for_session = AsyncMock(return_value=None)
             db.flush = AsyncMock()
 
             result = await FreePlayService.quit_session(
@@ -664,6 +669,44 @@ class TestQuitSession:
         assert result.status == "quit"
         assert result.elo_change == 0
         assert result.penalty == 0
+
+    @pytest.mark.asyncio
+    async def test_quit_session_few_submissions(self):
+        """Quitting with 1-2 submissions: mild Elo penalty -5 to -10 (FR-4.6)."""
+        db = AsyncMock(spec=AsyncSession)
+        user = _make_user(elo=1200)
+        session_id = uuid.uuid4()
+
+        session = FreePlaySession(
+            id=session_id,
+            user_id=user.id,
+            problem_id="1920A",
+            problem_contest_id=1920,
+            problem_index="A",
+            problem_rating=1500,
+            problem_tags=["dp"],
+            status="active",
+            error_count=1,
+        )
+        session.id = session_id
+
+        mock_tracking = AsyncMock()
+        mock_tracking.status = "matched"
+
+        with (
+            patch.object(FreePlayService, "_get_session_or_raise", return_value=session),
+            patch("app.services.free_play_service.SubmissionTracker") as mock_tracker,
+        ):
+            mock_tracker.get_tracking_for_session = AsyncMock(return_value=mock_tracking)
+            db.flush = AsyncMock()
+
+            result = await FreePlayService.quit_session(
+                db=db, user=user, session_id=session_id,
+            )
+
+        assert result.status == "quit"
+        assert -10 <= result.elo_change <= -5
+        assert result.penalty == abs(result.elo_change)
 
     @pytest.mark.asyncio
     async def test_quit_non_active_session_raises(self):
