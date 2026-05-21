@@ -371,8 +371,6 @@ export function ProfileCardExport(props: ProfileCardProps) {
           position: "fixed",
           left: "-9999px",
           top: 0,
-          zIndex: -1,
-          visibility: "hidden",
         }}
       >
         <div ref={cardRef}>
