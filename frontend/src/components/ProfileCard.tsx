@@ -96,6 +96,7 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
     <div
       style={{
         width: 400,
+        height: 533,
         background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
         borderRadius: 16,
         padding: 24,
@@ -103,6 +104,8 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
         fontFamily: "system-ui, -apple-system, sans-serif",
         position: "relative",
         overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       {/* Subtle decorative circle */}
@@ -262,7 +265,7 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
 
       {/* Skill Medal Overview */}
       {skillMedals.length > 0 && (
-        <div style={{ marginBottom: 0 }}>
+        <div style={{ marginBottom: 0, flex: 1, minHeight: 0 }}>
           <div
             style={{
               fontSize: 10,
@@ -342,26 +345,16 @@ export function ProfileCardExport(props: ProfileCardProps) {
     setError(null);
 
     try {
-      const wrapper = cardRef.current.parentElement!;
-      const origStyle = wrapper.style.cssText;
-      wrapper.style.cssText = "position:fixed; left:0; top:0; z-index:9999; opacity:1; visibility:visible;";
-
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
       const dataUrl = await toPng(cardRef.current, {
         pixelRatio: 2,
         cacheBust: true,
       });
-
-      wrapper.style.cssText = origStyle;
 
       const link = document.createElement("a");
       link.download = `code-arena-${props.user.username}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
-      const wrapper = cardRef.current?.parentElement;
-      if (wrapper) wrapper.style.cssText = "position:fixed; left:-9999px; top:0; z-index:-1; visibility:hidden;";
       console.error("Profile card export failed:", err);
       setError(t("exportFailed"));
     } finally {
