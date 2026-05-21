@@ -101,6 +101,7 @@ class ContestResult(BaseModel):
     status: str = "completed"
     elo_change: int | None = None
     performance_rating: int | None = None
+    medal: dict | None = None
     problems: list[ContestProblemInfo] = []
     achievements: list[dict] = []
 

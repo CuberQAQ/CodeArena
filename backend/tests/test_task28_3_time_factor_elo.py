@@ -94,6 +94,7 @@ class _TestEloHistory(_TestBase):
     elo_after: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
     elo_change: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reason: Mapped[str] = mapped_column(String(30), nullable=False)
+    time_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -322,7 +323,7 @@ async def pve_db(async_engine):
     async def _mock_record_pp(db, **kwargs):
         pass
 
-    async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, reference_id=None):
+    async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, reference_id=None, time_factor=None):
         pass
 
     async with session_factory() as session:
@@ -1163,8 +1164,8 @@ class TestContestTimeFactor:
         assert elo_slow < elo_no_tf, f"Slow solve ({elo_slow}) should give less Elo than no TF ({elo_no_tf})"
 
     @pytest.mark.asyncio
-    async def test_no_hint_attenuation_when_time_factor_applied(self, contest_db):
-        """Contest - Both hint attenuation and time factor apply to positive gains."""
+    async def test_hint_does_not_attenuate_when_time_factor_applied(self, contest_db):
+        """Contest - Hints do NOT attenuate Elo; only time factor applies (per requirements 3.6.4)."""
         db = contest_db
         user = _make_test_user(elo=1200)
         db.add(user)
@@ -1186,14 +1187,14 @@ class TestContestTimeFactor:
 
         user.elo = 1200
 
-        # Hint level 2 + fast solve (tf=1.5)
+        # Hint level 2 + fast solve (tf=1.5) -- hints should NOT attenuate in contest
         hint_map = {"1000A": 2, "1000B": 2, "1000C": 2}
 
         async def _hint_by_problem(db, user_id, problem_id):
             return hint_map.get(problem_id, 0)
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", _hint_by_problem):
-            elo_stacked, _ = await contest_svc_module.ContestService._settle_with_pr(
+            elo_with_hint_and_tf, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1201,9 +1202,13 @@ class TestContestTimeFactor:
                 cf_service=AsyncMock(),
             )
 
-        # baseline * 0.50 (hint) * 1.5 (time factor)
-        expected = round(round(elo_baseline * 0.50) * 1.5)
-        assert elo_stacked == expected, f"Stacked: {elo_stacked} vs expected {expected} (baseline={elo_baseline})"
+        # Only time factor applies (no hint attenuation in contest)
+        # baseline * 1.5 (time factor only)
+        expected = round(elo_baseline * 1.5)
+        assert elo_with_hint_and_tf == expected, (
+            f"Should be baseline*1.5 (no hint attenuation): "
+            f"{elo_with_hint_and_tf} vs {expected} (baseline={elo_baseline})"
+        )
 
     @pytest.mark.asyncio
     async def test_negative_pr_not_affected(self, contest_db):

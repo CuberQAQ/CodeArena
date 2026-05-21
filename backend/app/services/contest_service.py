@@ -599,6 +599,7 @@ class ContestService:
                 elo_change=elo_change,
                 reason="quit_early",
                 reference_id=contest_id,
+                time_factor=1.0,
             )
             db.add(history)
         else:
@@ -649,6 +650,11 @@ class ContestService:
             # Achievement detection is best-effort and must not break settlement.
             logger.debug("Achievement detection skipped: leaderboard unavailable for contest %s", contest_id)
 
+        # Calculate medal info from PR
+        medal = MedalService._rating_to_medal(pr) if pr is not None else None
+        if medal and medal.get("level") == "unranked":
+            medal = None
+
         return ContestResult(
             id=session.id,
             tier=session.contest_tier,
@@ -661,6 +667,7 @@ class ContestService:
             status="completed",
             elo_change=session.elo_change,
             performance_rating=pr,
+            medal=medal,
             problems=problem_infos,
             achievements=achievements,
         )
@@ -721,6 +728,11 @@ class ContestService:
                 player_solved=session.problems_solved,
             )
 
+        # Calculate medal info from PR
+        medal = MedalService._rating_to_medal(pr) if pr is not None else None
+        if medal and medal.get("level") == "unranked":
+            medal = None
+
         return ContestResult(
             id=session.id,
             tier=session.contest_tier,
@@ -733,6 +745,7 @@ class ContestService:
             status=session.status,
             elo_change=session.elo_change,
             performance_rating=pr,
+            medal=medal,
             problems=problem_infos,
             achievements=[],  # Achievements are only generated at end_contest time
         )
@@ -825,6 +838,7 @@ class ContestService:
                 elo_change=elo_change,
                 reason="quit_early",
                 reference_id=session.id,
+                time_factor=1.0,
             )
             db.add(history)
         else:
@@ -1100,21 +1114,12 @@ class ContestService:
         elo_before = user.elo
         elo_change = round(k * (pr - elo_before) / 400)
 
-        # Apply hint attenuation to positive gains (FR-5.3)
-        # Check max hint level across all problems attempted in this contest
-        if elo_change > 0:
-            stored_problems = session.problems or []
-            max_hint = 0
-            for p in stored_problems:
-                pid = p.get("problem_id", "")
-                if pid:
-                    level = await HintService.get_max_hint_level(db, user.id, pid)
-                    max_hint = max(max_hint, level)
-            if max_hint > 0:
-                elo_change = round(EloService.apply_hint_attenuation(float(elo_change), max_hint))
+        # Note: Contest PR settlement does NOT apply hint_attenuation (per requirements 3.6.4).
+        # Hint attenuation is only applied per-problem in submit_problem, not to the overall PR settlement.
 
         # Apply time factor to positive gains (FR-16.4)
         # Compute average time factor across all solved problems
+        avg_time_factor: float | None = None
         if elo_change > 0 and cf_service is not None:
             stored_problems = session.problems or []
             time_factors: list[float] = []
@@ -1153,6 +1158,7 @@ class ContestService:
         user.elo = elo_before + elo_change
 
         # Record Elo history with reason "contest_pr"
+        final_time_factor = avg_time_factor
         history = EloHistory(
             user_id=user.id,
             elo_before=elo_before,
@@ -1160,6 +1166,7 @@ class ContestService:
             elo_change=elo_change,
             reason="contest_pr",
             reference_id=contest_id,
+            time_factor=final_time_factor,
         )
         db.add(history)
 

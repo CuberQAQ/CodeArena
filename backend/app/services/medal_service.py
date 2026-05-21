@@ -21,24 +21,19 @@ from app.models.user_tag_elo import UserTagElo
 logger = logging.getLogger("code_arena.medal")
 
 # ---------------------------------------------------------------------------
-# Medal tier thresholds (FR-10.1)
+# Medal tier thresholds (FR-10.1, D-31)
 # Flat, non-overlapping medal mapping (threshold, level, medal_type).
 # Iterated from highest threshold to lowest; the first match wins.
-# NOTE: ec_final tier has overlapping thresholds with world_finals and regional
-# (MEDAL_TIERS defines ec_final gold=2600/silver=2400/bronze=2200, but these
-# overlap with world_finals silver=2600/bronze=2400 and regional gold=2200).
-# The flat map currently uses world_finals and regional mappings for the
-# overlapping ranges. ec_full is only used for display/config purposes.
-# See human_todo.md for the design decision needed on threshold overlap.
+# Resolution rule (D-31 "highest gold priority"): for overlapping thresholds,
+# prefer the highest-level event where a GOLD medal can be earned.
+# Result: 2800+→WF Gold, 2600-2799→EC Gold, 2200-2599→Regional Gold,
+# 1600-2199→Provincial Gold, 1400-1599→Provincial Silver, 1200-1399→Provincial Bronze.
 # ---------------------------------------------------------------------------
 
 _FLAT_MEDAL_MAP: list[tuple[int, str, str]] = [
     (2800, "world_finals", "gold"),
-    (2600, "world_finals", "silver"),
-    (2400, "world_finals", "bronze"),
+    (2600, "ec_final", "gold"),
     (2200, "regional", "gold"),
-    (2000, "regional", "silver"),
-    (1800, "regional", "bronze"),
     (1600, "provincial", "gold"),
     (1400, "provincial", "silver"),
     (1200, "provincial", "bronze"),

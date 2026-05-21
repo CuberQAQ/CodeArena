@@ -1444,6 +1444,7 @@ class TrainingService:
                 elo_change=global_elo_change,
                 reason="training",
                 reference_id=session_id,
+                time_factor=time_factor,
             )
             db.add(history)
 

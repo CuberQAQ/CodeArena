@@ -294,6 +294,7 @@ export interface ContestResult {
   status: string;
   elo_change: number | null;
   performance_rating: number | null;
+  medal: MedalInfo | null;
   problems: ContestProblemInfo[];
   achievements: AchievementEvent[];
 }

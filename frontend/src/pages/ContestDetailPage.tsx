@@ -21,6 +21,7 @@ import { ProblemViewer } from "@/components/ProblemViewer";
 import { SolvingTimeline } from "@/components/SolvingTimeline";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import { Avatar } from "@/components/Avatar";
+import { MedalBadge } from "@/components/medal/MedalBadge";
 import api from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { useContestLiveStore } from "@/stores/contestStore";
@@ -707,6 +708,16 @@ export default function ContestDetailPage() {
               <p className="mt-2 text-xs text-muted-foreground">
                 {t("performanceRatingDesc")}
               </p>
+              {/* Medal badge derived from PR */}
+              {result?.medal && result.medal.level !== "unranked" && (
+                <div className="mt-3 flex items-center justify-center">
+                  <MedalBadge
+                    level={result.medal.level}
+                    type={result.medal.type}
+                    size="lg"
+                  />
+                </div>
+              )}
             </div>
           )}
 

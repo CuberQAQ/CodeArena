@@ -158,18 +158,20 @@ class TestOverallMedal:
         result = MedalService.calculate_overall_medal(2800)
         assert result == {"level": "world_finals", "type": "gold"}
 
-    def test_world_finals_silver(self):
+    def test_ec_final_gold_2700(self):
+        """D-31: 2700 >= 2600 → EC Final Gold."""
         result = MedalService.calculate_overall_medal(2700)
-        assert result == {"level": "world_finals", "type": "silver"}
+        assert result == {"level": "ec_final", "type": "gold"}
 
-    def test_world_finals_bronze(self):
+    def test_regional_gold_2500(self):
+        """D-31: 2500 >= 2200 → Regional Gold."""
         result = MedalService.calculate_overall_medal(2500)
-        assert result == {"level": "world_finals", "type": "bronze"}
+        assert result == {"level": "regional", "type": "gold"}
 
-    def test_world_finals_silver_2650(self):
-        # 2650 >= 2600 (WF silver threshold)
+    def test_ec_final_gold_2650(self):
+        """D-31: 2650 >= 2600 → EC Final Gold."""
         result = MedalService.calculate_overall_medal(2650)
-        assert result == {"level": "world_finals", "type": "silver"}
+        assert result == {"level": "ec_final", "type": "gold"}
 
     def test_regional_gold_2350(self):
         # 2350: no WF medal (bronze requires 2400), regional gold at 2200
@@ -181,19 +183,20 @@ class TestOverallMedal:
         result = MedalService.calculate_overall_medal(2200)
         assert result == {"level": "regional", "type": "gold"}
 
-    def test_regional_silver_2100(self):
-        """Elo 2100 -> regional silver."""
+    def test_provincial_gold_2100(self):
+        """D-31: 2100 >= 1600 → Provincial Gold."""
         result = MedalService.calculate_overall_medal(2100)
-        assert result == {"level": "regional", "type": "silver"}
+        assert result == {"level": "provincial", "type": "gold"}
 
-    def test_regional_silver(self):
+    def test_provincial_gold_2000(self):
+        """D-31: 2000 >= 1600 → Provincial Gold."""
         result = MedalService.calculate_overall_medal(2000)
-        assert result == {"level": "regional", "type": "silver"}
+        assert result == {"level": "provincial", "type": "gold"}
 
-    def test_regional_bronze(self):
-        """M-Elo(DP)=1800 -> regional bronze."""
+    def test_provincial_gold_1800(self):
+        """D-31: 1800 >= 1600 → Provincial Gold."""
         result = MedalService.calculate_overall_medal(1800)
-        assert result == {"level": "regional", "type": "bronze"}
+        assert result == {"level": "provincial", "type": "gold"}
 
     def test_provincial_gold(self):
         result = MedalService.calculate_overall_medal(1600)
@@ -221,10 +224,10 @@ class TestOverallMedal:
         """Exact boundary values should meet the threshold."""
         # Exactly 2800 -> world_finals gold
         assert MedalService.calculate_overall_medal(2800)["type"] == "gold"
-        # Exactly 2799 -> world_finals silver (still >= 2600)
-        assert MedalService.calculate_overall_medal(2799) == {"level": "world_finals", "type": "silver"}
-        # Exactly 2599 -> world_finals bronze (2400 <= 2599 < 2600)
-        assert MedalService.calculate_overall_medal(2599) == {"level": "world_finals", "type": "bronze"}
+        # Exactly 2799 -> ec_final gold (D-31: 2799 >= 2600)
+        assert MedalService.calculate_overall_medal(2799) == {"level": "ec_final", "type": "gold"}
+        # Exactly 2599 -> regional gold (D-31: 2599 >= 2200)
+        assert MedalService.calculate_overall_medal(2599) == {"level": "regional", "type": "gold"}
         # Exactly 1199 -> unranked
         assert MedalService.calculate_overall_medal(1199) == {"level": "unranked"}
 
@@ -237,10 +240,10 @@ class TestOverallMedal:
 class TestSkillMedal:
     """Test calculate_skill_medal -- same logic as overall but for M-Elo."""
 
-    def test_dp_regional_bronze(self):
-        """M-Elo(DP)=1800 -> regional bronze."""
+    def test_dp_provincial_gold(self):
+        """D-31: M-Elo(DP)=1800 >= 1600 → Provincial Gold."""
         result = MedalService.calculate_skill_medal(1800)
-        assert result == {"level": "regional", "type": "bronze"}
+        assert result == {"level": "provincial", "type": "gold"}
 
     def test_dp_world_finals_gold(self):
         result = MedalService.calculate_skill_medal(2900)
@@ -336,14 +339,16 @@ class TestContestMedalAwarding:
             db=db,
             user_id=user_id,
             contest_session_id=contest2,
-            pr=1800,
+            pr=1400,
         )
 
         assert medal1 is not None
         assert medal2 is not None
-        # PR 2200 -> regional gold, PR 1800 -> regional bronze
+        # D-31: PR 2200 -> regional gold, PR 1400 -> provincial silver
+        assert medal1.medal_level == "regional"
         assert medal1.medal_type == "gold"
-        assert medal2.medal_type == "bronze"
+        assert medal2.medal_level == "provincial"
+        assert medal2.medal_type == "silver"
         assert medal1.contest_session_id != medal2.contest_session_id
 
     @pytest.mark.asyncio
@@ -415,12 +420,12 @@ class TestMedalStats:
                 contest_session_id=uuid.uuid4(),
                 pr=2200,
             )
-        # Award 1 regional silver (PR 2000)
+        # D-31: PR 1400 → provincial silver (no longer regional silver)
         await MedalService.award_contest_medal(
             db=db,
             user_id=user_id,
             contest_session_id=uuid.uuid4(),
-            pr=2000,
+            pr=1400,
         )
         # Award 2 provincial gold (PR 1600)
         for _ in range(2):
@@ -434,9 +439,9 @@ class TestMedalStats:
         stats = await MedalService.get_user_medal_stats(db, user_id)
 
         assert stats["regional"]["gold"] == 3
-        assert stats["regional"]["silver"] == 1
+        assert stats["provincial"]["silver"] == 1
         assert stats["provincial"]["gold"] == 2
-        assert "bronze" not in stats.get("regional", {})
+        assert "silver" not in stats.get("regional", {})
 
     @pytest.mark.asyncio
     async def test_stats_isolated_per_user(self, db):
@@ -493,8 +498,9 @@ class TestAllSkillMedals:
 
         result = await MedalService.get_all_skill_medals(db, user_id)
 
-        assert result["dp"]["level"] == "regional"
-        assert result["dp"]["type"] == "bronze"
+        # D-31: dp=1800 >= 1600 → Provincial Gold
+        assert result["dp"]["level"] == "provincial"
+        assert result["dp"]["type"] == "gold"
         assert result["dp"]["melo"] == 1800
 
         assert result["greedy"]["level"] == "provincial"
@@ -520,9 +526,9 @@ class TestRealTimeMedalUpdate:
         medal = MedalService.calculate_overall_medal(1500)
         assert medal == {"level": "provincial", "type": "silver"}
 
-        # Elo increases to regional silver
+        # D-31: Elo 2100 >= 1600 → Provincial Gold
         medal = MedalService.calculate_overall_medal(2100)
-        assert medal == {"level": "regional", "type": "silver"}
+        assert medal == {"level": "provincial", "type": "gold"}
 
         # Elo drops to unranked
         medal = MedalService.calculate_overall_medal(1100)
@@ -531,11 +537,15 @@ class TestRealTimeMedalUpdate:
     def test_no_caching(self):
         """MedalService.calculate_overall_medal is a pure function, no caching."""
         # Call multiple times with different values -- each returns correctly
+        # D-31: 1100→unranked, 1500→provincial silver, 1800→provincial gold, 2100→provincial gold, 2800→WF gold
         results = [MedalService.calculate_overall_medal(r) for r in [1100, 1500, 1800, 2100, 2800]]
         assert results[0]["level"] == "unranked"
         assert results[1]["level"] == "provincial"
-        assert results[2]["level"] == "regional"
-        assert results[3]["level"] == "regional"
+        assert results[1]["type"] == "silver"
+        assert results[2]["level"] == "provincial"
+        assert results[2]["type"] == "gold"
+        assert results[3]["level"] == "provincial"
+        assert results[3]["type"] == "gold"
         assert results[4]["level"] == "world_finals"
 
 

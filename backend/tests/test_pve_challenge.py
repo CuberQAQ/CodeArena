@@ -103,6 +103,7 @@ class _TestEloHistory(_TestBase):
     elo_after: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
     elo_change: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reason: Mapped[str] = mapped_column(String(30), nullable=False)
+    time_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -168,7 +169,7 @@ async def db(async_engine):
         """No-op PP recording for tests."""
         pass
 
-    async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, reference_id=None):
+    async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, reference_id=None, time_factor=None):
         """No-op Elo history recording for tests."""
         pass
 

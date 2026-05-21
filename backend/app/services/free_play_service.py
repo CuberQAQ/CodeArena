@@ -466,6 +466,7 @@ class FreePlayService:
             new_elo,
             reason,
             session.id,
+            time_factor=time_factor,
         )
 
         # Update user Elo
@@ -617,6 +618,7 @@ class FreePlayService:
             new_elo,
             EloReason.QUIT_PENALTY,
             session.id,
+            time_factor=1.0,
         )
 
         # Update user Elo

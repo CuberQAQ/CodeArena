@@ -118,6 +118,7 @@ class _TestEloHistory(_TestBase):
     elo_after: Mapped[int] = mapped_column(Integer, nullable=False)
     elo_change: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(50), nullable=False)
+    time_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

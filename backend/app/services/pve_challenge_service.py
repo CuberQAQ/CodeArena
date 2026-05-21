@@ -289,6 +289,7 @@ class PvEChallengeService:
             new_elo,
             reason,
             session.id,
+            time_factor=time_factor,
         )
 
         # Update user Elo
@@ -423,7 +424,7 @@ class PvEChallengeService:
             new_elo = round(current_elo + k_factor * (s_value - expected_score))
             elo_change = new_elo - current_elo
 
-        # Record Elo history
+        # Record Elo history (quit: time_factor=1.0 since no solve)
         await EloService.record_elo_history(
             db,
             user.id,
@@ -431,6 +432,7 @@ class PvEChallengeService:
             new_elo,
             EloReason.QUIT_PENALTY,
             session.id,
+            time_factor=1.0,
         )
 
         # Update user Elo

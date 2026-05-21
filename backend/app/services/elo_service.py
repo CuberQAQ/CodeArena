@@ -407,6 +407,7 @@ class EloService:
         elo_after: int,
         reason: EloReason,
         reference_id: uuid.UUID | None = None,
+        time_factor: float | None = None,
     ) -> EloHistory:
         """Persist an Elo change to the ``elo_history`` table.
 
@@ -419,6 +420,7 @@ class EloService:
             elo_change=elo_after - elo_before,
             reason=reason.value,
             reference_id=reference_id,
+            time_factor=time_factor,
         )
         db.add(record)
         await db.flush()

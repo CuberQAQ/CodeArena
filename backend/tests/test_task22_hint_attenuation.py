@@ -92,8 +92,8 @@ class _TestEloHistory(_TestBase):
     elo_after: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
     elo_change: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reason: Mapped[str] = mapped_column(String(30), nullable=False)
+    time_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class _TestTokenTransaction(_TestBase):
@@ -321,7 +321,7 @@ async def pve_db(async_engine):
     async def _mock_record_pp(db, **kwargs):
         pass
 
-    async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, reference_id=None):
+    async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, reference_id=None, time_factor=None):
         pass
 
     async with session_factory() as session:
@@ -1027,20 +1027,24 @@ async def _setup_contest_session(db, user, problems_solved=3, submissions=5):
 
 
 class TestContestHintAttenuation:
-    """Contest mode: verify hint attenuation on PR-based Elo settlement."""
+    """Contest mode: verify that hint attenuation is NOT applied (per requirements 3.6.4).
+
+    Contest PR-based settlement does NOT apply hint attenuation.
+    Hints only affect per-problem submission, not the overall PR Elo settlement.
+    """
 
     @pytest.mark.asyncio
-    async def test_hint_attenuation_positive_pr(self, contest_db):
-        """Contest - Positive PR-based Elo change is attenuated by hints."""
+    async def test_hint_does_not_attenuate_contest_elo(self, contest_db):
+        """Contest - Hints do NOT attenuate Elo in contest mode."""
         db = contest_db
         user = _make_test_user(elo=1200)
         db.add(user)
         contest_session = await _setup_contest_session(db, user)
         await db.flush()
 
-        # Get unattenuated result
         from app.services import hint_service as hint_svc_module
 
+        # Get result without hints
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_no_hint, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
@@ -1051,7 +1055,7 @@ class TestContestHintAttenuation:
 
         user.elo = 1200  # Reset
 
-        # With hint level 2
+        # With hint level 2 -- should produce SAME Elo (no attenuation in contest)
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=2)):
             elo_with_hint, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
@@ -1061,14 +1065,12 @@ class TestContestHintAttenuation:
             )
 
         assert elo_no_hint > 0, "PR=1600 > user.elo=1200 should produce positive change"
-        assert elo_with_hint > 0
-        assert elo_with_hint < elo_no_hint, f"With hint ({elo_with_hint}) should be less than without ({elo_no_hint})"
-        # Level 2 attenuation = 0.50
-        expected_attenuated = round(elo_no_hint * 0.50)
-        assert elo_with_hint == expected_attenuated, f"Level 2 should halve: {elo_with_hint} vs {expected_attenuated}"
+        assert elo_with_hint == elo_no_hint, (
+            f"Contest should NOT attenuate Elo by hints: {elo_with_hint} vs {elo_no_hint}"
+        )
 
     @pytest.mark.asyncio
-    async def test_no_hint_no_attenuation(self, contest_db):
+    async def test_no_hint_unchanged(self, contest_db):
         """Contest - No hints: Elo change is unattenuated."""
         db = contest_db
         user = _make_test_user(elo=1200)
@@ -1121,13 +1123,11 @@ class TestContestHintAttenuation:
             )
 
         assert elo_no_hint < 0, "PR < user Elo should produce negative change"
-        assert elo_with_hint == elo_no_hint, (
-            f"Negative change should not be attenuated: {elo_with_hint} vs {elo_no_hint}"
-        )
+        assert elo_with_hint == elo_no_hint, f"Contest should NOT attenuate Elo: {elo_with_hint} vs {elo_no_hint}"
 
     @pytest.mark.asyncio
-    async def test_all_hint_levels_decrease(self, contest_db):
-        """Contest - All three hint levels produce decreasing Elo changes."""
+    async def test_all_hint_levels_produce_same_elo(self, contest_db):
+        """Contest - All hint levels produce the SAME Elo change (no attenuation in contest)."""
         results_by_level = {}
         from app.services import hint_service as hint_svc_module
 
@@ -1147,40 +1147,10 @@ class TestContestHintAttenuation:
                 )
             results_by_level[level] = elo_change
 
-        assert results_by_level[0] > results_by_level[1] > results_by_level[2] > results_by_level[3], (
-            f"Elo should decrease with hint level: {results_by_level}"
+        # All levels should produce the same Elo (no attenuation)
+        assert results_by_level[0] == results_by_level[1] == results_by_level[2] == results_by_level[3], (
+            f"Elo should be same across all hint levels in contest: {results_by_level}"
         )
-
-    @pytest.mark.asyncio
-    async def test_contest_checks_max_hint_across_problems(self, contest_db):
-        """Contest - Attenuation uses max hint level across all problems."""
-        db = contest_db
-        user = _make_test_user(elo=1200)
-        db.add(user)
-        contest_session = await _setup_contest_session(db, user)
-        await db.flush()
-
-        from app.services import hint_service as hint_svc_module
-
-        # Problem A has hint level 1, Problem B has hint level 3, Problem C has hint level 0
-        hint_map = {"1000A": 1, "1000B": 3, "1000C": 0}
-
-        async def _hint_by_problem(db, user_id, problem_id):
-            return hint_map.get(problem_id, 0)
-
-        with patch.object(hint_svc_module.HintService, "get_max_hint_level", _hint_by_problem):
-            elo_change, _ = await contest_svc_module.ContestService._settle_with_pr(
-                db=db,
-                user=user,
-                session=contest_session,
-                contest_id=contest_session.id,
-            )
-
-        # Max hint is 3 -> attenuation = 0.25
-        # K=40 (newbie), PR=1600, user.elo=1200
-        # raw = round(40 * (1600-1200) / 400) = 40
-        # attenuated = round(40 * 0.25) = 10
-        assert elo_change == round(40 * 0.25), f"Should use max hint level 3 (0.25): {elo_change} vs {round(40 * 0.25)}"
 
     @pytest.mark.asyncio
     async def test_pp_not_affected_in_contest(self, contest_db):
@@ -1204,7 +1174,6 @@ class TestContestHintAttenuation:
                 "record_pp",
                 AsyncMock(side_effect=AssertionError("PP should not be called in _settle_with_pr")),
             ) as _bad_pp,
-            patch.object(contest_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=2)),
         ):
             # This should NOT raise AssertionError because PP is not called
             await contest_svc_module.ContestService._settle_with_pr(
@@ -1242,14 +1211,13 @@ class TestReachability:
         assert "get_max_hint_level" in source
         assert "apply_hint_attenuation" in source
 
-    def test_contest_settle_calls_hint_service(self):
-        """Contest _settle_with_pr imports and calls HintService."""
+    def test_contest_settle_does_not_call_hint_service(self):
+        """Contest _settle_with_pr does NOT use HintService (per requirements 3.6.4)."""
         import inspect
 
         source = inspect.getsource(contest_svc_module.ContestService._settle_with_pr)
-        assert "HintService" in source
-        assert "get_max_hint_level" in source
-        assert "apply_hint_attenuation" in source
+        assert "apply_hint_attenuation" not in source, "Contest should NOT apply hint attenuation"
+        assert "get_max_hint_level" not in source, "Contest should NOT query hint levels"
 
     def test_pve_submit_result_callable_from_api(self):
         """Verify submit_result is reachable from the PvE API router."""
