@@ -705,3 +705,60 @@
 - [ ] **全球前 X%**: CA 用户旁显示百分比
 - [ ] **分页**: 翻页正常
 - [ ] **i18n**: 中英文切换正确
+
+---
+
+## Bug 修复 (2026-05-21)
+
+### Bug Fix 33.1: Avatar 未上传时返回默认头像
+**状态**: 🟢 已完成
+**优先级**: P2
+**依赖**: 无
+
+#### 根因分析
+`Avatar` 组件（`frontend/src/components/Avatar.tsx:31`）对未上传头像的用户**无条件**请求 `/api/v1/auth/avatar/{userId}`，后端找不到文件返回 404。组件通过 `onError` 回退到占位符，UI 不受影响，但每次页面加载都产生不必要的 404 请求。
+
+#### 需要修改的文件
+- `backend/app/api/v1/auth.py` — `get_avatar` endpoint：当头像文件不存在时，动态生成一个 SVG 默认头像（用户名首字母 + 背景色）返回 `image/svg+xml`，而非抛出 404
+- `backend/app/services/avatar_service.py` — 新增 `generate_default_avatar(user_id) -> BytesIO` 方法，根据 user_id 查询用户名，生成首字母 SVG
+
+#### 关键实现细节
+1. **默认头像生成**：在 `avatar_service.py` 中新增 `generate_default_avatar(db, user_id)` 方法。查询 User 表获取 username，取首字母，生成 SVG（圆形背景 + 首字母文字）。背景色根据 user_id 哈希从预设调色板中选择，确保同一用户颜色一致
+2. **endpoint 修改**：`get_avatar` 中，当 `get_avatar_path()` 返回 None 时，不再抛 `NotFoundException`，而是调用 `generate_default_avatar()` 返回 `Response(content=svg_content, media_type="image/svg+xml")`
+3. **前端无需改动**：Avatar 组件的 img 标签直接接收 SVG，降级逻辑保留作为容错
+
+#### 测试要点
+- [ ] **未上传头像**: 请求 `/api/v1/auth/avatar/{user_id}` 返回 200 + SVG
+- [ ] **已上传头像**: 返回实际 JPG 头像（行为不变）
+- [ ] **SVG 内容**: 包含用户名首字母，背景色与 user_id 关联
+- [ ] **控制台无 404**: 页面加载时不再出现 avatar 404 错误
+- [ ] **缓存友好**: 默认 SVG 返回合理的 Cache-Control 头
+
+---
+
+### Bug Fix 33.2: ProblemViewer 移除无效 iframe，改为外跳链接
+**状态**: 🟢 已完成
+**优先级**: P2
+**依赖**: 无
+
+#### 根因分析
+`ProblemViewer` 组件在非盲盒模式下使用 iframe 嵌入 Codeforces 题目页，但 Codeforces 设置了 `X-Frame-Options: SAMEORIGIN` + `CSP frame-ancestors 'self'`，**禁止跨域嵌入**。iframe 始终显示空白，用户体验差。同时本项目的 Nginx CSP 策略也缺少 `frame-src`，导致 CSP 违规错误。
+
+#### 需要修改的文件
+- `frontend/src/components/ProblemViewer.tsx` — 移除 iframe 模式，非盲盒模式改为展示"在新标签页打开题目"卡片（类似盲盒模式但去掉盲盒文案），直接显示题目链接
+- `frontend/src/locales/en/common.json` — 更新 ProblemViewer 相关翻译文案
+- `frontend/src/locales/zh/common.json` — 同上
+
+#### 关键实现细节
+1. **统一为外跳链接模式**：移除 iframe 分支，非盲盒和盲盒模式统一使用"在新标签页打开"的卡片样式。非盲盒模式可额外展示题目链接（contestId/index 信息）
+2. **UI 调整**：使用与盲盒模式类似的卡片布局（居中图标 + 链接），但文案区分：非盲盒显示"在 Codeforces 上查看题目"而非盲盒的"在 Codeforces 上查看未知题目"
+3. **移除 loading 状态**：不再需要 iframe 的 loading spinner
+4. **Nginx CSP 无需修改**：移除 iframe 后不再有 CSP 违规
+
+#### 测试要点
+- [ ] **非盲盒模式**: 显示"在 Codeforces 上查看题目"卡片 + 外跳链接
+- [ ] **盲盒模式**: 行为不变，显示"在新标签页打开题目"
+- [ ] **链接正确**: 点击外跳链接在正确的新标签页打开 CF 题目
+- [ ] **无 CSP 错误**: 浏览器控制台不再有 CSP 违规错误
+- [ ] **无 iframe 相关错误**: 不再有 codeforces iframe 加载错误
+- [ ] **各模式页面**: FreePlay、Training、Contest 的 ProblemViewer 正常工作

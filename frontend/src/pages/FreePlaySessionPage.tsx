@@ -1,7 +1,7 @@
 /** Free Play Session page.
  *
  * Displayed during an active free play session.
- * Layout: main area (ProblemViewer iframe) + side panel (info + timer + auto-tracking + quit).
+ * Layout: main area (ProblemViewer external link) + side panel (info + timer + auto-tracking + quit).
  *
  * Auto-tracking: polls /submission-tracking/status every 5 seconds to detect
  * when the user submits on Codeforces. When a result is detected, it

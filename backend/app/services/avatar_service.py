@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException
+from app.models.user import User
 from app.models.user_settings import UserSettings
 
 logger = logging.getLogger("code_arena")
@@ -118,3 +119,54 @@ def get_avatar_path(user_id: UUID) -> Path | None:
     if avatar_path.is_file():
         return avatar_path
     return None
+
+
+# Default avatar color palette (soft, distinct colors)
+AVATAR_COLORS = [
+    "#4F46E5",
+    "#7C3AED",
+    "#EC4899",
+    "#EF4444",
+    "#F97316",
+    "#EAB308",
+    "#22C55E",
+    "#14B8A6",
+    "#06B6D4",
+    "#3B82F6",
+    "#8B5CF6",
+    "#F43F5E",
+]
+
+
+async def generate_default_avatar(db: AsyncSession, user_id: UUID) -> str:
+    """Generate an SVG default avatar for a user who has not uploaded one.
+
+    The avatar displays the first letter of the username in uppercase,
+    on a colored circle. The color is deterministically chosen from a
+    palette based on the user_id string hash so the same user always
+    gets the same color.
+
+    Args:
+        db: AsyncSession for database access.
+        user_id: The user's UUID.
+
+    Returns:
+        SVG string for the default avatar.
+    """
+    stmt = select(User.username).where(User.id == user_id)
+    result = await db.execute(stmt)
+    username = result.scalar_one_or_none()
+
+    initial = username[0].upper() if username else "?"
+
+    color_index = int(user_id) % len(AVATAR_COLORS)
+    color = AVATAR_COLORS[color_index]
+
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">'
+        f'<rect width="256" height="256" rx="128" fill="{color}"/>'
+        f'<text x="128" y="128" text-anchor="middle" dominant-baseline="central" '
+        f'font-family="system-ui, -apple-system, sans-serif" font-size="120" font-weight="600" fill="white">'
+        f"{initial}</text></svg>"
+    )
+    return svg

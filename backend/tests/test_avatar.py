@@ -45,6 +45,13 @@ class _TestUserSettings(_TestBase):
     updated_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
 
 
+class _TestUser(_TestBase):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    username: Mapped[str] = mapped_column(String(50), nullable=False)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -74,7 +81,10 @@ async def db(async_engine):
     session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
     async with session_factory() as session:
-        with patch.object(avatar_service, "UserSettings", _TestUserSettings):
+        with (
+            patch.object(avatar_service, "UserSettings", _TestUserSettings),
+            patch.object(avatar_service, "User", _TestUser),
+        ):
             yield session
 
 
@@ -394,3 +404,103 @@ class TestGetAvatarPath:
         result = avatar_service.get_avatar_path(str(user_id))
 
         assert result is not None
+
+
+class TestGenerateDefaultAvatar:
+    """Tests for avatar_service.generate_default_avatar."""
+
+    async def test_generates_svg_with_username_initial(self, db):
+        """Should return SVG containing the uppercase first letter of the username."""
+        user_id = uuid.uuid4()
+        user = _TestUser(id=user_id, username="alice")
+        db.add(user)
+        await db.flush()
+
+        svg = await avatar_service.generate_default_avatar(db, user_id)
+
+        assert "A" in svg
+        assert svg.startswith("<svg")
+        assert "</svg>" in svg
+
+    async def test_lowercase_username_gives_uppercase_initial(self, db):
+        """The initial should always be uppercase."""
+        user_id = uuid.uuid4()
+        user = _TestUser(id=user_id, username="bob")
+        db.add(user)
+        await db.flush()
+
+        svg = await avatar_service.generate_default_avatar(db, user_id)
+
+        assert ">B</text>" in svg
+
+    async def test_unknown_user_gives_question_mark(self, db):
+        """If user is not found, initial should be '?'."""
+        user_id = uuid.uuid4()
+
+        svg = await avatar_service.generate_default_avatar(db, user_id)
+
+        assert ">?</text>" in svg
+
+    async def test_consistent_color_for_same_user(self, db):
+        """Same user_id should always produce the same SVG (deterministic color)."""
+        user_id = uuid.uuid4()
+        user = _TestUser(id=user_id, username="charlie")
+        db.add(user)
+        await db.flush()
+
+        svg1 = await avatar_service.generate_default_avatar(db, user_id)
+        svg2 = await avatar_service.generate_default_avatar(db, user_id)
+
+        assert svg1 == svg2
+
+    async def test_svg_has_correct_dimensions(self, db):
+        """SVG should be 256x256 with circular viewBox."""
+        user_id = uuid.uuid4()
+        user = _TestUser(id=user_id, username="test")
+        db.add(user)
+        await db.flush()
+
+        svg = await avatar_service.generate_default_avatar(db, user_id)
+
+        assert 'width="256"' in svg
+        assert 'height="256"' in svg
+        assert 'viewBox="0 0 256 256"' in svg
+
+    async def test_svg_has_circular_background(self, db):
+        """SVG rect should have rx=128 for a circular shape."""
+        user_id = uuid.uuid4()
+        user = _TestUser(id=user_id, username="diana")
+        db.add(user)
+        await db.flush()
+
+        svg = await avatar_service.generate_default_avatar(db, user_id)
+
+        assert 'rx="128"' in svg
+
+    async def test_color_is_from_palette(self, db):
+        """The fill color in the SVG must be one of the AVATAR_COLORS."""
+        user_id = uuid.uuid4()
+        user = _TestUser(id=user_id, username="eve")
+        db.add(user)
+        await db.flush()
+
+        svg = await avatar_service.generate_default_avatar(db, user_id)
+
+        # Extract fill color from the rect element
+        import re
+
+        match = re.search(r'fill="([^"]+)"', svg)
+        assert match is not None
+        color = match.group(1)
+        assert color in avatar_service.AVATAR_COLORS
+
+    async def test_svg_media_type_format(self, db):
+        """SVG should be a valid SVG with proper namespace."""
+        user_id = uuid.uuid4()
+        user = _TestUser(id=user_id, username="frank")
+        db.add(user)
+        await db.flush()
+
+        svg = await avatar_service.generate_default_avatar(db, user_id)
+
+        assert 'xmlns="http://www.w3.org/2000/svg"' in svg

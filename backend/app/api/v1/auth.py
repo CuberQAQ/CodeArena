@@ -13,13 +13,14 @@ Mounts endpoints under ``/api/v1/auth/``:
   GET  /pp-rank    -- get user PP ranking and percentile (auth required)
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, File, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.exceptions import NotFoundException
 from app.core.response import success_response
 from app.core.security import get_current_user
 from app.models.elo_history import EloHistory
@@ -152,21 +153,28 @@ async def upload_avatar(
 
 @router.get("/avatar/{user_id}")
 async def get_avatar(
-    user_id: str,
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
 ):
     """Serve a user's avatar image.
 
-    Returns the avatar JPG file if it exists, otherwise raises 404.
+    Returns the avatar JPG file if it exists, otherwise generates and
+    returns an SVG default avatar based on the user's initial.
     This endpoint is public (no auth required) so avatars can be
     displayed on leaderboards and contest pages.
     """
     avatar_path = avatar_service.get_avatar_path(user_id)
-    if avatar_path is None:
-        raise NotFoundException(message="Avatar not found")
+    if avatar_path is not None:
+        return FileResponse(
+            path=str(avatar_path),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
 
-    return FileResponse(
-        path=str(avatar_path),
-        media_type="image/jpeg",
+    svg_content = await avatar_service.generate_default_avatar(db, user_id)
+    return Response(
+        content=svg_content,
+        media_type="image/svg+xml",
         headers={"Cache-Control": "public, max-age=3600"},
     )
 

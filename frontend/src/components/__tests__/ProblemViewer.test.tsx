@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -10,22 +10,6 @@ vi.mock("react-i18next", () => ({
     t: (key: string) => key,
     i18n: { language: "en" },
   }),
-}));
-
-vi.mock("@/components/LoadingSpinner", () => ({
-  LoadingSpinner: ({ text }: { text?: string }) => (
-    <div data-testid="loading-spinner">{text ?? "loading"}</div>
-  ),
-}));
-
-vi.mock("@/components/ui/button", () => ({
-  Button: ({
-    children,
-    ...props
-  }: {
-    children: React.ReactNode;
-    [key: string]: unknown;
-  }) => <button {...props}>{children}</button>,
 }));
 
 // ---------------------------------------------------------------------------
@@ -45,70 +29,41 @@ describe("ProblemViewer", () => {
     blindBox: false,
   };
 
-  // --- Non-blind-box (iframe) mode ---
+  // --- Non-blind-box mode (external link card) ---
 
-  it("renders an iframe with the correct CF URL", () => {
+  it("does not render an iframe", () => {
     const { container } = render(<ProblemViewer {...defaultProps} />);
-    const iframe = container.querySelector("iframe");
-    expect(iframe).not.toBeNull();
-    expect(iframe?.getAttribute("src")).toBe(
-      "https://codeforces.com/problemset/problem/1920/A",
-    );
+    expect(container.querySelector("iframe")).toBeNull();
   });
 
-  it("shows loading spinner while iframe is loading", () => {
+  it("renders problem info text with contestId and index", () => {
     render(<ProblemViewer {...defaultProps} />);
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
-    expect(screen.getByText("problemViewer.loadingProblem")).toBeInTheDocument();
+    expect(screen.getByText("Problem 1920A")).toBeInTheDocument();
   });
 
-  it("hides loading spinner after iframe loads", async () => {
-    const { container } = render(<ProblemViewer {...defaultProps} />);
-    const iframe = container.querySelector("iframe");
-
-    // Simulate iframe load event via fireEvent to trigger React's handler
-    if (iframe) fireEvent.load(iframe);
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("loading-spinner")).not.toBeInTheDocument();
+  it("renders a link to open the problem on Codeforces", () => {
+    render(<ProblemViewer {...defaultProps} />);
+    const link = screen.getByRole("link", {
+      name: /problemViewer.openOnCodeforces/i,
     });
-  });
-
-  it("always shows the fallback note and link below the iframe", () => {
-    render(<ProblemViewer {...defaultProps} />);
-    expect(screen.getByText("problemViewer.iframeNote")).toBeInTheDocument();
-
-    // There should be a link with the openOnCodeforces text
-    const links = screen.getAllByText("problemViewer.openOnCodeforces");
-    // At least the fallback link below the iframe
-    expect(links.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("fallback link points to the correct CF URL and opens in new tab", () => {
-    render(<ProblemViewer {...defaultProps} />);
-    const fallbackLink = screen
-      .getAllByRole("link")
-      .find((link) => link.textContent?.includes("openOnCodeforces"));
-    expect(fallbackLink).toBeDefined();
-    expect(fallbackLink?.getAttribute("href")).toBe(
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toBe(
       "https://codeforces.com/problemset/problem/1920/A",
     );
-    expect(fallbackLink?.getAttribute("target")).toBe("_blank");
-    expect(fallbackLink?.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
-  it("sets proper sandbox attribute on iframe", () => {
-    const { container } = render(<ProblemViewer {...defaultProps} />);
-    const iframe = container.querySelector("iframe");
-    expect(iframe?.getAttribute("sandbox")).toBe(
-      "allow-scripts allow-same-origin",
-    );
+  it("does not show loading spinner", () => {
+    render(<ProblemViewer {...defaultProps} />);
+    expect(screen.queryByTestId("loading-spinner")).not.toBeInTheDocument();
   });
 
-  it("has lazy loading on iframe", () => {
-    const { container } = render(<ProblemViewer {...defaultProps} />);
-    const iframe = container.querySelector("iframe");
-    expect(iframe?.getAttribute("loading")).toBe("lazy");
+  it("does not show iframeNote text", () => {
+    render(<ProblemViewer {...defaultProps} />);
+    expect(
+      screen.queryByText("problemViewer.iframeNote"),
+    ).not.toBeInTheDocument();
   });
 
   // --- Blind-box mode tests ---
@@ -121,7 +76,7 @@ describe("ProblemViewer", () => {
       expect(container.querySelector("iframe")).toBeNull();
     });
 
-    it("renders open-in-new-tab link with correct URL", () => {
+    it("renders open-on-codeforces link with correct URL", () => {
       render(<ProblemViewer {...defaultProps} blindBox={true} />);
       const link = screen.getByRole("link", {
         name: /problemViewer.openOnCodeforces/i,
@@ -146,34 +101,22 @@ describe("ProblemViewer", () => {
       expect(screen.queryByTestId("loading-spinner")).not.toBeInTheDocument();
     });
 
-    it("does not show iframe fallback note in blind-box mode", () => {
+    it("does not show problem info in blind-box mode", () => {
       render(<ProblemViewer {...defaultProps} blindBox={true} />);
-      expect(
-        screen.queryByText("problemViewer.iframeNote"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Problem 1920A")).not.toBeInTheDocument();
     });
   });
 
   // --- Props variants ---
 
   it("handles string contestId correctly", () => {
-    const { container } = render(
-      <ProblemViewer {...defaultProps} contestId="1900" />,
-    );
-    const iframe = container.querySelector("iframe");
-    expect(iframe?.getAttribute("src")).toBe(
-      "https://codeforces.com/problemset/problem/1900/A",
-    );
+    render(<ProblemViewer {...defaultProps} contestId="1900" />);
+    expect(screen.getByText("Problem 1900A")).toBeInTheDocument();
   });
 
   it("handles sub-problem index like B1", () => {
-    const { container } = render(
-      <ProblemViewer {...defaultProps} index="B1" />,
-    );
-    const iframe = container.querySelector("iframe");
-    expect(iframe?.getAttribute("src")).toBe(
-      "https://codeforces.com/problemset/problem/1920/B1",
-    );
+    render(<ProblemViewer {...defaultProps} index="B1" />);
+    expect(screen.getByText("Problem 1920B1")).toBeInTheDocument();
   });
 
   it("applies custom className to the root container", () => {
