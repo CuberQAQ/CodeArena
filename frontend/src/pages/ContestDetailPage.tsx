@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { AchievementPopup } from "@/components/animations";
 import { ProblemViewer } from "@/components/ProblemViewer";
+import { SolvingTimeline } from "@/components/SolvingTimeline";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import { Avatar } from "@/components/Avatar";
 import api from "@/services/api";
@@ -159,6 +160,7 @@ export default function ContestDetailPage() {
   const [showAchievements, setShowAchievements] = useState(false);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
   const hasAutoSelected = useRef(false);
+  const contestStartTimeRef = useRef<Date>(new Date());
 
   // Live leaderboard state from Zustand store
   const {
@@ -224,6 +226,10 @@ export default function ContestDetailPage() {
           }
         } else {
           setPhase("active");
+          // Record contest start time for SolvingTimeline
+          contestStartTimeRef.current = data.started_at
+            ? new Date(data.started_at)
+            : new Date();
           if (data.end_time) {
             const ms = new Date(data.end_time).getTime();
             setEndTimeMs(ms);
@@ -579,11 +585,22 @@ export default function ContestDetailPage() {
                 return null;
               }
               return (
-                <ProblemViewer
-                  contestId={selectedProblem.contest_id}
-                  index={selectedProblem.index}
-                  blindBox={false}
-                />
+                <>
+                  <ProblemViewer
+                    contestId={selectedProblem.contest_id}
+                    index={selectedProblem.index}
+                    blindBox={false}
+                  />
+                  {/* Solving Timeline: predicted Elo change at solve-time milestones */}
+                  {selectedProblem.rating != null && currentUser?.elo != null && (
+                    <SolvingTimeline
+                      problemId={selectedProblem.problem_id}
+                      problemRating={selectedProblem.rating}
+                      userElo={currentUser.elo}
+                      startTime={contestStartTimeRef.current}
+                    />
+                  )}
+                </>
               );
             })()}
           </div>

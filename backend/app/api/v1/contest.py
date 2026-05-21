@@ -131,6 +131,7 @@ async def submit_problem(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a problem result in a contest."""
+    cf_service = _get_cf_service()
     result = await ContestService.submit_problem(
         db=db,
         user=current_user,
@@ -139,6 +140,7 @@ async def submit_problem(
         solved=body.solved,
         attempts=body.attempts,
         time_spent=body.time_spent,
+        cf_service=cf_service,
     )
     return success_response(
         data=result.model_dump(mode="json"),

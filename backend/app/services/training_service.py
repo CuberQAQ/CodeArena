@@ -44,6 +44,7 @@ from app.services.cf_api_service import CFApiService
 from app.services.hint_service import HintService
 from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
+from app.services.submission_tracker import SubmissionTracker
 from app.services.time_factor_service import TimeFactorService
 
 logger = logging.getLogger("code_arena.training")
@@ -731,6 +732,17 @@ class TrainingService:
                 solved_at=now if solved else None,
             )
             db.add(record)
+
+            # Register pending submission tracking so the CF API poller can
+            # automatically detect when the user submits on Codeforces.
+            await SubmissionTracker.register_pending(
+                db=db,
+                user_id=user.id,
+                session_type="training",
+                session_id=session_id,
+                problem_id=problem_id,
+                expected_at=datetime.now(UTC),
+            )
         await db.flush()
 
         # Calculate token rewards

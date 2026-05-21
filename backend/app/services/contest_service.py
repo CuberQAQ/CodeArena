@@ -363,6 +363,7 @@ class ContestService:
         solved: bool,
         attempts: int,
         time_spent: float,
+        cf_service: CFApiService | None = None,
     ) -> SubmitContestResponse:
         """Submit a problem result in a contest."""
         session = await ContestService._get_and_validate_session(db, user, contest_id)
@@ -518,9 +519,17 @@ class ContestService:
             if solved and time_spent and time_spent > 0:
                 effective_t = TimeFactorService.compute_effective_time(time_spent, wa_count)
                 try:
-                    expected_t = await TimeFactorService.calculate_expected_time(db, problem_id, user.elo)
-                    if expected_t and expected_t > 0:
-                        contest_time_factor = TimeFactorService.calculate_time_factor(effective_t, expected_t)
+                    if cf_service is not None:
+                        expected_t = await TimeFactorService.calculate_expected_time(
+                            cf_service,
+                            problem_id,
+                            problem_rating,
+                            user.elo,
+                        )
+                        if expected_t and expected_t > 0:
+                            contest_time_factor = TimeFactorService.calculate_time_factor(
+                                effective_t, expected_t, s_val
+                            )
                 except Exception:
                     pass  # Fallback to 1.0 on calculation failure
 

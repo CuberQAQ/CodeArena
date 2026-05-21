@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/Avatar";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 // ---------------------------------------------------------------------------
@@ -103,8 +104,9 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         {/* User info & logout */}
         <div className="border-t border-border p-4">
-          <div className="mb-2 text-sm font-medium text-foreground truncate">
-            {user?.username ?? t("profile")}
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+            <Avatar userId={user?.id} size={36} />
+            <span className="truncate">{user?.username ?? t("profile")}</span>
           </div>
           <div className="mb-3 text-xs text-muted-foreground">
             {t("nav:eloTokens", { elo: user?.elo ?? 1200, tokens: user?.tokens ?? 0 })}
