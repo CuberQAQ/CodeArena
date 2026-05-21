@@ -10,6 +10,7 @@ from app.models.elo_history import EloHistory
 from app.models.free_play_session import FreePlaySession
 from app.models.hint_purchase import HintPurchase
 from app.models.pp_record import PPRecord
+from app.models.problem_statement import ProblemStatement
 from app.models.pve_challenge_session import PvEChallengeSession
 from app.models.submission_tracking import SubmissionTracking
 from app.models.system_config import SystemConfig
@@ -44,4 +45,5 @@ __all__ = [
     "PvEChallengeSession",
     "FreePlaySession",
     "SubmissionTracking",
+    "ProblemStatement",
 ]

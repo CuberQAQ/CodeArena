@@ -12,6 +12,7 @@ import app.models.contest_session  # noqa: F401
 import app.models.elo_history  # noqa: F401
 import app.models.hint_purchase  # noqa: F401
 import app.models.pp_record  # noqa: F401
+import app.models.problem_statement  # noqa: F401
 import app.models.submission_tracking  # noqa: F401
 import app.models.system_config  # noqa: F401
 import app.models.token_transaction  # noqa: F401
