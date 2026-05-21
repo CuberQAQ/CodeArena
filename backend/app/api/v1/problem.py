@@ -49,6 +49,7 @@ async def get_problem_statement(
         raise ServiceUnavailableException(
             message=f"Failed to scrape problem {problem_id}",
             detail=str(exc),
+            data={"fallback_url": fallback_url},
         ) from exc
 
     response = ProblemStatementResponse(

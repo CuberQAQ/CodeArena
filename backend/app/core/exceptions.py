@@ -14,11 +14,13 @@ class AppException(Exception):
         message: str = "An application error occurred",
         detail: str | None = None,
         status_code: int = 400,
+        data: dict | None = None,
     ) -> None:
         self.code = code
         self.message = message
         self.detail = detail
         self.status_code = status_code
+        self.data = data
         super().__init__(message)
 
 
@@ -48,8 +50,19 @@ class ConflictException(AppException):
 
 
 class ServiceUnavailableException(AppException):
-    def __init__(self, message: str = "Service temporarily unavailable", detail: str | None = None) -> None:
-        super().__init__(code="SERVICE_UNAVAILABLE", message=message, detail=detail, status_code=503)
+    def __init__(
+        self,
+        message: str = "Service temporarily unavailable",
+        detail: str | None = None,
+        data: dict | None = None,
+    ) -> None:
+        super().__init__(
+            code="SERVICE_UNAVAILABLE",
+            message=message,
+            detail=detail,
+            status_code=503,
+            data=data,
+        )
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -57,12 +70,15 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AppException)
     async def app_exception_handler(_request: Request, exc: AppException) -> error_response:  # type: ignore[misc]
-        return error_response(
-            code=exc.code,
-            message=exc.message,
-            detail=exc.detail,
-            status_code=exc.status_code,
-        )
+        kwargs: dict = {
+            "code": exc.code,
+            "message": exc.message,
+            "detail": exc.detail,
+            "status_code": exc.status_code,
+        }
+        if exc.data:
+            kwargs["data"] = exc.data
+        return error_response(**kwargs)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(_request: Request, exc: StarletteHTTPException) -> error_response:  # type: ignore[misc]

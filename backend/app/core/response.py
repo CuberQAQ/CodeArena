@@ -16,6 +16,7 @@ def error_response(
     message: str,
     detail: str | None = None,
     status_code: int = 400,
+    data: dict | None = None,
 ) -> JSONResponse:
     """Return a unified error response."""
     content: dict[str, Any] = {
@@ -24,4 +25,6 @@ def error_response(
     }
     if detail is not None:
         content["detail"] = detail
+    if data is not None:
+        content["data"] = data
     return JSONResponse(status_code=status_code, content=content)
