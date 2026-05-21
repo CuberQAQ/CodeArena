@@ -762,3 +762,133 @@
 - [ ] **无 CSP 错误**: 浏览器控制台不再有 CSP 违规错误
 - [ ] **无 iframe 相关错误**: 不再有 codeforces iframe 加载错误
 - [ ] **各模式页面**: FreePlay、Training、Contest 的 ProblemViewer 正常工作
+
+---
+
+## 审计修复 (2026-05-21)
+
+### Task 34.1: Training K 因子 + M-Elo 全 tag 更新
+**状态**: 🔵 待处理
+**优先级**: P0
+**依赖**: 无
+
+#### 根因分析
+审计发现 Training 服务两个问题：
+1. 使用硬编码 `k_train = 8` 而非需求 3.2 定义的分段 K 因子函数，其他 4 种模式均使用 `EloService.calculate_k_factor`
+2. 仅更新 `primary_tag` 的 M-Elo，不遍历 `problem_tags` 所有 tag，其他模式使用 `batch_update_melo_for_problem`
+
+#### 需要修改的文件
+- `backend/app/services/training_service.py` — `_calculate_training_elo` 方法（行 1365-1466）：
+  - 替换 `k_train = 8` 为 `k = EloService.calculate_k_factor(submission_count, config)` 调用
+  - 需要先通过 ConfigService 获取 K 因子配置参数
+  - 注意：替换后 global_elo_change 和 melo_change 的公式中用 `k` 替代 `k_train`
+  - 将单一 `update_melo` 调用替换为 `batch_update_melo_for_problem`，遍历 problem_tags 所有 tag
+  - 注意：melo_change 计算需要遍历所有 tags 时可能需要调整（当前仅计算 primary_tag 的 expected score）
+
+#### 关键实现细节
+1. **K 因子替换**：需要获取 user 的 submission_count。参考 `pve_challenge_service.py:184-185` 的调用方式。
+2. **M-Elo 全 tag**：将行 1459-1460 的 `MEloService.update_melo(db, user.id, primary_tag, melo_change)` 替换为 `MEloService.batch_update_melo_for_problem(db, user.id, problem_tags, melo_change, coefficient=melo_coeff)` 形式。但注意：`batch_update_melo_for_problem` 内部对每个 tag 独立计算 expected score 和 M-Elo 变化，所以 `melo_change` 不应在外部计算而应让 batch 方法自行计算。参考 PvE（`pve_challenge_service.py:308-329`）的实现方式。
+3. **返回值调整**：`melo_change` 字段可能需要返回总的 M-Elo 变化量
+
+#### 测试要点
+- [ ] **K 因子一致性**: Training 使用分段 K 因子，与 PvE/PvP/FreePlay/Contest 一致
+- [ ] **M-Elo 全 tag**: 一道有 dp+greedy 标签的训练题，两个 tag 的 M-Elo 都被更新
+- [ ] **训练系数不变**: Global ×0.5, M-Elo ×2.0 保持不变
+- [ ] **现有训练结算不破坏**: AC/失败/退出的结算逻辑正确
+
+---
+
+### Task 34.2: EC Final 奖牌映射修复 (FR-10.1, D-31)
+**状态**: 🔵 待处理
+**优先级**: P0
+**依赖**: 无
+
+#### 根因分析
+`medal_service.py` 的 `_FLAT_MEDAL_MAP` 缺少 EC Final 层级（阈值与 WF/Regional 重叠），导致 EC Final 奖牌永远不可达。需求已更新为 D-31 "最高金牌归属"规则。
+
+#### 需要修改的文件
+- `backend/app/services/medal_service.py` — 更新 `_FLAT_MEDAL_MAP`：
+  ```
+  (2800, "world_finals", "gold"),
+  (2600, "ec_final", "gold"),       # 新增
+  (2200, "regional", "gold"),       # 原 2400→WF bronze, 2200→Regional gold 合并
+  (1600, "provincial", "gold"),
+  (1400, "provincial", "silver"),
+  (1200, "provincial", "bronze"),
+  ```
+
+#### 测试要点
+- [ ] **2800+**: World Finals Gold
+- [ ] **2600-2799**: EC Final Gold（之前错误地映射为 WF Silver）
+- [ ] **2200-2599**: Regional Gold（之前 2400-2599 映射为 WF Bronze）
+- [ ] **1600-2199**: Provincial Gold
+- [ ] **1400-1599**: Provincial Silver
+- [ ] **1200-1399**: Provincial Bronze
+- [ ] **< 1200**: Unranked
+
+---
+
+### Task 34.3: 比赛结算页面奖牌展示
+**状态**: 🔵 待处理
+**优先级**: P1
+**依赖**: 无
+
+#### 根因分析
+后端 `award_contest_medal` 在比赛结算时正确发牌，但 `ContestDetailPage` 无 MedalBadge 展示，用户看不到获得的奖牌。
+
+#### 需要修改的文件
+- `frontend/src/pages/ContestDetailPage.tsx` — 在比赛结算结果区域添加 MedalBadge 组件展示
+
+#### 关键实现细节
+1. 比赛结算后，从 API 获取用户获得的奖牌信息
+2. 在结算结果展示区（EloChange 附近）添加 MedalBadge 展示
+3. 使用现有的 `MedalBadge` 组件
+
+#### 测试要点
+- [ ] **比赛结算后**: 结算区域展示获得的奖牌（金/银/铜）
+- [ ] **无奖牌**: PR < 1200 时不展示奖牌
+- [ ] **奖牌信息正确**: 级别和类型与 PR 对应
+
+---
+
+### Task 34.4: EloHistory 新增 time_factor 字段
+**状态**: 🔵 待处理
+**优先级**: P1
+**依赖**: 无
+
+#### 根因分析
+需求 Section 5 明确要求 EloHistory 记录 time_factor 值，但模型缺少该字段。
+
+#### 需要修改的文件
+- `backend/app/models/elo_history.py` — 新增 `time_factor = Column(Float, nullable=True)` 字段
+- `backend/migrations/versions/` — 新增 migration 添加 time_factor 列
+- 所有写入 EloHistory 的位置 — 在 settlement 流程中写入 time_factor 值：
+  - `backend/app/services/pve_challenge_service.py`
+  - `backend/app/services/challenge_service.py`
+  - `backend/app/services/training_service.py`
+  - `backend/app/services/free_play_service.py`
+  - `backend/app/services/contest_service.py`
+
+#### 测试要点
+- [ ] **数据库 migration**: 新增列成功
+- [ ] **写入正确**: AC 时 time_factor 值写入 EloHistory
+- [ ] **S=0 时**: time_factor=1.0 写入
+- [ ] **现有数据**: 旧记录 time_factor 为 NULL（nullable）
+
+---
+
+### Task 34.5: 比赛模式移除 hint_attenuation
+**状态**: 🔵 待处理
+**优先级**: P1
+**依赖**: 无
+
+#### 根因分析
+需求 3.6.4 规定"比赛模式不使用 hint_attenuation 机制"，但 `contest_service.py` 的 `_settle_with_pr` 方法（行 1103-1114）在 PR 结算时应用了 hint_attenuation。
+
+#### 需要修改的文件
+- `backend/app/services/contest_service.py` — 移除 `_settle_with_pr` 中行 1103-1114 的 hint_attenuation 逻辑
+
+#### 测试要点
+- [ ] **比赛使用提示**: AC 后 Elo 变化不受提示使用影响
+- [ ] **其他模式不变**: PvE/PvP/Training/FreePlay 仍然应用 hint_attenuation
+- [ ] **time_factor 仍生效**: 比赛模式 time_factor 继续生效
