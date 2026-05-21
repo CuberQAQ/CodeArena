@@ -28,7 +28,7 @@ export default defineConfig({
     {
       name: "integration",
       testDir: "./e2e/integration",
-      use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:5173" },
+      use: { ...devices["Desktop Chrome"], baseURL: process.env.INTEGRATION_BASE_URL || "http://localhost:5173" },
       // No webServer — assumes Docker Compose is already running
     },
   ],
