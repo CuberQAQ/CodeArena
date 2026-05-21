@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback } from "react";
 import { Download, Loader2 } from "lucide-react";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { getRatingColor, getDifficultyLabelKey } from "@/utils";
@@ -343,51 +343,23 @@ export function ProfileCardExport(props: ProfileCardProps) {
 
     try {
       const wrapper = cardRef.current.parentElement!;
-      // Move wrapper into visible viewport temporarily
       const origStyle = wrapper.style.cssText;
       wrapper.style.cssText = "position:fixed; left:0; top:0; z-index:9999; opacity:1; visibility:visible;";
 
-      // Small delay to let browser re-render
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: null,
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        onclone(doc) {
-          // html2canvas cannot parse oklch() (Tailwind v4 default).
-          // Strip all oklch from the cloned document's stylesheets.
-          for (const sheet of doc.styleSheets) {
-            try {
-              for (const rule of sheet.cssRules) {
-                if ("style" in rule) {
-                  const st = (rule as CSSStyleRule).style;
-                  for (let i = 0; i < st.length; i++) {
-                    if (st.getPropertyValue(st[i]).includes("oklch")) {
-                      st.removeProperty(st[i]);
-                    }
-                  }
-                }
-              }
-            } catch {
-              // Cross-origin stylesheet — skip
-            }
-          }
-        },
+      const dataUrl = await toPng(cardRef.current, {
+        pixelRatio: 2,
+        cacheBust: true,
       });
 
-      // Restore
       wrapper.style.cssText = origStyle;
 
-      const dataUrl = canvas.toDataURL("image/png");
       const link = document.createElement("a");
       link.download = `code-arena-${props.user.username}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
-      // Ensure we restore even on error
       const wrapper = cardRef.current?.parentElement;
       if (wrapper) wrapper.style.cssText = "position:fixed; left:-9999px; top:0; z-index:-1; visibility:hidden;";
       console.error("Profile card export failed:", err);
