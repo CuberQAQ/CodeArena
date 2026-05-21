@@ -313,6 +313,7 @@ class FreePlayService:
             session_id=session.id,
             problem=problem_info,
             status="active",
+            started_at=session.started_at,
         )
 
     # ------------------------------------------------------------------
@@ -676,6 +677,7 @@ class FreePlayService:
             session_id=session.id,
             problem=problem,
             status="active",
+            started_at=session.started_at,
         )
 
     @staticmethod

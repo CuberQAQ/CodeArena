@@ -188,6 +188,7 @@ export interface TrainingSessionInfo {
   streak_count: number;
   status: string;
   created_at: string | null;
+  started_at: string | null;
   completed_at: string | null;
   last_solved_rating: number | null;
   streak_tokens_earned: number;
@@ -575,6 +576,7 @@ export interface FreePlayStartResponse {
   session_id: string;
   problem: FreePlayProblemInfo;
   status: string;
+  started_at: string | null;
 }
 
 export interface FreePlaySubmitResponse {

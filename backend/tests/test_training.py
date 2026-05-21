@@ -1052,6 +1052,140 @@ class TestStreakMechanism:
 
 
 # ---------------------------------------------------------------------------
+# 8b. Get active session for topic tests (session recovery)
+# ---------------------------------------------------------------------------
+
+
+class TestGetActiveSessionForTopic:
+    async def test_no_active_session_returns_none(self, db):
+        """When no active session exists, returns None."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        result = await TrainingService.get_active_session_for_topic(db, user, topic.id)
+        assert result is None
+
+    async def test_active_session_found(self, db):
+        """Returns the active session when one exists."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        now = datetime.now(UTC)
+        session = _TestTrainingSession(
+            user_id=user.id,
+            topic_id=topic.id,
+            total_problems=5,
+            problems_solved=2,
+            streak_count=1,
+            status="active",
+            started_at=now,
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await TrainingService.get_active_session_for_topic(db, user, topic.id)
+        assert result is not None
+        assert result.status == "active"
+        assert result.topic_id == topic.id
+        assert result.problems_solved == 2
+        assert result.total_problems == 5
+        assert result.streak_count == 1
+        assert result.started_at is not None
+        assert result.topic_name == "Dynamic Programming"
+
+    async def test_completed_session_not_returned(self, db):
+        """Completed sessions should not be returned."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        session = _TestTrainingSession(
+            user_id=user.id,
+            topic_id=topic.id,
+            total_problems=5,
+            status="completed",
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await TrainingService.get_active_session_for_topic(db, user, topic.id)
+        assert result is None
+
+    async def test_abandoned_session_not_returned(self, db):
+        """Abandoned sessions should not be returned."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        session = _TestTrainingSession(
+            user_id=user.id,
+            topic_id=topic.id,
+            total_problems=5,
+            status="abandoned",
+        )
+        db.add(session)
+        await db.flush()
+
+        result = await TrainingService.get_active_session_for_topic(db, user, topic.id)
+        assert result is None
+
+    async def test_other_user_session_not_returned(self, db):
+        """Active sessions from other users should not be returned."""
+        user1 = _make_test_user(db, username="user1")
+        user2 = _make_test_user(db, username="user2")
+        topic = _make_test_topic(db)
+        db.add_all([user1, user2, topic])
+        await db.flush()
+
+        session = _TestTrainingSession(
+            user_id=user1.id,
+            topic_id=topic.id,
+            total_problems=5,
+            status="active",
+        )
+        db.add(session)
+        await db.flush()
+
+        # user2 should not see user1's active session
+        result = await TrainingService.get_active_session_for_topic(db, user2, topic.id)
+        assert result is None
+
+    async def test_other_topic_session_not_returned(self, db):
+        """Active sessions for a different topic should not be returned."""
+        user = _make_test_user(db)
+        topic1 = _make_test_topic(db, name="DP", slug="dp")
+        topic2 = _TestTopicCategory(
+            id=uuid.uuid4(),
+            name="Greedy",
+            slug="greedy",
+            description="Greedy topic",
+            cf_tags=["greedy"],
+            display_order=1,
+        )
+        db.add_all([user, topic1, topic2])
+        await db.flush()
+
+        session = _TestTrainingSession(
+            user_id=user.id,
+            topic_id=topic1.id,
+            total_problems=5,
+            status="active",
+        )
+        db.add(session)
+        await db.flush()
+
+        # Querying for topic2 should not return topic1's session
+        result = await TrainingService.get_active_session_for_topic(db, user, topic2.id)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
 # 9. Abandon training tests
 # ---------------------------------------------------------------------------
 

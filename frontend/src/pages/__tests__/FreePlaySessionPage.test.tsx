@@ -119,12 +119,12 @@ const sampleProblem = {
   url: "https://codeforces.com/1/A",
 };
 
-function renderPage(sessionId = "sess1", problem = sampleProblem) {
+function renderPage(sessionId = "sess1", problem = sampleProblem, startedAt?: string) {
   return render(
     <MemoryRouter initialEntries={[
       {
         pathname: `/free-play/session/${sessionId}`,
-        state: { problem },
+        state: { problem, ...(startedAt ? { started_at: startedAt } : {}) },
       },
     ]}>
       <Routes>
@@ -799,6 +799,76 @@ describe("FreePlaySessionPage", () => {
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith("/free-play", { replace: true });
       });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // FR-19: Timer persistence
+  // -----------------------------------------------------------------------
+  describe("Timer persistence (FR-19)", () => {
+    it("starts timer from 0 when no started_at provided", async () => {
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("free_play:session.quit")).toBeInTheDocument();
+      });
+
+      // Timer should show 0:00 when just started
+      expect(screen.getByText("0:00")).toBeInTheDocument();
+    });
+
+    it("starts timer with elapsed time from started_at", async () => {
+      // started_at 60 seconds ago
+      const sixtySecondsAgo = new Date(Date.now() - 60_000).toISOString();
+      renderPage("sess1", sampleProblem, sixtySecondsAgo);
+
+      await waitFor(() => {
+        expect(screen.getByText("free_play:session.quit")).toBeInTheDocument();
+      });
+
+      // Timer should show approximately 1:00 (60 seconds elapsed)
+      // The timer text is "M:SS" format, so we check for 1:00 or close
+      const timerEl = screen.getByText(/\d+:\d+/);
+      expect(timerEl).toBeInTheDocument();
+      // Parse the timer value - it should be around 60 seconds
+      const timerText = timerEl.textContent || "";
+      const parts = timerText.split(":");
+      const seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      // Allow some tolerance since the test runs async
+      expect(seconds).toBeGreaterThanOrEqual(59);
+      expect(seconds).toBeLessThanOrEqual(65);
+    });
+
+    it("starts timer from started_at recovered via active session API", async () => {
+      const fiveMinutesAgo = new Date(Date.now() - 300_000).toISOString();
+      mockFreePlayGetActive.mockResolvedValue({
+        session_id: "recovered-sess",
+        problem: {
+          name: "Recovered",
+          contest_id: 500,
+          index: "B",
+          rating: 1400,
+          tags: ["math"],
+          url: "https://codeforces.com/500/B",
+        },
+        status: "active",
+        started_at: fiveMinutesAgo,
+      });
+
+      renderPageWithoutState("recovered-sess");
+
+      await waitFor(() => {
+        expect(screen.getByText("Recovered")).toBeInTheDocument();
+      });
+
+      // Timer should show approximately 5:00 (300 seconds elapsed)
+      const timerEl = screen.getByText(/\d+:\d+/);
+      const timerText = timerEl.textContent || "";
+      const parts = timerText.split(":");
+      const seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      // Allow some tolerance
+      expect(seconds).toBeGreaterThanOrEqual(295);
+      expect(seconds).toBeLessThanOrEqual(305);
     });
   });
 });

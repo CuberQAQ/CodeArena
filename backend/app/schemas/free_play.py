@@ -1,5 +1,6 @@
 """Pydantic schemas for Free Play API request/response validation."""
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -81,6 +82,7 @@ class FreePlayStartResponse(BaseModel):
     session_id: UUID
     problem: FreePlayProblemInfo
     status: str = "active"
+    started_at: datetime | None = None
 
 
 class AchievementEventSchema(BaseModel):

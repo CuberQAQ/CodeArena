@@ -39,16 +39,27 @@ import type {
 } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Hook: elapsed seconds counter
+// Hook: elapsed seconds counter (persists via started_at from server)
 // ---------------------------------------------------------------------------
 
-function useElapsedTime(running: boolean): number {
-  const [elapsed, setElapsed] = useState(0);
+function useElapsedTime(running: boolean, initialSeconds: number = 0): number {
+  const [elapsed, setElapsed] = useState(initialSeconds);
   const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initialRef = useRef(initialSeconds);
+
+  // Always keep the ref in sync so when the timer starts it uses the latest value
+  initialRef.current = initialSeconds;
+
+  // Sync initial value when not running
+  useEffect(() => {
+    if (!running) {
+      setElapsed(initialSeconds);
+    }
+  }, [running, initialSeconds]);
 
   useEffect(() => {
     if (running) {
-      setElapsed(0);
+      setElapsed(initialRef.current);
       ref.current = setInterval(() => setElapsed((p) => p + 1), 1000);
     }
     return () => {
@@ -305,8 +316,19 @@ export default function FreePlaySessionPage() {
   // Quit button loading state
   const [quitting, setQuitting] = useState(false);
 
-  // Timer
-  const elapsed = useElapsedTime(phase === "active");
+  // Timer -- started_at from server for persistence across refreshes
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [initialSeconds, setInitialSeconds] = useState(0);
+
+  useEffect(() => {
+    if (startedAt) {
+      setInitialSeconds(Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)));
+    } else {
+      setInitialSeconds(0);
+    }
+  }, [startedAt]);
+
+  const elapsed = useElapsedTime(phase === "active", initialSeconds);
 
   // Auto-tracking poll
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -324,10 +346,16 @@ export default function FreePlaySessionPage() {
 
     const state = location.state as {
       problem?: FreePlayProblemInfo;
+      started_at?: string;
     } | undefined;
 
     if (state?.problem) {
       setProblem(state.problem);
+      setStartedAt(state.started_at ?? null);
+      // Set solving timeline start from started_at if available
+      if (state.started_at) {
+        startTimeRef.current = new Date(state.started_at);
+      }
       setPhase("active");
     } else {
       // No problem info in navigation state (refresh / direct URL).
@@ -335,6 +363,11 @@ export default function FreePlaySessionPage() {
       freePlayApi.freePlayGetActive().then((active) => {
         if (active?.problem) {
           setProblem(active.problem);
+          setStartedAt(active.started_at ?? null);
+          // Set solving timeline start from started_at if available
+          if (active.started_at) {
+            startTimeRef.current = new Date(active.started_at);
+          }
           setPhase("active");
         } else {
           navigate("/free-play", { replace: true });

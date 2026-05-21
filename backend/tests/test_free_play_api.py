@@ -158,6 +158,7 @@ def _start_response_dict(**overrides):
             "url": "https://codeforces.com/contest/1234/problem/A",
         },
         "status": "active",
+        "started_at": "2026-05-22T10:00:00+00:00",
     }
     d.update(overrides)
     return d
@@ -701,3 +702,54 @@ class TestFreePlayResponseEnvelope:
         assert "data" in body
         assert "message" in body
         assert body["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# FR-19: Timer persistence -- started_at in responses
+# ---------------------------------------------------------------------------
+
+
+class TestTimerPersistence:
+    """Verify started_at is present in Free Play API responses."""
+
+    @patch("app.api.v1.free_play.FreePlayService")
+    def test_start_session_returns_started_at(self, mock_svc, app_client):
+        """POST /start response includes started_at field."""
+        started = "2026-05-22T10:30:00+00:00"
+        result = _make_response_model(_start_response_dict(started_at=started))
+        mock_svc.start_session = AsyncMock(return_value=result)
+
+        resp = app_client.post(
+            "/free-play/start",
+            json={
+                "problem_contest_id": 1234,
+                "problem_index": "A",
+                "problem_rating": 1500,
+                "problem_tags": ["dp"],
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["started_at"] == started
+
+    @patch("app.api.v1.free_play.FreePlayService")
+    def test_active_session_returns_started_at(self, mock_svc, app_client):
+        """GET /active response includes started_at field."""
+        started = "2026-05-22T10:30:00+00:00"
+        result = _make_response_model(_start_response_dict(started_at=started))
+        mock_svc.get_active_session = AsyncMock(return_value=result)
+
+        resp = app_client.get("/free-play/active")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["started_at"] == started
+
+    @patch("app.api.v1.free_play.FreePlayService")
+    def test_active_session_null_started_at(self, mock_svc, app_client):
+        """GET /active returns null started_at when no active session."""
+        mock_svc.get_active_session = AsyncMock(return_value=None)
+
+        resp = app_client.get("/free-play/active")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"] is None

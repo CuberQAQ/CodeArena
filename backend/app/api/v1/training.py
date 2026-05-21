@@ -1,9 +1,10 @@
 """Training API routes.
 
-Mounts ten endpoints under ``/api/v1/training/``:
+Mounts eleven endpoints under ``/api/v1/training/``:
   GET  /topics              -- list all topics
   GET  /topics/{id}         -- topic detail with problems
   GET  /topics/{id}/recommend -- adaptive problem recommendation
+  GET  /topics/{id}/active-session -- session recovery for a topic
   POST /start               -- start training session
   GET  /session/{id}        -- get session status
   POST /session/{id}/submit -- submit problem result
@@ -115,6 +116,31 @@ async def get_recommended_problem(
     return success_response(
         data=result.model_dump(mode="json"),
         message="Recommended problem found",
+    )
+
+
+@router.get("/topics/{topic_id}/active-session")
+async def get_active_session_for_topic(
+    topic_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the user's active training session for a topic, or null.
+
+    Used for session recovery on page refresh.  If the user has an active
+    training session for the given topic, returns its full state (including
+    started_at for timer persistence).  Otherwise returns null data.
+    """
+    result = await TrainingService.get_active_session_for_topic(
+        db=db,
+        user=current_user,
+        topic_id=topic_id,
+    )
+    if result is None:
+        return success_response(data=None, message="No active session for this topic")
+    return success_response(
+        data=result.model_dump(mode="json"),
+        message="Active session found",
     )
 
 

@@ -26,6 +26,11 @@ class TrainingSession(Base, UUIDPrimaryKeyMixin):
     streak_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     status: Mapped[str] = mapped_column(String(20), server_default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships

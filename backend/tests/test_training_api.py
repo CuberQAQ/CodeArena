@@ -1,9 +1,10 @@
 """API route tests for app/api/v1/training.py.
 
-Tests cover all 10 training endpoints:
+Tests cover all 11 training endpoints:
   GET  /training/topics
   GET  /training/topics/{topic_id}
   GET  /training/topics/{topic_id}/recommend
+  GET  /training/topics/{topic_id}/active-session
   POST /training/start
   GET  /training/session/{session_id}
   POST /training/session/{session_id}/submit
@@ -137,6 +138,7 @@ def _session_info_dict(**overrides):
         "streak_count": 2,
         "status": "active",
         "created_at": datetime(2025, 1, 1, tzinfo=UTC).isoformat(),
+        "started_at": datetime(2025, 1, 1, tzinfo=UTC).isoformat(),
         "completed_at": None,
         "last_solved_rating": 1500,
         "streak_tokens_earned": 10,
@@ -698,3 +700,89 @@ class TestTrainingResponseEnvelope:
         assert "success" in body
         assert "data" in body
         assert "message" in body
+
+
+# ---------------------------------------------------------------------------
+# FR-19: Timer persistence -- started_at in training responses
+# ---------------------------------------------------------------------------
+
+
+class TestTrainingTimerPersistence:
+    """Verify started_at is present in Training API responses."""
+
+    @patch("app.api.v1.training.TrainingService")
+    @patch("app.api.v1.training._get_cf_service")
+    def test_start_training_returns_started_at(self, mock_cf, mock_svc, app_client):
+        """POST /training/start response includes started_at field."""
+        started = datetime(2026, 5, 22, 10, 30, 0, tzinfo=UTC).isoformat()
+        session = _make_response_model(_session_info_dict(started_at=started))
+        mock_svc.start_training = AsyncMock(return_value=session)
+
+        resp = app_client.post("/training/start", json={"topic_id": SAMPLE_UUID})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["started_at"] == started
+
+    @patch("app.api.v1.training.TrainingService")
+    def test_get_session_status_returns_started_at(self, mock_svc, app_client):
+        """GET /training/session/{id} response includes started_at field."""
+        started = datetime(2026, 5, 22, 10, 30, 0, tzinfo=UTC).isoformat()
+        session = _make_response_model(_session_info_dict(started_at=started))
+        mock_svc.get_session_status = AsyncMock(return_value=session)
+
+        resp = app_client.get(f"/training/session/{SAMPLE_UUID}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["started_at"] == started
+
+
+# ===========================================================================
+# GET /training/topics/{topic_id}/active-session  (session recovery)
+# ===========================================================================
+
+
+class TestGetActiveSessionForTopic:
+    """Tests for GET /training/topics/{topic_id}/active-session."""
+
+    @patch("app.api.v1.training.TrainingService")
+    def test_active_session_found(self, mock_svc, app_client):
+        """Returns active session data when one exists."""
+        started = datetime(2026, 5, 22, 10, 30, 0, tzinfo=UTC).isoformat()
+        session = _make_response_model(_session_info_dict(started_at=started))
+        mock_svc.get_active_session_for_topic = AsyncMock(return_value=session)
+
+        resp = app_client.get(f"/training/topics/{SAMPLE_UUID}/active-session")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["status"] == "active"
+        assert body["data"]["started_at"] == started
+        assert body["message"] == "Active session found"
+
+    @patch("app.api.v1.training.TrainingService")
+    def test_active_session_none(self, mock_svc, app_client):
+        """Returns null data when no active session exists."""
+        mock_svc.get_active_session_for_topic = AsyncMock(return_value=None)
+
+        resp = app_client.get(f"/training/topics/{SAMPLE_UUID}/active-session")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"] is None
+        assert "No active session" in body["message"]
+
+    def test_active_session_invalid_uuid(self, app_client):
+        """Returns 422 for invalid topic UUID."""
+        resp = app_client.get("/training/topics/bad-uuid/active-session")
+        assert resp.status_code == 422
+
+    def test_active_session_unauthenticated(self):
+        """Returns 401 for unauthenticated requests."""
+        client = _unauth_client()
+        resp = client.get(f"/training/topics/{SAMPLE_UUID}/active-session")
+        assert resp.status_code == 401
+
+    def test_active_session_wrong_method(self, app_client):
+        """POST is not allowed on this endpoint."""
+        resp = app_client.post(f"/training/topics/{SAMPLE_UUID}/active-session")
+        assert resp.status_code == 405

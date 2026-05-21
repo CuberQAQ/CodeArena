@@ -367,7 +367,7 @@ export default function FreePlayPage() {
         problem_tags: problem.tags,
         problem_name: problem.name,
       });
-      navigate(`/free-play/session/${res.session_id}`, { state: { problem } });
+      navigate(`/free-play/session/${res.session_id}`, { state: { problem, started_at: res.started_at } });
     } catch {
       setError(t("error.startFailed"));
     } finally {

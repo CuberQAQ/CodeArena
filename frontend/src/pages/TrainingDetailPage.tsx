@@ -20,6 +20,7 @@ import { AchievementPopup } from "@/components/animations";
 import { ProblemViewer } from "@/components/ProblemViewer";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
+import { getActiveTrainingSession } from "@/services/trainingApi";
 import type {
   ApiResponse,
   AchievementEvent,
@@ -50,11 +51,32 @@ export default function TrainingDetailPage() {
 
   useEffect(() => {
     if (!topicId) return;
+
+    // Load topic detail first, then check for an active session to recover
     api
       .get<ApiResponse<TopicDetail>>(`/training/topics/${topicId}`)
-      .then((res) => {
+      .then(async (res) => {
         setTopic(res.data.data);
-        setPhase("topic");
+
+        // Check for an active session to recover (like FreePlay does)
+        try {
+          const activeSession = await getActiveTrainingSession(topicId);
+          if (activeSession) {
+            setSession(activeSession);
+            setPhase("session");
+            // Calculate initial elapsed from started_at for timer persistence
+            const initialElapsed = activeSession.started_at
+              ? Math.max(0, Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000))
+              : 0;
+            setElapsed(initialElapsed);
+            timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
+          } else {
+            setPhase("topic");
+          }
+        } catch {
+          // Session recovery failed -- just show the topic view
+          setPhase("topic");
+        }
       })
       .catch(() => {
         setError(t("training:failedLoadTopic"));
@@ -140,9 +162,14 @@ export default function TrainingDetailPage() {
       const res = await api.post<ApiResponse<TrainingSessionInfo>>("/training/start", {
         topic_id: topicId,
       });
-      setSession(res.data.data);
+      const sessionData = res.data.data;
+      setSession(sessionData);
       setPhase("session");
-      setElapsed(0);
+      // Calculate initial elapsed from started_at for timer persistence
+      const initialElapsed = sessionData.started_at
+        ? Math.max(0, Math.floor((Date.now() - new Date(sessionData.started_at).getTime()) / 1000))
+        : 0;
+      setElapsed(initialElapsed);
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
     } catch (err) {
       setError(extractApiError(err, t("training:failedStartSession")));

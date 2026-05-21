@@ -80,6 +80,7 @@ class TrainingSessionInfo(BaseModel):
     streak_count: int = 0
     status: str = "active"
     created_at: datetime | None = None
+    started_at: datetime | None = None
     completed_at: datetime | None = None
     last_solved_rating: int | None = None
     streak_tokens_earned: int = 0

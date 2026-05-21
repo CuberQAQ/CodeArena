@@ -1554,7 +1554,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 - FR-23.3: 统一 loading/skeleton
 - FR-23.4: 统一错误信息样式
 - FR-23.5: 关键页面移动端可用
-- FR-23.6: 深色模式适配
+- FR-23.6: 深色模式适配。若项目当前无深色模式基础设施（无 dark: class 策略、无主题切换），则先搭建 Tailwind dark mode class 策略 + CSS 变量体系 + 主题切换开关（位于设置页或导航栏）
 
 #### 需要修改的文件
 - `frontend/src/components/layout/MainLayout.tsx` — 导航栏配置更新

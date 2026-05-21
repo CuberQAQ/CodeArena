@@ -604,8 +604,73 @@ class TrainingService:
             streak_count=0,
             status="active",
             created_at=session.created_at,
+            started_at=session.started_at,
             last_solved_rating=None,
             streak_tokens_earned=0,
+        )
+
+    # ------------------------------------------------------------------
+    # 4b. Get active session for a topic (session recovery)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def get_active_session_for_topic(
+        db: AsyncSession,
+        user: User,
+        topic_id: uuid.UUID,
+    ) -> TrainingSessionInfo | None:
+        """Return the user's active training session for a given topic, or None.
+
+        Used for session recovery: when the user refreshes the TrainingDetailPage,
+        this checks whether there is an active session to resume.
+        """
+        stmt = select(TrainingSession).where(
+            TrainingSession.user_id == user.id,
+            TrainingSession.topic_id == topic_id,
+            TrainingSession.status == "active",
+        )
+        result = await db.execute(stmt)
+        session = result.scalar_one_or_none()
+        if session is None:
+            return None
+
+        topic = await db.get(TopicCategory, session.topic_id)
+
+        # Find last solved rating
+        last_rating_stmt = (
+            select(TrainingProblemRecord.problem_rating)
+            .where(
+                TrainingProblemRecord.session_id == session.id,
+                TrainingProblemRecord.solved.is_(True),
+            )
+            .order_by(TrainingProblemRecord.solved_at.desc())
+            .limit(1)
+        )
+        last_rating_result = await db.execute(last_rating_stmt)
+        last_solved_rating = last_rating_result.scalar_one_or_none()
+
+        # Calculate total streak tokens earned in this session
+        streak_tokens_stmt = select(func.coalesce(func.sum(TokenTransaction.amount), 0)).where(
+            TokenTransaction.user_id == user.id,
+            TokenTransaction.type == "streak_bonus",
+            TokenTransaction.reference_id == session.id,
+        )
+        streak_tokens_result = await db.execute(streak_tokens_stmt)
+        streak_tokens_earned = streak_tokens_result.scalar_one()
+
+        return TrainingSessionInfo(
+            id=session.id,
+            topic_id=session.topic_id,
+            topic_name=topic.name if topic else "",
+            problems_solved=session.problems_solved,
+            total_problems=session.total_problems,
+            streak_count=session.streak_count,
+            status=session.status,
+            created_at=session.created_at,
+            started_at=session.started_at,
+            completed_at=session.completed_at,
+            last_solved_rating=last_solved_rating,
+            streak_tokens_earned=streak_tokens_earned,
         )
 
     # ------------------------------------------------------------------
@@ -658,6 +723,7 @@ class TrainingService:
             streak_count=session.streak_count,
             status=session.status,
             created_at=session.created_at,
+            started_at=session.started_at,
             completed_at=session.completed_at,
             last_solved_rating=last_solved_rating,
             streak_tokens_earned=streak_tokens_earned,
