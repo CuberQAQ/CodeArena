@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trophy, Loader2, Target, ShieldCheck, Crown, Play } from "lucide-react";
+import { Trophy, Loader2, Target, ShieldCheck, Crown, Play, Zap, Eye } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
@@ -10,20 +10,30 @@ import type { ApiResponse, TierInfo, ContestHistoryItem, ContestSessionInfo } fr
 
 const TIER_ICONS: Record<string, React.ElementType> = {
   beginner: ShieldCheck,
+  pupil: Eye,
   advanced: Target,
   master: Crown,
+  blitz: Zap,
 };
 
 const TIER_COLORS: Record<string, string> = {
   beginner: "text-green-400",
+  pupil: "text-cyan-400",
   advanced: "text-blue-400",
   master: "text-yellow-400",
+  blitz: "text-orange-400",
 };
 
 const TIER_BG: Record<string, string> = {
   beginner: "bg-green-500/10",
+  pupil: "bg-cyan-500/10",
   advanced: "bg-blue-500/10",
   master: "bg-yellow-500/10",
+  blitz: "bg-orange-500/10",
+};
+
+const TIER_BORDER: Record<string, string> = {
+  blitz: "border-orange-500/40 hover:border-orange-400/60",
 };
 
 export default function ContestPage() {
@@ -73,6 +83,13 @@ export default function ContestPage() {
 
   const hasActiveContest = activeContest !== null;
 
+  const formatRatingRange = (tier: TierInfo) => {
+    if (tier.rating_range == null) {
+      return t("allRatings");
+    }
+    return `${tier.rating_range[0]} - ${tier.rating_range[1]}`;
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
@@ -115,7 +132,7 @@ export default function ContestPage() {
       )}
 
       {/* Tier selection cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tiers.length === 0 ? (
           <div className="col-span-full rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
             {t("noTiers")}
@@ -125,22 +142,52 @@ export default function ContestPage() {
             const Icon = TIER_ICONS[tier.tier] ?? Trophy;
             const color = TIER_COLORS[tier.tier] ?? "text-primary";
             const bg = TIER_BG[tier.tier] ?? "bg-primary/10";
+            const customBorder = TIER_BORDER[tier.tier];
             const isStarting = starting === tier.tier;
+            const isBlitz = tier.tier === "blitz";
 
             return (
               <div
                 key={tier.tier}
-                className="flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/30"
+                className={`flex flex-col rounded-xl border bg-card p-5 transition-colors hover:border-primary/30 ${
+                  customBorder ?? "border-border"
+                }`}
               >
                 <div className="flex items-center gap-3">
                   <div className={`flex size-12 items-center justify-center rounded-xl ${bg}`}>
                     <Icon className={`size-6 ${color}`} />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="whitespace-nowrap text-lg font-bold text-foreground">{tier.name}</h3>
-                    <p className="text-xs text-muted-foreground capitalize">{tier.tier}</p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="whitespace-nowrap text-lg font-bold text-foreground">
+                        {tier.name}
+                      </h3>
+                      {tier.div != null && (
+                        <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                          {t("divLabel", { div: tier.div })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground capitalize">{tier.tier}</p>
+                      {tier.is_rated ? (
+                        <span className="rounded-sm bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-400">
+                          {t("rated")}
+                        </span>
+                      ) : (
+                        <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {t("unrated")}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {isBlitz && (
+                  <p className="mt-2 text-xs italic text-orange-400/80">
+                    {t("blitzDescription")}
+                  </p>
+                )}
 
                 <div className="mt-4 space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -153,9 +200,7 @@ export default function ContestPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{t("ratingRange")}</span>
-                    <span className="text-foreground">
-                      {tier.rating_range[0]} - {tier.rating_range[1]}
-                    </span>
+                    <span className="text-foreground">{formatRatingRange(tier)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{t("minElo")}</span>

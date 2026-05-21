@@ -51,5 +51,15 @@
   "dashboard": "仪表盘",
   "waitingForCFResult": "等待 Codeforces 结果...",
   "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。",
-  "trackingTimedOut": "提交追踪已超时，请尝试退出当前会话。"
+  "trackingTimedOut": "提交追踪已超时，请尝试退出当前会话。",
+  "divLabel": "Div. {{div}}",
+  "rated": "Rated",
+  "unrated": "Unrated",
+  "allRatings": "所有分数",
+  "blitzDescription": "短时赛，动态难度",
+  "tierBeginner": "Beginner 比赛",
+  "tierPupil": "Pupil 比赛",
+  "tierAdvanced": "Advanced 比赛",
+  "tierMaster": "Master 比赛",
+  "tierBlitz": "短时赛"
 }

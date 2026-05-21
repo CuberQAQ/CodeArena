@@ -241,12 +241,14 @@ export interface AbandonTrainingResponse {
 export interface TierInfo {
   tier: string;
   name: string;
+  div: number | null;
   min_elo: number | null;
   max_elo: number | null;
   duration_minutes: number;
   problem_count: number;
-  rating_range: number[];
+  rating_range: number[] | null;
   eligible: boolean;
+  is_rated: boolean;
 }
 
 export interface ContestProblemInfo {

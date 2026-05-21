@@ -51,5 +51,15 @@
   "dashboard": "Dashboard",
   "waitingForCFResult": "Waiting for Codeforces result...",
   "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result.",
-  "trackingTimedOut": "Submission tracking timed out. Please try quitting the current session."
+  "trackingTimedOut": "Submission tracking timed out. Please try quitting the current session.",
+  "divLabel": "Div. {{div}}",
+  "rated": "Rated",
+  "unrated": "Unrated",
+  "allRatings": "All ratings",
+  "blitzDescription": "Short-time contest with dynamic difficulty",
+  "tierBeginner": "Beginner Contest",
+  "tierPupil": "Pupil Contest",
+  "tierAdvanced": "Advanced Contest",
+  "tierMaster": "Master Contest",
+  "tierBlitz": "Blitz Contest"
 }
