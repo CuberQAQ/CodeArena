@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -454,6 +454,328 @@ class TestCheckCachedEndpoint:
             resp = client.get("/api/v1/problem/statements/check?problem_ids=1A%2C+%0A")
 
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Tests: _extract_pre_text (sync helper)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractPreText:
+    def test_with_test_example_lines(self):
+        from bs4 import BeautifulSoup
+
+        from app.services.problem_scraper_service import _extract_pre_text
+
+        html = "<pre><div class='test-example-line'>3</div><div class='test-example-line'>1 2 3</div></pre>"
+        soup = BeautifulSoup(html, "lxml")
+        pre = soup.find("pre")
+        result = _extract_pre_text(pre)
+        assert result == "3\n1 2 3"
+
+    def test_without_test_example_lines(self):
+        from bs4 import BeautifulSoup
+
+        from app.services.problem_scraper_service import _extract_pre_text
+
+        html = "<pre>plain text content</pre>"
+        soup = BeautifulSoup(html, "lxml")
+        pre = soup.find("pre")
+        result = _extract_pre_text(pre)
+        assert result == "plain text content"
+
+
+# ---------------------------------------------------------------------------
+# Tests: _fetch_page_html (via mock — tests retry logic and error handling)
+# ---------------------------------------------------------------------------
+
+
+class TestFetchPageHtml:
+    def test_successful_fetch(self):
+        """_fetch_page_html returns HTML on success."""
+        from app.services.problem_scraper_service import _fetch_page_html
+
+        mock_page = MagicMock()
+        mock_page.content.return_value = '<html><div class="problem-statement">problem</div></html>'
+        mock_page.goto = MagicMock()
+        mock_page.wait_for_selector = MagicMock()
+
+        mock_context = MagicMock()
+        mock_context.new_page.return_value = mock_page
+        mock_context.close = MagicMock()
+
+        with patch("app.services.problem_scraper_service._new_context", return_value=mock_context):
+            html = _fetch_page_html("https://codeforces.com/problemset/problem/1/A")
+
+        assert "problem-statement" in html
+        mock_context.close.assert_called_once()
+
+    def test_retry_on_failure_then_success(self):
+        """_fetch_page_html retries on failure and succeeds on second attempt."""
+        from app.services.problem_scraper_service import _fetch_page_html
+
+        mock_page = MagicMock()
+        mock_page.goto.side_effect = [
+            Exception("Network error"),
+            None,  # second attempt succeeds
+        ]
+        mock_page.wait_for_selector = MagicMock()
+        mock_page.content.return_value = '<html><div class="problem-statement">ok</div></html>'
+        mock_page.wait_for_timeout = MagicMock()
+
+        mock_context = MagicMock()
+        mock_context.new_page.return_value = mock_page
+        mock_context.close = MagicMock()
+
+        with patch("app.services.problem_scraper_service._new_context", return_value=mock_context):
+            html = _fetch_page_html("https://codeforces.com/problemset/problem/1/A", retries=3)
+
+        assert "problem-statement" in html
+        assert mock_page.goto.call_count == 2
+        mock_page.wait_for_timeout.assert_called_once()
+
+    def test_all_retries_exhausted(self):
+        """_fetch_page_html raises RuntimeError when all retries fail."""
+        from app.services.problem_scraper_service import _fetch_page_html
+
+        mock_page = MagicMock()
+        mock_page.goto.side_effect = Exception("Network error")
+        mock_page.wait_for_timeout = MagicMock()
+
+        mock_context = MagicMock()
+        mock_context.new_page.return_value = mock_page
+        mock_context.close = MagicMock()
+
+        with patch("app.services.problem_scraper_service._new_context", return_value=mock_context):
+            with pytest.raises(RuntimeError, match="Failed to scrape"):
+                _fetch_page_html("https://codeforces.com/problemset/problem/1/A", retries=2)
+
+        mock_context.close.assert_called_once()
+
+    def test_page_without_problem_statement_raises(self):
+        """If fetched HTML lacks .problem-statement, it should retry."""
+        from app.services.problem_scraper_service import _fetch_page_html
+
+        mock_page = MagicMock()
+        # First call returns HTML without problem-statement, second succeeds
+        mock_page.content.side_effect = [
+            "<html><body>no problem here</body></html>",
+            '<html><div class="problem-statement">found</div></html>',
+        ]
+        mock_page.goto = MagicMock()
+        mock_page.wait_for_selector = MagicMock()
+        mock_page.wait_for_timeout = MagicMock()
+
+        mock_context = MagicMock()
+        mock_context.new_page.return_value = mock_page
+        mock_context.close = MagicMock()
+
+        with patch("app.services.problem_scraper_service._new_context", return_value=mock_context):
+            html = _fetch_page_html("https://codeforces.com/problemset/problem/1/A", retries=3)
+
+        assert "problem-statement" in html
+
+
+# ---------------------------------------------------------------------------
+# Tests: _ensure_browser and _new_context
+# ---------------------------------------------------------------------------
+
+
+class TestBrowserManagement:
+    def test_ensure_browser_creates_instance(self):
+        """_ensure_browser should create a browser if none exists."""
+        mock_pw = MagicMock()
+        mock_browser = MagicMock()
+        mock_pw.chromium.launch.return_value = mock_browser
+        mock_pw.start.return_value = mock_pw
+
+        with (
+            patch("app.services.problem_scraper_service._browser_instance", None),
+            patch("app.services.problem_scraper_service._playwright_instance", None),
+            patch("app.services.problem_scraper_service.sync_playwright", return_value=mock_pw),
+        ):
+            from app.services.problem_scraper_service import _ensure_browser
+
+            browser = _ensure_browser()
+            assert browser is mock_browser
+
+    @pytest.mark.asyncio
+    async def test_shutdown_closes_browser(self):
+        """shutdown() should close browser and playwright instances."""
+        svc = ProblemScraperService()
+
+        mock_browser = MagicMock()
+        mock_pw = MagicMock()
+
+        with (
+            patch("app.services.problem_scraper_service._browser_instance", mock_browser),
+            patch("app.services.problem_scraper_service._playwright_instance", mock_pw),
+        ):
+            await svc.shutdown()
+
+        mock_browser.close.assert_called_once()
+        mock_pw.stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_no_browser(self):
+        """shutdown() should be safe when no browser exists."""
+        svc = ProblemScraperService()
+
+        with (
+            patch("app.services.problem_scraper_service._browser_instance", None),
+            patch("app.services.problem_scraper_service._playwright_instance", None),
+        ):
+            # Should not raise
+            await svc.shutdown()
+
+    def test_ensure_browser_reuses_connected(self):
+        """_ensure_browser should return existing browser if still connected."""
+        mock_browser = MagicMock()
+        mock_browser.is_connected.return_value = True
+
+        with (
+            patch("app.services.problem_scraper_service._browser_instance", mock_browser),
+        ):
+            from app.services.problem_scraper_service import _ensure_browser
+
+            browser = _ensure_browser()
+            assert browser is mock_browser
+
+    def test_ensure_browser_recreates_when_disconnected(self):
+        """_ensure_browser should recreate browser if existing one is disconnected."""
+        old_browser = MagicMock()
+        old_browser.is_connected.return_value = False
+
+        old_pw = MagicMock()
+        new_browser = MagicMock()
+        new_pw = MagicMock()
+        new_pw.chromium.launch.return_value = new_browser
+        new_pw.start.return_value = new_pw
+
+        with (
+            patch("app.services.problem_scraper_service._browser_instance", old_browser),
+            patch("app.services.problem_scraper_service._playwright_instance", old_pw),
+            patch("app.services.problem_scraper_service.sync_playwright", return_value=new_pw),
+        ):
+            from app.services.problem_scraper_service import _ensure_browser
+
+            browser = _ensure_browser()
+            assert browser is new_browser
+            old_pw.stop.assert_called_once()
+
+    def test_new_context_creates_context(self):
+        """_new_context should create a browser context with anti-detection."""
+        mock_browser = MagicMock()
+        mock_context = MagicMock()
+        mock_browser.new_context.return_value = mock_context
+
+        with patch("app.services.problem_scraper_service._ensure_browser", return_value=mock_browser):
+            from app.services.problem_scraper_service import _new_context
+
+            ctx = _new_context()
+            assert ctx is mock_context
+            mock_browser.new_context.assert_called_once()
+            mock_context.add_init_script.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Tests: scrape_problem (async wrapper)
+# ---------------------------------------------------------------------------
+
+
+class TestScrapeProblem:
+    @pytest.mark.asyncio
+    async def test_scrape_problem_calls_run_sync(self):
+        """scrape_problem should call _run_sync for fetch and parse."""
+        svc = ProblemScraperService()
+
+        mock_html = '<html><div class="problem-statement">test</div></html>'
+        mock_parsed = {
+            "title": "Test",
+            "body_html": "<div>body</div>",
+            "samples": [],
+            "full_html": '<div class="problem-statement">test</div>',
+        }
+
+        call_log = []
+
+        async def fake_run_sync(func, *args):
+            call_log.append((func, args))
+            if func.__name__ == "_fetch_page_html":
+                return mock_html
+            if func.__name__ == "_parse_problem_html":
+                return mock_parsed
+            return None
+
+        with patch.object(svc, "_run_sync", side_effect=fake_run_sync):
+            result = await svc.scrape_problem(1, "A")
+
+        assert result["title"] == "Test"
+        assert len(call_log) == 2
+
+    @pytest.mark.asyncio
+    async def test_scrape_problem_builds_correct_url(self):
+        """scrape_problem should use the correct CF URL."""
+        svc = ProblemScraperService()
+
+        captured_url = []
+
+        async def fake_run_sync(func, *args):
+            if func.__name__ == "_fetch_page_html":
+                captured_url.append(args[0])
+                return '<div class="problem-statement">ok</div>'
+            return {"title": "T", "body_html": "", "samples": [], "full_html": ""}
+
+        with patch.object(svc, "_run_sync", side_effect=fake_run_sync):
+            await svc.scrape_problem(2100, "F2")
+
+        assert captured_url[0] == "https://codeforces.com/problemset/problem/2100/F2"
+
+
+# ---------------------------------------------------------------------------
+# Tests: _parse_problem_html edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestParseProblemHtmlEdgeCases:
+    def test_no_time_limit_element(self):
+        from app.services.problem_scraper_service import _parse_problem_html
+
+        html = (
+            '<html><body><div class="problem-statement">'
+            '<div class="header"><div class="title">A. Test</div>'
+            '<div class="memory-limit">256 MB</div>'
+            "</div></div></body></html>"
+        )
+        result = _parse_problem_html(html)
+        assert result["title"] == "A. Test"
+        assert result["time_limit"] is None
+        assert result["memory_limit"] == "256 MB"
+
+    def test_no_header_element(self):
+        from app.services.problem_scraper_service import _parse_problem_html
+
+        html = '<html><body><div class="problem-statement"></div></body></html>'
+        result = _parse_problem_html(html)
+        assert result["body_html"] == ""
+
+    def test_multiple_samples(self):
+        from app.services.problem_scraper_service import _parse_problem_html
+
+        html = (
+            '<html><body><div class="problem-statement">'
+            '<div class="header"><div class="title">A. Multi</div></div>'
+            '<div class="sample-test">'
+            '<div class="input"><pre>1</pre></div>'
+            '<div class="output"><pre>2</pre></div>'
+            '<div class="input"><pre>3</pre></div>'
+            '<div class="output"><pre>4</pre></div>'
+            "</div></div></body></html>"
+        )
+        result = _parse_problem_html(html)
+        assert len(result["samples"]) == 2
+        assert result["samples"][0] == {"input": "1", "output": "2"}
+        assert result["samples"][1] == {"input": "3", "output": "4"}
 
 
 # ---------------------------------------------------------------------------
