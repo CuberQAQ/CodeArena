@@ -47,7 +47,7 @@ logger = logging.getLogger("code_arena.submission_tracker")
 
 # How far before/after expected_at to look for matching submissions.
 _MATCH_WINDOW_BEFORE = timedelta(minutes=5)
-_MATCH_WINDOW_AFTER = timedelta(minutes=30)
+_MATCH_WINDOW_AFTER = timedelta(hours=2)
 
 # How long before a pending submission is considered timed out.
 _TIMEOUT_AFTER = timedelta(hours=2)

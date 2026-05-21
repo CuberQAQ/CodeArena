@@ -12,6 +12,8 @@ from app.core.redis import RedisUnavailableError, close_redis_pool, init_redis_p
 from app.core.task_scheduler import scheduler as submission_scheduler
 from app.middleware import LoggingMiddleware, RateLimitMiddleware, setup_cors
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
 logger = logging.getLogger("code_arena")
 
 
