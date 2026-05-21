@@ -158,6 +158,7 @@ export function DashboardCharts() {
   }, [user, t]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch updates state via callbacks
     fetchAllData();
   }, [fetchAllData]);
 

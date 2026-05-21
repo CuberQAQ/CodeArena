@@ -305,6 +305,7 @@ export default function ContestDetailPage() {
   // Show achievement popup when contest result has achievements
   useEffect(() => {
     if (result?.achievements && result.achievements.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync achievements from server result
       setAchievements(result.achievements);
       const timer = setTimeout(() => setShowAchievements(true), 1500);
       return () => clearTimeout(timer);

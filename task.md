@@ -2322,4 +2322,167 @@ AI 机器人模拟存在三个叠加问题：
     轨道 D (Agent): 27.7 (等 A+C 完成)
 ```
 
+---
+
+## 阶段 28: PvP E2E 揭示的 Bug 修复
+
+> PvP 深度 E2E 测试（Task 27.6 扩展）发现的 3 个生产环境 Bug。
+
+### Task 28.1: 前端 waiting_opponent 状态处理 — 消除 problem null 竞态
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: 无
+
+#### 根因分析
+后端 `POST /challenge/start` 在仅一方确认时返回 `status: "waiting_opponent"`，但前端只检查了 `"no_match"`，对 `"waiting_opponent"` 视而不见，直接进入 `in_progress`。此时 `GET /challenge/{id}` 返回 `problem: null`（因为 session 还是 `pending`，`problem_id` 为空字符串）。**每个 PvP 对战必有一个玩家（先确认的）受此影响。**
+
+#### 任务描述
+前端 `handleStartChallenge` 增加 `waiting_opponent` 状态处理：
+1. 当后端返回 `status: "waiting_opponent"` 时，不进入 `in_progress`，而是显示 "等待对手确认..." 的 UI
+2. 启动轮询（2-3s 间隔），调用 `GET /challenge/{sessionId}` 检查 session 是否变为 `active` 且有 `problem_id`
+3. 当 problem 数据就绪时，再进入 `in_progress`
+
+**需要修改的文件**:
+- `frontend/src/pages/ChallengePage.tsx` — `handleStartChallenge` 函数 + 新增 `waiting` phase 渲染 + 轮询逻辑
+
+**触发场景**: 用户点击 "Start Challenge" → 后端返回 waiting_opponent → 前端显示等待 UI → 轮询直到 problem 就绪 → 进入 in_progress
+
+**调用方清单**: 无新增调用方，仅修改 ChallengePage 内部逻辑
+
+**反向集成清单**: 无横切特性集成需求
+
+#### 测试要点
+- [ ] **先确认的玩家**: 看到 "等待对手确认..."，不显示提交表单
+- [ ] **后确认的玩家**: 直接看到题目，正常进入 in_progress
+- [ ] **双方几乎同时确认**: 两个玩家都直接进入 in_progress
+- [ ] **一方确认后对手退出**: 等待 UI 检测到 session completed，显示结果
+- [ ] **E2E 回归**: S1-S4 全部通过（pvp-challenge-flow.spec.ts）
+
+#### 验收标准
+1. 先确认的玩家不再看到 problem null 的 in_progress 页面
+2. 等待 UI 有明确提示文字和动画
+3. 轮询成功后无缝过渡到 in_progress
+4. 现有 E2E 测试零回归
+
+---
+
+### Task 28.2: 对手退出实时检测 + 导航恢复
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: Task 28.1（共用 ChallengePage 轮询逻辑）
+
+#### 根因分析
+两个独立问题叠加：1）前端 `in_progress` 阶段没有轮询 session 状态，无法检测对手退出；2）`GET /challenge/active` 只查 `status == "active"`，对手退出后 session 变为 `completed`，此 API 返回 null，P2 导航回来无法恢复。
+
+#### 任务描述
+
+**前端修复（主要）**:
+1. `in_progress` 阶段添加 session 状态轮询（3s 间隔），检测 `status === "completed"` 或 result 有值
+2. 检测到完成时停止轮询，切换到 `result` phase 并显示结果
+
+**后端修复（次要）**:
+1. `get_active_challenge` 增加 `include_recently_completed` 参数，返回最近 10 分钟内 completed 的 session
+2. 保持默认行为不变（不传参时只查 active），避免影响 Dashboard 活跃挑战横幅
+
+**需要修改的文件**:
+- `frontend/src/pages/ChallengePage.tsx` — in_progress 阶段添加轮询 useEffect
+- `backend/app/services/challenge_service.py` — `get_active_challenge` 方法增加 recently_completed 查询
+- `backend/app/routers/challenge.py` — `/challenge/active` 路由增加 query param
+
+**触发场景**:
+- 实时检测：P1 退出 → P2 的轮询检测到 → 自动显示 Victory
+- 导航恢复：P1 退出 → P2 离开 → P2 回到 /challenge → GET /challenge/active?include_recently_completed=true → 显示 Victory
+
+**调用方清单**:
+- `ChallengePage.tsx` — 使用新的轮询和恢复逻辑
+- `DashboardPage.tsx:84` — 已调用 `/challenge/active`，默认行为不变（不传新参数）
+
+**反向集成清单**: 无横切特性集成需求
+
+#### 测试要点
+- [ ] **对手退出实时检测**: P1 退出后 3-5s 内 P2 看到 Victory
+- [ ] **导航恢复**: P1 退出后 P2 离开再回到 /challenge，看到 Victory
+- [ ] **正常结算不受影响**: 双方提交后轮询检测到 completed，正常显示结果
+- [ ] **Dashboard 不受影响**: Dashboard 活跃挑战横幅仍只显示 active session
+- [ ] **轮询清理**: 组件卸载时 interval 被清理
+- [ ] **E2E 回归**: S1-S4 全部通过（S3 对手退出场景稳定通过）
+
+#### 验收标准
+1. 对手退出后另一方 5s 内自动检测到
+2. 导航离开再回来能恢复已完成的 session
+3. Dashboard 不受影响
+4. 现有 E2E 测试零回归
+
+---
+
+### Task 28.3: Rate Limiting 防御性修复
+**状态**: 🔲 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 根因分析
+三个问题叠加：1）RateLimitMiddleware 无端点排除，`/auth/me` 等高频低开销端点也被限流；2）Dashboard 加载 8-9 个 API 请求（含重复）；3）前端 `hydrate()` 的 catch 无条件清空 token，429 也被当作未登录处理。
+
+#### 任务描述
+
+**P0 — 前端 429 错误处理**（阻断性最高）:
+1. `hydrate()` catch 块区分 401 和 429/5xx：仅 401 清空 token，429/5xx 保持当前状态
+2. axios interceptor 增加 429 显式处理，避免误触发登出
+
+**P1 — 后端 RateLimitMiddleware 端点排除**:
+1. 排除 `/auth/me`（高频低开销身份验证）
+2. 排除 `/auth/refresh`（token 刷新被 429 级联）
+3. 保留 `/auth/login` 和 `/auth/register` 的限流（防暴力破解）
+
+**P2 — 前端 Dashboard API 请求去重**:
+1. 删除 DashboardPage 冗余的 `fetchUser()` 调用（hydrate 已完成）
+2. 合并两次 `/economy/transactions` 请求（limit=5 和 limit=100 → 用 limit=100，组件内截取）
+
+**需要修改的文件**:
+- `frontend/src/stores/auth.ts` — hydrate() catch 区分错误类型
+- `frontend/src/services/api.ts` — interceptor 增加 429 处理
+- `backend/app/middleware/__init__.py` — RateLimitMiddleware 增加排除路径
+- `frontend/src/pages/DashboardPage.tsx` — 删除冗余 fetchUser，合并 transactions 请求
+- `frontend/src/components/charts/DashboardCharts.tsx` — 接受合并后的 transactions 数据
+
+**触发场景**: 任何已登录用户在正常使用中被意外登出
+
+**调用方清单**:
+- `auth.ts` hydrate() — 应用启动时调用
+- `api.ts` interceptor — 所有 API 请求经过
+- `DashboardPage.tsx` — Dashboard 加载时
+
+**反向集成清单**: 无横切特性集成需求
+
+#### 测试要点
+- [ ] **429 不触发登出**: 模拟 /auth/me 返回 429，token 不被清空
+- [ ] **401 仍触发登出**: /auth/me 返回 401，正确清空 token
+- [ ] **端点排除生效**: /auth/me 不被计入 rate limit
+- [ ] **暴力破解仍被限制**: /auth/login 429 仍然生效
+- [ ] **Dashboard 请求减少**: 打开 Dashboard 的 API 请求数 < 6
+- [ ] **E2E 回归**: 全部 PvP E2E 测试通过
+
+#### 验收标准
+1. 429 不再导致用户被登出
+2. RateLimitMiddleware 排除关键端点
+3. Dashboard API 请求减少至 ≤6 个
+4. 现有功能无回归
+
+---
+
+### 任务依赖关系
+
+```
+阶段 28 (PvP E2E Bug 修复):
+  28.1 前端 waiting_opponent 状态处理 ← 无依赖 (P0)
+  28.2 对手退出实时检测 + 导航恢复 ← 28.1 (P0)
+  28.3 Rate Limiting 防御性修复 ← 无依赖 (P1)
+
+  并行轨道:
+    轨道 A: 28.1 → 28.2
+    轨道 B: 28.3 (可与 A 并行)
+```
+
+**建议执行顺序**: 28.1 + 28.3 并行 → 28.2（依赖 28.1 的轮询逻辑模式）
+
 **建议执行顺序**: 27.1 + 27.4 + 27.6 并行 → 27.2 + 27.3 + 27.5 → 27.7

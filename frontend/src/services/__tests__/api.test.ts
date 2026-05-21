@@ -101,9 +101,7 @@ describe("API service", () => {
     it("clears tokens and rejects when no refresh token is available", async () => {
       localStorage.setItem("access_token", "expired-at");
 
-      let callCount = 0;
       setHandler(async (config) => {
-        callCount++;
         // First call: return 401
         const err: Record<string, unknown> = {
           response: { status: 401, data: { success: false } },
@@ -224,10 +222,7 @@ describe("API service", () => {
 
       const postSpy = vi.spyOn(axios, "post").mockReturnValue(refreshPromise);
 
-      let callCount = 0;
-
       setHandler(async (config) => {
-        callCount++;
         // All calls: reject with 401
         const err: Record<string, unknown> = {
           response: { status: 401, data: { success: false } },

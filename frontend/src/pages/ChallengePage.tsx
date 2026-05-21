@@ -21,7 +21,7 @@ import type {
   QuitChallengeResponse,
 } from "@/types";
 
-type Phase = "idle" | "queuing" | "matched" | "in_progress" | "result";
+type Phase = "idle" | "queuing" | "matched" | "waiting" | "in_progress" | "result";
 
 export default function ChallengePage() {
   const navigate = useNavigate();
@@ -96,12 +96,12 @@ export default function ChallengePage() {
       // Direct URL with session ID -- load that session
       resumeChallenge(urlSessionId);
     } else {
-      // No session ID in URL -- check for active challenge
+      // No session ID in URL -- check for active or recently completed challenge
       api
         .get<ApiResponse<ActiveChallengeInfo | null>>("/challenge/active")
         .then((res) => {
           const active = res.data.data as ActiveChallengeInfo | null;
-          if (active && active.status === "active") {
+          if (active && (active.status === "active" || active.status === "completed")) {
             resumeChallenge(active.id);
           }
         })
@@ -144,6 +144,66 @@ export default function ChallengePage() {
       setElapsed((prev) => prev + 1);
     }, 1000);
   }, []);
+
+  // Poll for opponent confirmation when waiting
+  useEffect(() => {
+    if (phase !== "waiting" || !sessionId) return;
+
+    const pollWaiting = async () => {
+      try {
+        const res = await api.get<ApiResponse<ChallengeDetail>>(`/challenge/${sessionId}`);
+        const data = res.data.data;
+        if (data.status === "active" && data.problem) {
+          setChallenge(data);
+          setPhase("in_progress");
+          startTimer();
+          return true; // done
+        }
+        if (data.status === "completed" || data.result) {
+          setChallenge(data);
+          setEloTriggerKey((k) => k + 1);
+          setPhase("result");
+          return true; // done
+        }
+        return false; // continue polling
+      } catch {
+        return false; // continue polling on transient errors
+      }
+    };
+
+    const interval = setInterval(async () => {
+      const done = await pollWaiting();
+      if (done) clearInterval(interval);
+    }, 3000);
+
+    // Also poll immediately so we don't wait 3s for the first check
+    pollWaiting();
+
+    return () => clearInterval(interval);
+  }, [phase, sessionId, startTimer]);
+
+  // Poll for opponent quit or session completion during in_progress phase
+  useEffect(() => {
+    if (phase !== "in_progress" || !sessionId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get<ApiResponse<ChallengeDetail>>(`/challenge/${sessionId}`);
+        const data = res.data.data;
+        if (data.status === "completed" || data.result) {
+          setChallenge(data);
+          setEloTriggerKey((k) => k + 1);
+          if (timerRef.current) clearInterval(timerRef.current);
+          setPhase("result");
+          clearInterval(interval);
+        }
+      } catch {
+        // Continue polling on transient errors
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [phase, sessionId]);
 
   // Join queue
   const handleJoinQueue = async () => {
@@ -191,6 +251,11 @@ export default function ChallengePage() {
       if (!data.session_id || data.status === "no_match") {
         setError("Match no longer available. Please try again.");
         setPhase("idle");
+        return;
+      }
+      if (data.status === "waiting_opponent") {
+        setSessionId(data.session_id);
+        setPhase("waiting");
         return;
       }
       setSessionId(data.session_id);
@@ -371,6 +436,25 @@ export default function ChallengePage() {
           {t("findingOpponentDesc")}
         </p>
         <Button variant="outline" className="mt-8" onClick={handleLeaveQueue}>
+          <X className="mr-2 size-4" />
+          {t("common:cancel", { ns: "common" })}
+        </Button>
+      </div>
+    );
+  }
+
+  // -- WAITING (for opponent confirmation) --
+  if (phase === "waiting") {
+    return (
+      <div className="mx-auto max-w-2xl text-center">
+        <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-primary/10">
+          <Loader2 className="size-10 animate-spin text-primary" />
+        </div>
+        <h1 className="text-2xl font-bold text-foreground">{t("waitingForOpponent")}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("waitingForOpponentDesc")}
+        </p>
+        <Button variant="outline" className="mt-8" onClick={handleReset}>
           <X className="mr-2 size-4" />
           {t("common:cancel", { ns: "common" })}
         </Button>

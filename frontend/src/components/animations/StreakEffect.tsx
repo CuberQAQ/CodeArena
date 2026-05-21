@@ -40,6 +40,7 @@ export function StreakEffect({ streak, className = "" }: StreakEffectProps) {
 
   useEffect(() => {
     if (streak > prevStreak && streak >= 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- trigger streak pulse animation
       setPulsing(true);
       const t = setTimeout(() => setPulsing(false), 600);
       return () => clearTimeout(t);

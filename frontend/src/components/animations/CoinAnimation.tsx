@@ -29,6 +29,7 @@ export function CoinAnimation({ amount, triggerKey, className = "" }: CoinAnimat
     setDisplayAmount(0);
 
     if (reduced) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reduced-motion: show amount immediately
       setDisplayAmount(amount);
       const t = setTimeout(() => setVisible(false), 1500);
       return () => clearTimeout(t);

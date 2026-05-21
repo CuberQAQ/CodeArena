@@ -175,8 +175,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Active Challenge Banner */}
-      {activeChallenge && (
+      {/* Active Challenge Banner — only show for truly active sessions */}
+      {activeChallenge && activeChallenge.status === "active" && (
         <div className="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/5 p-4">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-lg bg-red-500/10">
