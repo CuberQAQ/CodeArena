@@ -75,7 +75,9 @@ class MEloService:
 
         logger.info(
             "Created M-Elo for user=%s tag=%s initial_elo=%d",
-            user_id, tag, user.elo,
+            user_id,
+            tag,
+            user.elo,
         )
         return melo
 
@@ -93,11 +95,7 @@ class MEloService:
         Returns:
             List of all UserTagElo records for the user.
         """
-        stmt = (
-            select(UserTagElo)
-            .where(UserTagElo.user_id == user_id)
-            .order_by(UserTagElo.tag)
-        )
+        stmt = select(UserTagElo).where(UserTagElo.user_id == user_id).order_by(UserTagElo.tag)
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
@@ -129,7 +127,10 @@ class MEloService:
 
         logger.info(
             "Updated M-Elo user=%s tag=%s change=%d new_elo=%d",
-            user_id, tag, elo_change, melo.elo,
+            user_id,
+            tag,
+            elo_change,
+            melo.elo,
         )
         return melo
 
@@ -179,7 +180,9 @@ class MEloService:
             melo.first_ac_at = datetime.now(UTC)
             await db.flush()
             logger.info(
-                "Shield deactivated for user=%s tag=%s", user_id, tag,
+                "Shield deactivated for user=%s tag=%s",
+                user_id,
+                tag,
             )
         return melo
 
@@ -239,7 +242,8 @@ class MEloService:
             if not solved and shield_active:
                 logger.info(
                     "Shield active for user=%s tag=%s -- skipping M-Elo deduction",
-                    user_id, tag,
+                    user_id,
+                    tag,
                 )
                 results[tag] = 0
                 continue
@@ -249,7 +253,8 @@ class MEloService:
                 await MEloService.deactivate_shield(db, user_id, tag)
                 logger.info(
                     "Shield deactivated for user=%s tag=%s on first AC",
-                    user_id, tag,
+                    user_id,
+                    tag,
                 )
 
             # Calculate expected score based on tag M-Elo vs problem rating

@@ -45,13 +45,15 @@ class QueueEntry:
 
 def _entry_to_json(entry: QueueEntry) -> str:
     """Serialize a QueueEntry to JSON for Redis storage."""
-    return json.dumps({
-        "user_id": str(entry.user_id),
-        "elo": entry.elo,
-        "username": entry.username,
-        "cf_handle": entry.cf_handle,
-        "joined_at": entry.joined_at.isoformat(),
-    })
+    return json.dumps(
+        {
+            "user_id": str(entry.user_id),
+            "elo": entry.elo,
+            "username": entry.username,
+            "cf_handle": entry.cf_handle,
+            "joined_at": entry.joined_at.isoformat(),
+        }
+    )
 
 
 def _entry_from_json(user_id_str: str, data: str) -> QueueEntry:

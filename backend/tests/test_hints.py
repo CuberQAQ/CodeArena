@@ -147,27 +147,27 @@ class TestHintPricing:
     @pytest.mark.parametrize(
         "rating,expected_prices",
         [
-            (800, [3, 10, 20]),      # gray
-            (900, [3, 10, 20]),      # gray
-            (1199, [3, 10, 20]),     # gray
-            (1200, [5, 15, 30]),     # green
-            (1300, [5, 15, 30]),     # green
-            (1399, [5, 15, 30]),     # green
-            (1400, [6, 18, 35]),     # cyan
-            (1500, [6, 18, 35]),     # cyan
-            (1599, [6, 18, 35]),     # cyan
-            (1600, [8, 20, 40]),     # blue
-            (1750, [8, 20, 40]),     # blue
-            (1899, [8, 20, 40]),     # blue
-            (1900, [10, 25, 50]),    # purple
-            (2000, [10, 25, 50]),    # purple
-            (2099, [10, 25, 50]),    # purple
-            (2100, [12, 28, 55]),    # orange
-            (2250, [12, 28, 55]),    # orange
-            (2399, [12, 28, 55]),    # orange
-            (2400, [15, 30, 60]),    # red
-            (2500, [15, 30, 60]),    # red
-            (3000, [15, 30, 60]),    # red
+            (800, [3, 10, 20]),  # gray
+            (900, [3, 10, 20]),  # gray
+            (1199, [3, 10, 20]),  # gray
+            (1200, [5, 15, 30]),  # green
+            (1300, [5, 15, 30]),  # green
+            (1399, [5, 15, 30]),  # green
+            (1400, [6, 18, 35]),  # cyan
+            (1500, [6, 18, 35]),  # cyan
+            (1599, [6, 18, 35]),  # cyan
+            (1600, [8, 20, 40]),  # blue
+            (1750, [8, 20, 40]),  # blue
+            (1899, [8, 20, 40]),  # blue
+            (1900, [10, 25, 50]),  # purple
+            (2000, [10, 25, 50]),  # purple
+            (2099, [10, 25, 50]),  # purple
+            (2100, [12, 28, 55]),  # orange
+            (2250, [12, 28, 55]),  # orange
+            (2399, [12, 28, 55]),  # orange
+            (2400, [15, 30, 60]),  # red
+            (2500, [15, 30, 60]),  # red
+            (3000, [15, 30, 60]),  # red
         ],
     )
     def test_prices_by_rating(self, rating, expected_prices):
@@ -177,12 +177,12 @@ class TestHintPricing:
     @pytest.mark.parametrize(
         "rating,expected_total",
         [
-            (800, 33),    # gray: 3+10+20
-            (1200, 50),   # green: 5+15+30
-            (1400, 59),   # cyan: 6+18+35
-            (1600, 68),   # blue: 8+20+40
-            (1900, 85),   # purple: 10+25+50
-            (2100, 95),   # orange: 12+28+55
+            (800, 33),  # gray: 3+10+20
+            (1200, 50),  # green: 5+15+30
+            (1400, 59),  # cyan: 6+18+35
+            (1600, 68),  # blue: 8+20+40
+            (1900, 85),  # purple: 10+25+50
+            (2100, 95),  # orange: 12+28+55
             (2400, 105),  # red: 15+30+60
         ],
     )
@@ -540,9 +540,7 @@ class TestHintContent:
         await HintService.unlock_hint(db, user, "1234A", 1200, 1)
         await db.flush()
 
-        content = await HintService.get_hint_content(
-            db, user, "1234A", 1, 1200, problem_tags=["dp"]
-        )
+        content = await HintService.get_hint_content(db, user, "1234A", 1, 1200, problem_tags=["dp"])
 
         assert content.problem_id == "1234A"
         assert content.level == 1
@@ -557,9 +555,7 @@ class TestHintContent:
         await db.flush()
 
         with pytest.raises(BadRequestException, match="not unlocked"):
-            await HintService.get_hint_content(
-                db, user, "1234A", 1, 1200
-            )
+            await HintService.get_hint_content(db, user, "1234A", 1, 1200)
 
     @pytest.mark.asyncio
     async def test_content_varies_by_level(self, db):
@@ -589,14 +585,10 @@ class TestHintContent:
         await db.flush()
 
         with pytest.raises(BadRequestException, match="must be 1, 2, or 3"):
-            await HintService.get_hint_content(
-                db, user, "1234A", 0, 1200
-            )
+            await HintService.get_hint_content(db, user, "1234A", 0, 1200)
 
         with pytest.raises(BadRequestException, match="must be 1, 2, or 3"):
-            await HintService.get_hint_content(
-                db, user, "1234A", 4, 1200
-            )
+            await HintService.get_hint_content(db, user, "1234A", 4, 1200)
 
 
 # ===========================================================================
@@ -755,13 +747,13 @@ class TestPricingAllTiers:
     @pytest.mark.parametrize(
         "rating,level_1,level_2,level_3",
         [
-            (900, 3, 10, 20),       # gray
-            (1200, 5, 15, 30),      # green
-            (1500, 6, 18, 35),      # cyan
-            (1700, 8, 20, 40),      # blue
-            (2000, 10, 25, 50),     # purple
-            (2200, 12, 28, 55),     # orange
-            (2500, 15, 30, 60),     # red
+            (900, 3, 10, 20),  # gray
+            (1200, 5, 15, 30),  # green
+            (1500, 6, 18, 35),  # cyan
+            (1700, 8, 20, 40),  # blue
+            (2000, 10, 25, 50),  # purple
+            (2200, 12, 28, 55),  # orange
+            (2500, 15, 30, 60),  # red
         ],
     )
     @pytest.mark.asyncio
@@ -842,6 +834,7 @@ class TestEdgeCases:
 
         # Verify record exists
         from sqlalchemy import select
+
         stmt = select(_TestHintPurchase).where(
             _TestHintPurchase.user_id == user.id,
             _TestHintPurchase.problem_id == "1234A",

@@ -34,16 +34,63 @@ logger = logging.getLogger("code_arena.contest_simulation")
 # ---------------------------------------------------------------------------
 
 _PREFIXES: list[str] = [
-    "Algo", "Code", "Binary", "Quick", "Smart", "Deep", "Logic", "Pixel",
-    "Turbo", "Super", "Hyper", "Ultra", "Mega", "Micro", "Nano", "Brute",
-    "Greedy", "Dynamic", "Sparse", "Swift", "Optimal", "Random", "Minimal",
-    "Parallel", "Serial", "Async", "Linear", "Vertex", "Edge", "Node",
+    "Algo",
+    "Code",
+    "Binary",
+    "Quick",
+    "Smart",
+    "Deep",
+    "Logic",
+    "Pixel",
+    "Turbo",
+    "Super",
+    "Hyper",
+    "Ultra",
+    "Mega",
+    "Micro",
+    "Nano",
+    "Brute",
+    "Greedy",
+    "Dynamic",
+    "Sparse",
+    "Swift",
+    "Optimal",
+    "Random",
+    "Minimal",
+    "Parallel",
+    "Serial",
+    "Async",
+    "Linear",
+    "Vertex",
+    "Edge",
+    "Node",
 ]
 
 _SUFFIXES: list[str] = [
-    "King", "Queen", "Master", "Ninja", "Wizard", "Hacker", "Bot", "Dev",
-    "Coder", "Solver", "Pro", "Guru", "Ace", "Star", "Fox", "Panda",
-    "Eagle", "Tiger", "Dragon", "Knight", "Rogue", "Sage", "Wolf", "Hawk",
+    "King",
+    "Queen",
+    "Master",
+    "Ninja",
+    "Wizard",
+    "Hacker",
+    "Bot",
+    "Dev",
+    "Coder",
+    "Solver",
+    "Pro",
+    "Guru",
+    "Ace",
+    "Star",
+    "Fox",
+    "Panda",
+    "Eagle",
+    "Tiger",
+    "Dragon",
+    "Knight",
+    "Rogue",
+    "Sage",
+    "Wolf",
+    "Hawk",
 ]
 
 
@@ -257,9 +304,14 @@ class ContestSimulationService:
 
         # Read simulation config
         sim_config = _get_simulation_config()
-        difficulty_ticks = sim_config.get("difficulty_ticks", {
-            "easy": [2, 4], "medium": [6, 16], "hard": [16, 30],
-        })
+        difficulty_ticks = sim_config.get(
+            "difficulty_ticks",
+            {
+                "easy": [2, 4],
+                "medium": [6, 16],
+                "hard": [16, 30],
+            },
+        )
         jitter = sim_config.get("jitter", 0.3)
 
         # Get or create bot states for this contest
@@ -274,10 +326,13 @@ class ContestSimulationService:
 
         for bot in bots:
             # Get or initialize state for this bot
-            bot_state = contest_states.setdefault(bot.id, {
-                "current_problem": None,
-                "ticks_remaining": 0,
-            })
+            bot_state = contest_states.setdefault(
+                bot.id,
+                {
+                    "current_problem": None,
+                    "ticks_remaining": 0,
+                },
+            )
 
             newly_solved = ContestSimulationService._simulate_bot_tick(
                 bot,
@@ -332,13 +387,9 @@ class ContestSimulationService:
                                 await db.commit()
                             except Exception:
                                 await db.rollback()
-                                logger.exception(
-                                    "Error in simulation tick for contest %s", contest_id
-                                )
+                                logger.exception("Error in simulation tick for contest %s", contest_id)
                     except Exception:
-                        logger.exception(
-                            "DB session error in simulation for contest %s", contest_id
-                        )
+                        logger.exception("DB session error in simulation for contest %s", contest_id)
 
                     # Read tick interval from config (allows hot-reload)
                     sim_config = _get_simulation_config()
@@ -421,23 +472,27 @@ class ContestSimulationService:
         entries: list[LeaderboardEntry] = []
 
         # Human entry
-        entries.append(LeaderboardEntry(
-            rank=0,  # placeholder, will be set after sorting
-            name=user.username,
-            elo=user.elo,
-            solved=session.problems_solved,
-            is_bot=False,
-        ))
+        entries.append(
+            LeaderboardEntry(
+                rank=0,  # placeholder, will be set after sorting
+                name=user.username,
+                elo=user.elo,
+                solved=session.problems_solved,
+                is_bot=False,
+            )
+        )
 
         # Bot entries
         for bot in bots:
-            entries.append(LeaderboardEntry(
-                rank=0,
-                name=bot.bot_name,
-                elo=bot.bot_elo,
-                solved=bot.problems_solved,
-                is_bot=True,
-            ))
+            entries.append(
+                LeaderboardEntry(
+                    rank=0,
+                    name=bot.bot_name,
+                    elo=bot.bot_elo,
+                    solved=bot.problems_solved,
+                    is_bot=True,
+                )
+            )
 
         # Sort by solved desc, then by elo desc (tiebreaker)
         entries.sort(key=lambda e: (-e.solved, -e.elo))
@@ -507,7 +562,9 @@ class ContestSimulationService:
         # Calculate actual rank (smooth) of the player among all participants
         # Uses the same sigmoid-based metric as calculate_expected_rank for consistency
         actual_rank = ContestSimulationService.calculate_actual_rank_smooth(
-            player_solved, bot_elos, problem_ratings,
+            player_solved,
+            bot_elos,
+            problem_ratings,
         )
 
         # Binary search for PR in [0, 4000]
@@ -515,7 +572,10 @@ class ContestSimulationService:
         while hi - lo > 1:
             mid = (lo + hi) // 2
             expected_rank = ContestSimulationService.calculate_expected_rank(
-                mid, bot_elos, problem_ratings, player_solved,
+                mid,
+                bot_elos,
+                problem_ratings,
+                player_solved,
             )
             if expected_rank < actual_rank:
                 hi = mid

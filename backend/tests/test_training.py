@@ -419,8 +419,18 @@ class TestListTopics:
         topics = await TrainingService.list_topics(db)
         slugs = [t.slug for t in topics]
         expected = [
-            "dp", "greedy", "math", "graphs", "strings", "data_structures",
-            "binary_search", "sorting", "constructive", "number_theory", "trees", "geometry",
+            "dp",
+            "greedy",
+            "math",
+            "graphs",
+            "strings",
+            "data_structures",
+            "binary_search",
+            "sorting",
+            "constructive",
+            "number_theory",
+            "trees",
+            "geometry",
         ]
         assert slugs == expected
 
@@ -718,16 +728,26 @@ class TestSubmitProblem:
 
         # First submission (solved)
         await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
 
         # Second submission (already solved)
         with pytest.raises(BadRequestException, match="already solved"):
             await TrainingService.submit_problem(
-                db=db, user=user, session_id=session.id,
-                problem_id="100A", solved=True, attempts=2, time_spent=30.0,
+                db=db,
+                user=user,
+                session_id=session.id,
+                problem_id="100A",
+                solved=True,
+                attempts=2,
+                time_spent=30.0,
                 cf_service=cf_mock,
             )
 
@@ -738,8 +758,13 @@ class TestSubmitProblem:
 
         with pytest.raises(NotFoundException, match="Training session not found"):
             await TrainingService.submit_problem(
-                db=db, user=user, session_id=uuid.uuid4(),
-                problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+                db=db,
+                user=user,
+                session_id=uuid.uuid4(),
+                problem_id="100A",
+                solved=True,
+                attempts=1,
+                time_spent=60.0,
                 cf_service=cf_mock,
             )
 
@@ -772,16 +797,26 @@ class TestStreakMechanism:
 
         # Solve 800 rating problem -> streak = 1 (first AC)
         result1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert result1.streak_count == 1  # First AC
 
         # Solve 1200 rating problem -> streak = 2 (consecutive AC)
         result2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
         assert result2.streak_count == 2  # Second consecutive AC
@@ -809,16 +844,26 @@ class TestStreakMechanism:
 
         # Solve 1200 rating problem -> streak = 1
         r1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
         assert r1.streak_count == 1
 
         # Fail 800 rating problem -> streak resets to 0
         r2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=False, attempts=3, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=False,
+            attempts=3,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r2.streak_count == 0
@@ -853,16 +898,26 @@ class TestStreakMechanism:
 
         # Solve first 800 -> streak = 1
         r1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r1.streak_count == 1
 
         # Solve another 800 (same rating) -> streak continues = 2
         r2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100B", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100B",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r2.streak_count == 2
@@ -889,13 +944,22 @@ class TestStreakMechanism:
 
         # Solve all 5 problems -> streak = 5 (every AC counts)
         problems = [
-            ("100A", 800), ("200B", 1200), ("300C", 1600), ("400D", 2000), ("500E", 2400),
+            ("100A", 800),
+            ("200B", 1200),
+            ("300C", 1600),
+            ("400D", 2000),
+            ("500E", 2400),
         ]
         total_streak_tokens = 0
         for pid, _rating in problems:
             result = await TrainingService.submit_problem(
-                db=db, user=user, session_id=session.id,
-                problem_id=pid, solved=True, attempts=1, time_spent=60.0,
+                db=db,
+                user=user,
+                session_id=session.id,
+                problem_id=pid,
+                solved=True,
+                attempts=1,
+                time_spent=60.0,
                 cf_service=cf_mock,
             )
             total_streak_tokens = result.total_streak_tokens
@@ -926,24 +990,39 @@ class TestStreakMechanism:
 
         # Solve 800 -> streak = 1
         r1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r1.streak_count == 1
 
         # Fail on 1200 -> streak resets to 0
         r2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=False, attempts=3, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=False,
+            attempts=3,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
         assert r2.streak_count == 0
 
         # Now solve 1200 (same as failed) -> new streak starts at 1
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=True, attempts=5, time_spent=180.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=True,
+            attempts=5,
+            time_spent=180.0,
             cf_service=cf_mock,
         )
         assert result.streak_count == 1
@@ -1213,8 +1292,13 @@ class TestTokenRewards:
 
         # Solve a 1600 (blue) problem -> 30 tokens
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
         assert result.tokens_earned >= 30
@@ -1245,8 +1329,13 @@ class TestTokenRewards:
 
         # Fail a 1200 (green) problem -> 3 attempt tokens
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=False, attempts=2, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=False,
+            attempts=2,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert result.tokens_earned == 3
@@ -1276,8 +1365,13 @@ class TestTokenRewards:
 
         # Solve 800 -> streak=1, bonus=5
         r1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r1.streak_tokens == 5
@@ -1285,8 +1379,13 @@ class TestTokenRewards:
 
         # Solve 1200 -> streak=2, bonus=10
         r2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r2.streak_tokens == 10
@@ -1294,8 +1393,13 @@ class TestTokenRewards:
 
         # Solve 1600 -> streak=3, bonus=15
         r3 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r3.streak_tokens == 15
@@ -1334,8 +1438,13 @@ class TestEloUpdate:
 
         # Solve a 1600 problem with user at 1200 elo -> should gain
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
@@ -1369,8 +1478,13 @@ class TestEloUpdate:
         training_svc_module.MEloService.is_shield_active = AsyncMock(return_value=True)
 
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=False, attempts=3, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=False,
+            attempts=3,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
@@ -1418,8 +1532,13 @@ class TestFullTrainingFlow:
         # Step 5: Solve problems in increasing difficulty
         # Solve 800 rating -> streak=1
         r1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session_id,
-            problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session_id,
+            problem_id="100A",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r1.solved is True
@@ -1427,16 +1546,26 @@ class TestFullTrainingFlow:
 
         # Solve 1200 rating -> streak=2
         r2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session_id,
-            problem_id="200B", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session_id,
+            problem_id="200B",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
         assert r2.streak_count == 2
 
         # Solve 1600 rating -> streak=3
         r3 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session_id,
-            problem_id="300C", solved=True, attempts=1, time_spent=180.0,
+            db=db,
+            user=user,
+            session_id=session_id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=180.0,
             cf_service=cf_mock,
         )
         assert r3.streak_count == 3
@@ -1544,16 +1673,26 @@ class TestEdgeCases:
 
         # First attempt: fail
         r1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=False, attempts=2, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=False,
+            attempts=2,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r1.solved is False
 
         # Second attempt: solve (update the existing record)
         r2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=True, attempts=5, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=True,
+            attempts=5,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
         assert r2.solved is True
@@ -1597,8 +1736,13 @@ class TestEdgeCases:
 
         # Solve in non-sequential order: 2000 first, then 800
         r1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="400D", solved=True, attempts=1, time_spent=180.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="400D",
+            solved=True,
+            attempts=1,
+            time_spent=180.0,
             cf_service=cf_mock,
         )
         assert r1.solved is True
@@ -1606,8 +1750,13 @@ class TestEdgeCases:
 
         # Solve 800 after 2000 (decreasing) -> streak continues (every AC counts)
         r2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=True, attempts=1, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r2.solved is True
@@ -1668,7 +1817,7 @@ class TestAdaptiveRecommendation:
 
         assert result is not None
         lo, hi = result.search_range
-        assert lo == 900   # 1000 - 100
+        assert lo == 900  # 1000 - 100
         assert hi == 1200  # 1000 + 200
         assert 900 <= result.rating <= 1200
 
@@ -1689,8 +1838,8 @@ class TestAdaptiveRecommendation:
 
         assert result is not None
         lo, hi = result.search_range
-        assert lo == 300   # 500 - 200
-        assert hi == 800   # 500 + 300
+        assert lo == 300  # 500 - 200
+        assert hi == 800  # 500 + 300
         assert result.rating == 800
 
     async def test_fallback_round_2(self, db, cf_mock):

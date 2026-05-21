@@ -143,4 +143,5 @@ async def update_user_profile(
         user.email = data.email
 
     await db.flush()
+    await db.refresh(user)
     return user

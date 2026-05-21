@@ -359,8 +359,10 @@ class TestRetryOn429:
         # All 3 attempts return 429
         _mock_client(service, [_http_429()] * 3)
 
-        with patch("app.services.cf_api_service.asyncio.sleep", new_callable=AsyncMock), \
-             pytest.raises(CFRateLimitError):
+        with (
+            patch("app.services.cf_api_service.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(CFRateLimitError),
+        ):
             await service.get_user_info(["tourist"])
         assert service._client.get.await_count == 3
 
@@ -407,13 +409,13 @@ class TestNetworkErrors:
         """All attempts time out -- should raise CFNetworkError."""
         mock_client = AsyncMock(spec=httpx.AsyncClient)
         mock_client.is_closed = False
-        mock_client.get = AsyncMock(
-            side_effect=httpx.TimeoutException("timed out")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
         service._client = mock_client
 
-        with patch("app.services.cf_api_service.asyncio.sleep", new_callable=AsyncMock), \
-             pytest.raises(CFNetworkError) as exc_info:
+        with (
+            patch("app.services.cf_api_service.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(CFNetworkError) as exc_info,
+        ):
             await service.get_user_info(["tourist"])
         assert "timed out" in exc_info.value.message.lower()
         assert service._client.get.await_count == 3
@@ -423,13 +425,13 @@ class TestNetworkErrors:
         """Verify timeout retry uses exponential backoff sleep durations."""
         mock_client = AsyncMock(spec=httpx.AsyncClient)
         mock_client.is_closed = False
-        mock_client.get = AsyncMock(
-            side_effect=httpx.TimeoutException("timed out")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
         service._client = mock_client
 
-        with patch("app.services.cf_api_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep, \
-             pytest.raises(CFNetworkError):
+        with (
+            patch("app.services.cf_api_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            pytest.raises(CFNetworkError),
+        ):
             await service.get_user_info(["tourist"])
 
         # attempt 1: sleep 2**1=2, attempt 2: sleep 2**2=4
@@ -443,13 +445,13 @@ class TestNetworkErrors:
         """Connection errors are also retried with exponential backoff."""
         mock_client = AsyncMock(spec=httpx.AsyncClient)
         mock_client.is_closed = False
-        mock_client.get = AsyncMock(
-            side_effect=httpx.ConnectError("connection refused")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
         service._client = mock_client
 
-        with patch("app.services.cf_api_service.asyncio.sleep", new_callable=AsyncMock), \
-             pytest.raises(CFNetworkError) as exc_info:
+        with (
+            patch("app.services.cf_api_service.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(CFNetworkError) as exc_info,
+        ):
             await service.get_user_info(["tourist"])
         assert "network error" in exc_info.value.message.lower()
         assert service._client.get.await_count == 3

@@ -26,17 +26,13 @@ class PvEChallengeSession(Base, UUIDPrimaryKeyMixin):
     elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pp_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     s_value: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="pve_challenge_sessions", foreign_keys=[user_id])
 
-    __table_args__ = (
-        Index("ix_pve_sessions_user_created", "user_id", created_at.desc()),
-    )
+    __table_args__ = (Index("ix_pve_sessions_user_created", "user_id", created_at.desc()),)
 
     def __repr__(self) -> str:
         return f"<PvEChallengeSession(id={self.id}, status={self.status})>"

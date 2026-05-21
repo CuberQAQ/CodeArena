@@ -89,6 +89,7 @@ export function AchievementPopup({
 
   useEffect(() => {
     if (hasAchievements) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset popup state on achievement list change
       setCurrentIndex(0);
       setVisible(true);
     }

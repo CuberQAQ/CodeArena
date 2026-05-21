@@ -65,7 +65,7 @@ const quickActions: QuickAction[] = [
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { user, fetchUser } = useAuthStore();
+  const { user } = useAuthStore();
   const { t } = useTranslation(["dashboard", "common"]);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [loadingTx, setLoadingTx] = useState(true);
@@ -75,7 +75,8 @@ export default function DashboardPage() {
   const [overallMedal, setOverallMedal] = useState<MedalInfo | null>(null);
 
   useEffect(() => {
-    fetchUser().catch(() => {});
+    // Fetch all transactions once (limit=100) — DashboardCharts reuses this data
+    // via the transactions prop, eliminating a duplicate request.
     api
       .get<ApiResponse<UserSettingsData>>("/auth/settings")
       .then((res) => setDisplayMode(res.data.data.display_mode))
@@ -85,7 +86,7 @@ export default function DashboardPage() {
       .then((res) => setOverallMedal(res.data.data.medal))
       .catch(() => {});
     api
-      .get<ApiResponse<{ items: TransactionItem[] }>>("/economy/transactions?limit=5")
+      .get<ApiResponse<{ items: TransactionItem[]; total: number }>>("/economy/transactions?limit=100")
       .then((res) => setTransactions(res.data.data.items ?? []))
       .catch(() => {})
       .finally(() => setLoadingTx(false));
@@ -97,7 +98,7 @@ export default function DashboardPage() {
       .get<ApiResponse<ActiveChallengeInfo | null>>("/challenge/active")
       .then((res) => setActiveChallenge((res.data.data as ActiveChallengeInfo | null) ?? null))
       .catch(() => {});
-  }, [fetchUser]);
+  }, []);
 
   if (!user) {
     return <LoadingSpinner text={t("dashboard:loadingDashboard")} className="py-20" />;
@@ -206,8 +207,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Active Challenge Banner */}
-      {activeChallenge && (
+      {/* Active Challenge Banner — only show for truly active sessions */}
+      {activeChallenge && activeChallenge.status === "active" && (
         <div className="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/5 p-4">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-lg bg-red-500/10">
@@ -284,7 +285,7 @@ export default function DashboardPage() {
             onClick={() => {
               setLoadingTx(true);
               api
-                .get<ApiResponse<{ items: TransactionItem[] }>>("/economy/transactions?limit=5")
+                .get<ApiResponse<{ items: TransactionItem[] }>>("/economy/transactions?limit=100")
                 .then((res) => setTransactions(res.data.data.items ?? []))
                 .catch(() => {})
                 .finally(() => setLoadingTx(false));
@@ -328,7 +329,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Analytics Charts */}
-      <DashboardCharts />
+      <DashboardCharts transactions={transactions} />
     </div>
   );
 }

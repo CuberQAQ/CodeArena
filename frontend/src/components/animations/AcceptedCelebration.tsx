@@ -65,6 +65,7 @@ export function AcceptedCelebration({
   useEffect(() => {
     if (active && !reduced) {
       idCounter.current += 1;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- particle burst must init on prop change
       setParticles(createParticles(particleCount));
     } else if (active && reduced) {
       setParticles([]);
@@ -85,6 +86,7 @@ export function AcceptedCelebration({
 
   const particleElements = useMemo(
     () =>
+      // eslint-disable-next-line react-hooks/refs -- idCounter used for unique animation keys only
       particles.map((p) => (
         <motion.div
           key={`${idCounter.current}-${p.id}`}

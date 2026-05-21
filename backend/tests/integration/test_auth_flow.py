@@ -3,13 +3,8 @@
 Tests the complete authentication lifecycle through the API layer.
 """
 
-import uuid
-
 import pytest
 from httpx import ASGITransport, AsyncClient
-
-from .conftest import create_test_user, get_auth_headers
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -19,9 +14,10 @@ from .conftest import create_test_user, get_auth_headers
 @pytest.fixture
 async def client(db_engine, db_session):
     """Provide an httpx AsyncClient wired to the test database."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     from app.core.database import get_db
     from app.main import app
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
     session_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -226,7 +222,7 @@ class TestRegisterLoginFlow:
         # 1. Register
         reg_resp = await _register(client, username="lifecycle_user", email="lc@example.com")
         assert reg_resp.status_code == 201
-        reg_tokens = reg_resp.json()["data"]["tokens"]
+        _reg_tokens = reg_resp.json()["data"]["tokens"]
 
         # 2. Login (separate step)
         login_resp = await _login(client, email="lc@example.com")

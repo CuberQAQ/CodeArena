@@ -220,7 +220,7 @@ class PPService:
         capped = base_pp_values[: config.max_problems]
         total = 0.0
         for i, pp in enumerate(capped):
-            total += pp * (config.decay_factor ** i)
+            total += pp * (config.decay_factor**i)
         return round(total, 2)
 
     # ------------------------------------------------------------------
@@ -293,9 +293,7 @@ class PPService:
         # Calculate overkill multiplier if user_elo is provided
         overkill_multiplier = 1.0
         if user_elo is not None:
-            overkill_multiplier = PPService.calculate_overkill_multiplier(
-                user_elo, problem_rating, overkill_config
-            )
+            overkill_multiplier = PPService.calculate_overkill_multiplier(user_elo, problem_rating, overkill_config)
 
         final_pp = base_pp * performance_factor * overkill_multiplier
 

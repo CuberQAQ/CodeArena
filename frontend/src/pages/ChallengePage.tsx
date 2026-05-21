@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Swords, Loader2, Clock, Trophy, ExternalLink, X, Sparkles, Coins } from "lucide-react";
+import { Swords, Loader2, Clock, Trophy, ExternalLink, X, CheckCircle2, XCircle, Sparkles, Coins } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
@@ -19,10 +19,11 @@ import type {
   QueueStatus,
   StartChallengeResponse,
   ChallengeDetail,
+  SubmitResultResponse,
   QuitChallengeResponse,
 } from "@/types";
 
-type Phase = "idle" | "queuing" | "matched" | "in_progress" | "result";
+type Phase = "idle" | "queuing" | "matched" | "waiting" | "in_progress" | "result";
 
 export default function ChallengePage() {
   const navigate = useNavigate();
@@ -39,10 +40,15 @@ export default function ChallengePage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const trackingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasResumedRef = useRef(false);
+  const [solved, setSolved] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const [quitSubmissions, setQuitSubmissions] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
   const [eloTriggerKey, setEloTriggerKey] = useState(0);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
   const [showAchievements, setShowAchievements] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const submitPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Track when the in-progress phase started for the solving timeline
   const challengeStartRef = useRef<Date>(new Date());
@@ -100,12 +106,12 @@ export default function ChallengePage() {
       // Direct URL with session ID -- load that session
       resumeChallenge(urlSessionId);
     } else {
-      // No session ID in URL -- check for active challenge
+      // No session ID in URL -- check for active or recently completed challenge
       api
         .get<ApiResponse<ActiveChallengeInfo | null>>("/challenge/active")
         .then((res) => {
           const active = res.data.data as ActiveChallengeInfo | null;
-          if (active && active.status === "active") {
+          if (active && (active.status === "active" || active.status === "completed")) {
             resumeChallenge(active.id);
           }
         })
@@ -119,6 +125,7 @@ export default function ChallengePage() {
       if (pollRef.current) clearInterval(pollRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
       if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+      if (submitPollRef.current) clearInterval(submitPollRef.current);
     };
   }, []);
 
@@ -167,6 +174,7 @@ export default function ChallengePage() {
             setChallenge(detail);
             setEloTriggerKey((k) => k + 1);
             if (timerRef.current) clearInterval(timerRef.current);
+            if (submitPollRef.current) clearInterval(submitPollRef.current);
             setPhase("result");
           }
         }
@@ -189,6 +197,69 @@ export default function ChallengePage() {
       setElapsed((prev) => prev + 1);
     }, 1000);
   }, []);
+
+  // Poll for opponent confirmation when waiting
+  useEffect(() => {
+    if (phase !== "waiting" || !sessionId) return;
+
+    const pollWaiting = async () => {
+      try {
+        const res = await api.get<ApiResponse<ChallengeDetail>>(`/challenge/${sessionId}`);
+        const data = res.data.data;
+        if (data.status === "active" && data.problem) {
+          setChallenge(data);
+          setPhase("in_progress");
+          challengeStartRef.current = new Date();
+          startTimer();
+          return true; // done
+        }
+        if (data.status === "completed" || data.result) {
+          setChallenge(data);
+          setEloTriggerKey((k) => k + 1);
+          setPhase("result");
+          return true; // done
+        }
+        return false; // continue polling
+      } catch {
+        return false; // continue polling on transient errors
+      }
+    };
+
+    const interval = setInterval(async () => {
+      const done = await pollWaiting();
+      if (done) clearInterval(interval);
+    }, 3000);
+
+    // Also poll immediately so we don't wait 3s for the first check
+    pollWaiting();
+
+    return () => clearInterval(interval);
+  }, [phase, sessionId, startTimer]);
+
+  // Poll for opponent quit or session completion during in_progress phase
+  useEffect(() => {
+    if (phase !== "in_progress" || !sessionId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get<ApiResponse<ChallengeDetail>>(`/challenge/${sessionId}`);
+        const data = res.data.data;
+        if (data.status === "completed" || data.result) {
+          setChallenge(data);
+          setEloTriggerKey((k) => k + 1);
+          if (timerRef.current) clearInterval(timerRef.current);
+          if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+          if (submitPollRef.current) clearInterval(submitPollRef.current);
+          setPhase("result");
+          clearInterval(interval);
+        }
+      } catch {
+        // Continue polling on transient errors
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [phase, sessionId]);
 
   // Join queue
   const handleJoinQueue = async () => {
@@ -238,6 +309,11 @@ export default function ChallengePage() {
         setPhase("idle");
         return;
       }
+      if (data.status === "waiting_opponent") {
+        setSessionId(data.session_id);
+        setPhase("waiting");
+        return;
+      }
       setSessionId(data.session_id);
       setPhase("in_progress");
       challengeStartRef.current = new Date();
@@ -254,6 +330,67 @@ export default function ChallengePage() {
     }
   };
 
+  // Submit result
+  const handleSubmit = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await api.post<ApiResponse<SubmitResultResponse>>(
+        `/challenge/${sessionId}/submit`,
+        { solved, time_spent: elapsed, attempts },
+      );
+      const data = res.data.data;
+      if (data.settled) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+        // Fetch final details
+        const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
+          `/challenge/${sessionId}`,
+        );
+        setChallenge(detailRes.data.data);
+        setEloTriggerKey((k) => k + 1);
+        if (data.elo_change != null && data.elo_change > 0 && data.result === "win") {
+          setShowCelebration(true);
+        }
+        if (data.achievements && data.achievements.length > 0) {
+          setAchievements(data.achievements);
+          setTimeout(() => setShowAchievements(true), 1500);
+        }
+        setPhase("result");
+      } else {
+        // Waiting for opponent -- stay in in_progress, show waiting state
+        setHasSubmitted(true);
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+        // Poll for final result
+        if (submitPollRef.current) clearInterval(submitPollRef.current);
+        submitPollRef.current = setInterval(async () => {
+          try {
+            const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
+              `/challenge/${sessionId}`,
+            );
+            const detail = detailRes.data.data;
+            if (detail.status === "completed" || detail.result) {
+              if (submitPollRef.current) clearInterval(submitPollRef.current);
+              setChallenge(detail);
+              setEloTriggerKey((k) => k + 1);
+              if (detail.elo_change != null && detail.elo_change > 0) {
+                setShowCelebration(true);
+              }
+              setPhase("result");
+            }
+          } catch {
+            // Continue polling
+          }
+        }, 3000);
+      }
+    } catch (err) {
+      setError(extractApiError(err, t("failedSubmit")));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Quit challenge
   const handleQuit = async () => {
     setError("");
@@ -261,9 +398,11 @@ export default function ChallengePage() {
     try {
       await api.post<ApiResponse<QuitChallengeResponse>>(
         `/challenge/${sessionId}/quit`,
-        { submissions: 0 },
+        { submissions: quitSubmissions },
       );
       if (timerRef.current) clearInterval(timerRef.current);
+      if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+      if (submitPollRef.current) clearInterval(submitPollRef.current);
       const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
         `/challenge/${sessionId}`,
       );
@@ -283,9 +422,21 @@ export default function ChallengePage() {
     setChallenge(null);
     setElapsed(0);
     setError("");
+    setSolved(false);
+    setAttempts(0);
+    setQuitSubmissions(0);
     setShowCelebration(false);
     setAchievements([]);
     setShowAchievements(false);
+    setHasSubmitted(false);
+    if (trackingPollRef.current) {
+      clearInterval(trackingPollRef.current);
+      trackingPollRef.current = null;
+    }
+    if (submitPollRef.current) {
+      clearInterval(submitPollRef.current);
+      submitPollRef.current = null;
+    }
     // Navigate to /challenge (no session ID) so URL is clean
     if (urlSessionId) {
       navigate("/challenge", { replace: true });
@@ -402,6 +553,25 @@ export default function ChallengePage() {
     );
   }
 
+  // -- WAITING (for opponent confirmation) --
+  if (phase === "waiting") {
+    return (
+      <div className="mx-auto max-w-2xl text-center">
+        <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-primary/10">
+          <Loader2 className="size-10 animate-spin text-primary" />
+        </div>
+        <h1 className="text-2xl font-bold text-foreground">{t("waitingForOpponent")}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("waitingForOpponentDesc")}
+        </p>
+        <Button variant="outline" className="mt-8" onClick={handleReset}>
+          <X className="mr-2 size-4" />
+          {t("common:cancel", { ns: "common" })}
+        </Button>
+      </div>
+    );
+  }
+
   // -- IN PROGRESS --
   if (phase === "in_progress") {
     const problem = challenge?.problem;
@@ -474,25 +644,95 @@ export default function ChallengePage() {
             </div>
           )}
 
-          {/* Auto-tracking panel */}
-          <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
-            <div className="flex items-center gap-3">
-              <Loader2 className="size-5 animate-spin text-primary" />
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{t("waitingForCFResult")}</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t("waitingForCFResultDesc")}
-                </p>
+          {/* Submit result area: auto-tracking + manual submit */}
+          {hasSubmitted ? (
+            // Player has manually submitted, waiting for opponent
+            <div className="rounded-xl border border-border bg-card p-5 text-center space-y-3">
+              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10">
+                <Loader2 className="size-6 animate-spin text-primary" />
               </div>
+              <p className="text-sm font-medium text-foreground">{t("waitingForOpponentResult")}</p>
+              {problem && (
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(problem.url, "_blank")}
+                >
+                  <ExternalLink className="mr-2 size-4" />
+                  {t("openOnCodeforces")}
+                </Button>
+              )}
             </div>
+          ) : (
+            <>
+              {/* Auto-tracking panel */}
+              <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="size-5 animate-spin text-primary" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">{t("waitingForCFResult")}</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t("waitingForCFResultDesc")}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-            <div className="flex gap-3">
-              <Button variant="destructive" onClick={handleQuit} disabled={loading}>
-                {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
-                {t("quit")}
-              </Button>
-            </div>
-          </div>
+              {/* Manual submit panel */}
+              <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+                <h3 className="text-sm font-semibold text-foreground">{t("reportYourResult")}</h3>
+
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-muted-foreground">{t("didYouSolve")}</label>
+                  <Button
+                    size="sm"
+                    variant={solved ? "default" : "outline"}
+                    onClick={() => setSolved(true)}
+                  >
+                    <CheckCircle2 className="mr-1.5 size-3.5" />
+                    {t("common:yes", { ns: "common" })}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={!solved ? "destructive" : "outline"}
+                    onClick={() => setSolved(false)}
+                  >
+                    <XCircle className="mr-1.5 size-3.5" />
+                    {t("common:no", { ns: "common" })}
+                  </Button>
+                </div>
+
+                {solved && (
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-muted-foreground">{t("common:attempts", { ns: "common" })}:</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={attempts || ""}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value);
+                        setAttempts(isNaN(v) ? 0 : v);
+                      }}
+                      onBlur={() => {
+                        if (!attempts || attempts < 1) setAttempts(1);
+                      }}
+                      className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <Button onClick={handleSubmit} disabled={loading}>
+                    {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                    {t("submitResult")}
+                  </Button>
+                  <Button variant="destructive" onClick={handleQuit} disabled={loading}>
+                    {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
+                    {t("quit")}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Side panel - Solving Timeline */}

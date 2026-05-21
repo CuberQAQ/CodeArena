@@ -33,6 +33,7 @@ router = APIRouter(prefix="/admin", tags=["Administration"])
 # Dependency: ensure the caller is an admin
 # ---------------------------------------------------------------------------
 
+
 async def _require_admin(user: User = Depends(get_current_user)) -> User:
     admin_service.require_admin(user)
     return user
@@ -99,9 +100,7 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
 ):
     """Retrieve a paginated, searchable user list."""
-    result = await admin_service.list_users(
-        db, page=page, page_size=page_size, search=search
-    )
+    result = await admin_service.list_users(db, page=page, page_size=page_size, search=search)
     return success_response(data=result, message="User list retrieved")
 
 

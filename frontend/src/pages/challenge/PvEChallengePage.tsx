@@ -42,6 +42,7 @@ function useElapsedTime(running: boolean): number {
 
   useEffect(() => {
     if (running) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset timer when starting
       setElapsed(0);
       ref.current = setInterval(() => setElapsed((p) => p + 1), 1000);
     }
@@ -314,6 +315,7 @@ function ResultPhase({ onReset }: { onReset: () => void }) {
   useEffect(() => {
     const eloChange = submitResult?.elo_change ?? quitResult?.elo_change;
     if (eloChange != null && eloChange > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- trigger celebration on positive elo
       setShowCelebration(true);
     }
   }, [submitResult?.elo_change, quitResult?.elo_change]);

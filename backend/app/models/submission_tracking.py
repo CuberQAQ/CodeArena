@@ -32,39 +32,50 @@ class SubmissionTracking(Base, UUIDPrimaryKeyMixin):
         nullable=False,
     )
     session_type: Mapped[str] = mapped_column(
-        String(20), nullable=False,
+        String(20),
+        nullable=False,
         comment="One of: pve, pvp, training, contest",
     )
     session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False,
+        UUID(as_uuid=True),
+        nullable=False,
         comment="FK to the corresponding session table",
     )
     problem_id: Mapped[str] = mapped_column(
-        String(50), nullable=False,
+        String(50),
+        nullable=False,
         comment="CF problem ID, e.g. '800A'",
     )
     status: Mapped[str] = mapped_column(
-        String(20), server_default="pending", nullable=False,
+        String(20),
+        server_default="pending",
+        nullable=False,
         comment="One of: pending, matched, settled, timeout",
     )
     cf_submission_id: Mapped[int | None] = mapped_column(
-        Integer, nullable=True,
+        Integer,
+        nullable=True,
         comment="CF submission ID once matched",
     )
     cf_verdict: Mapped[str | None] = mapped_column(
-        String(20), nullable=True,
+        String(20),
+        nullable=True,
         comment="CF verdict: OK, WRONG_ANSWER, TIME_LIMIT_EXCEEDED, etc.",
     )
     expected_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         comment="When the user was expected to submit on CF",
     )
     matched_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
         comment="When the CF submission was matched",
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False,
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
 
     # Relationships
@@ -85,7 +96,4 @@ class SubmissionTracking(Base, UUIDPrimaryKeyMixin):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<SubmissionTracking(id={self.id}, status={self.status}, "
-            f"session_type={self.session_type})>"
-        )
+        return f"<SubmissionTracking(id={self.id}, status={self.status}, session_type={self.session_type})>"

@@ -178,9 +178,7 @@ async def get_elo_history(
 ):
     """Return the authenticated user's Elo rating history."""
     result = await db.execute(
-        select(EloHistory)
-        .where(EloHistory.user_id == current_user.id)
-        .order_by(EloHistory.created_at.asc())
+        select(EloHistory).where(EloHistory.user_id == current_user.id).order_by(EloHistory.created_at.asc())
     )
     records = result.scalars().all()
     return success_response(
@@ -223,16 +221,18 @@ async def get_global_leaderboard(
 
     leaderboard = []
     for i, user in enumerate(users, 1):
-        leaderboard.append({
-            "id": str(user.id),
-            "username": user.username,
-            "cf_handle": user.cf_handle,
-            "elo": user.elo,
-            "pp": user.pp,
-            "tokens": user.tokens,
-            "rank": i,
-            "avatar_path": user.avatar_path,
-        })
+        leaderboard.append(
+            {
+                "id": str(user.id),
+                "username": user.username,
+                "cf_handle": user.cf_handle,
+                "elo": user.elo,
+                "pp": user.pp,
+                "tokens": user.tokens,
+                "rank": i,
+                "avatar_path": user.avatar_path,
+            }
+        )
 
     return success_response(
         data=leaderboard,
@@ -248,10 +248,7 @@ async def get_pp_contributions(
 ):
     """Return the authenticated user's top PP contributions."""
     result = await db.execute(
-        select(PPRecord)
-        .where(PPRecord.user_id == current_user.id)
-        .order_by(PPRecord.base_pp.desc())
-        .limit(limit)
+        select(PPRecord).where(PPRecord.user_id == current_user.id).order_by(PPRecord.base_pp.desc()).limit(limit)
     )
     records = result.scalars().all()
     return success_response(
@@ -280,9 +277,7 @@ async def get_pp_rank(
     user_pp = current_user.pp or 0
 
     # Count total active users
-    total_result = await db.execute(
-        select(func.count(User.id)).where(User.is_active.is_(True))
-    )
+    total_result = await db.execute(select(func.count(User.id)).where(User.is_active.is_(True)))
     total_users = total_result.scalar() or 0
 
     if total_users == 0 or user_pp <= 0:
@@ -299,10 +294,7 @@ async def get_pp_rank(
     higher_result = await db.execute(
         select(func.count(User.id)).where(
             User.is_active.is_(True),
-            (
-                (User.pp > user_pp)
-                | ((User.pp == user_pp) & (User.created_at < current_user.created_at))
-            ),
+            ((User.pp > user_pp) | ((User.pp == user_pp) & (User.created_at < current_user.created_at))),
         )
     )
     higher_count = higher_result.scalar() or 0
@@ -373,9 +365,8 @@ async def update_settings(
         if body.display_mode is not None:
             if body.display_mode not in ("medal", "cf_tier"):
                 from app.core.exceptions import BadRequestException
-                raise BadRequestException(
-                    message="display_mode must be 'medal' or 'cf_tier'"
-                )
+
+                raise BadRequestException(message="display_mode must be 'medal' or 'cf_tier'")
             settings.display_mode = body.display_mode
         if body.avatar_path is not None:
             settings.avatar_path = body.avatar_path

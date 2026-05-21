@@ -20,9 +20,7 @@ class HintPurchase(Base, UUIDPrimaryKeyMixin):
     problem_rating: Mapped[int] = mapped_column(Integer, nullable=False)
     hint_level: Mapped[int] = mapped_column(Integer, nullable=False)
     tokens_cost: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="hint_purchases")

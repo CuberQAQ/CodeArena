@@ -5,7 +5,7 @@ patching pattern.
 """
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -264,7 +264,7 @@ class TestDailyReset:
 
     async def test_reset_with_naive_datetime(self, db):
         """Handle naive datetime (treated as UTC)."""
-        yesterday_naive = datetime.now() - timedelta(days=1)
+        yesterday_naive = datetime.now(UTC) - timedelta(days=1)
         user = _make_user(daily_tokens_earned=80, daily_tokens_reset_at=yesterday_naive)
         db.add(user)
         await db.flush()
@@ -296,7 +296,10 @@ class TestAwardTokens:
 
         ref_id = uuid.uuid4()
         awarded = await award_tokens(
-            db, user, 20, "training_reward",
+            db,
+            user,
+            20,
+            "training_reward",
             reference_type="training",
             reference_id=ref_id,
         )
@@ -304,6 +307,7 @@ class TestAwardTokens:
 
         # Verify transaction was created
         from sqlalchemy import select
+
         stmt = select(_TestTokenTransaction).where(_TestTokenTransaction.user_id == user.id)
         result = await db.execute(stmt)
         tx = result.scalar_one()
@@ -382,12 +386,16 @@ class TestSpendTokens:
 
         ref_id = uuid.uuid4()
         await spend_tokens(
-            db, user, 20, "hint_purchase",
+            db,
+            user,
+            20,
+            "hint_purchase",
             reference_type="hint",
             reference_id=ref_id,
         )
 
         from sqlalchemy import select
+
         stmt = select(_TestTokenTransaction).where(_TestTokenTransaction.user_id == user.id)
         result = await db.execute(stmt)
         tx = result.scalar_one()
@@ -594,7 +602,7 @@ class TestGetDailyStatus:
         assert data["daily_tokens_earned"] == 0
         assert data["daily_cap"] == DAILY_TOKEN_CAP
         assert data["daily_remaining"] == DAILY_TOKEN_CAP
-        assert data["date"] == date.today().isoformat()
+        assert data["date"] == datetime.now(UTC).date().isoformat()
 
     async def test_daily_status_with_earnings(self, db):
         now = datetime.now(UTC)
@@ -653,6 +661,7 @@ class TestIntegrationFlow:
 
         # Check transactions
         from sqlalchemy import select
+
         stmt = (
             select(_TestTokenTransaction)
             .where(_TestTokenTransaction.user_id == user.id)

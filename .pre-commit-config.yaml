@@ -1,0 +1,35 @@
+repos:
+  # Backend: ruff lint + format
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+        name: ruff lint (backend)
+        files: ^backend/
+      - id: ruff-format
+        name: ruff format (backend)
+        files: ^backend/
+
+  # Frontend: eslint (run via local script for correct working directory)
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && npx eslint src/'
+        language: system
+        pass_filenames: false
+        files: ^frontend/src/.*\.[jt]sx?$
+
+  # General: trailing whitespace, YAML, etc
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+        exclude: tsconfig\.(app|node)\.json$
+      - id: check-merge-conflict
+      - id: no-commit-to-branch
+        args: [--branch, master]

@@ -48,6 +48,9 @@ logs/
 *.db
 *.sqlite3
 
+# ---- Backups ----
+backups/
+
 # ---- Test / Coverage ----
 htmlcov/
 .coverage
@@ -57,6 +60,14 @@ coverage.xml
 test-results/
 playwright-report/
 
+# ---- E2E screenshots ----
+frontend/e2e/integration/screenshots/
+
+# ---- Misc ----
+image.png
+
 # ---- Build artifacts ----
 *.tar.gz
 *.zip
+
+.claude/worktrees/

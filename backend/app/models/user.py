@@ -19,18 +19,12 @@ class User(Base, UUIDPrimaryKeyMixin):
     pp: Mapped[float] = mapped_column(Float, server_default="0", nullable=False, index=True)
     tokens: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     daily_tokens_earned: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
-    daily_tokens_reset_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    daily_tokens_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
-    last_login_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
 
@@ -55,11 +49,15 @@ class User(Base, UUIDPrimaryKeyMixin):
     hint_purchases = relationship("HintPurchase", back_populates="user", cascade="all, delete-orphan")
     user_tag_elos = relationship("UserTagElo", back_populates="user", cascade="all, delete-orphan")
     pve_challenge_sessions = relationship(
-        "PvEChallengeSession", back_populates="user", cascade="all, delete-orphan",
+        "PvEChallengeSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
         foreign_keys="PvEChallengeSession.user_id",
     )
     free_play_sessions = relationship(
-        "FreePlaySession", back_populates="user", cascade="all, delete-orphan",
+        "FreePlaySession",
+        back_populates="user",
+        cascade="all, delete-orphan",
         foreign_keys="FreePlaySession.user_id",
     )
     contest_medals = relationship("ContestMedal", back_populates="user", cascade="all, delete-orphan")

@@ -12,7 +12,7 @@ import json
 import logging
 import random
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,13 +47,13 @@ logger = logging.getLogger("code_arena.challenge")
 # ---------------------------------------------------------------------------
 
 _TOKEN_TIERS: list[tuple[int, int]] = [
-    (1200, 10),   # gray (800-1199)
-    (1400, 20),   # green (1200-1399)
-    (1600, 25),   # cyan (1400-1599)
-    (1900, 35),   # blue (1600-1899)
-    (2100, 45),   # purple (1900-2099)
-    (2400, 55),   # orange (2100-2399)
-    (9999, 65),   # red (2400+)
+    (1200, 10),  # gray (800-1199)
+    (1400, 20),  # green (1200-1399)
+    (1600, 25),  # cyan (1400-1599)
+    (1900, 35),  # blue (1600-1899)
+    (2100, 45),  # purple (1900-2099)
+    (2400, 55),  # orange (2100-2399)
+    (9999, 65),  # red (2400+)
 ]
 
 
@@ -205,12 +205,15 @@ class ChallengeService:
         await db.flush()
 
         # Store pending match info (problem not yet selected)
-        await _set_pending(match_result.session_id, {
-            "player_a_id": match_result.player_a.user_id,
-            "player_b_id": match_result.player_b.user_id,
-            "avg_elo": match_result.avg_elo,
-            "confirmed": set(),
-        })
+        await _set_pending(
+            match_result.session_id,
+            {
+                "player_a_id": match_result.player_a.user_id,
+                "player_b_id": match_result.player_b.user_id,
+                "avg_elo": match_result.avg_elo,
+                "confirmed": set(),
+            },
+        )
 
         opponent_info = OpponentInfo(
             id=opp_user.id,
@@ -362,8 +365,10 @@ class ChallengeService:
         # If session already active (problem already selected), return problem
         if session.status == "active" and session.problem_id:
             problem = _build_problem_info(
-                session.problem_id, session.problem_rating,
-                session.problem_name, session.problem_tags,
+                session.problem_id,
+                session.problem_rating,
+                session.problem_name,
+                session.problem_tags,
             )
             return StartChallengeResponse(
                 session_id=session.id,
@@ -435,8 +440,10 @@ class ChallengeService:
         await _remove_pending(session_id)
 
         problem_info = _build_problem_info(
-            session.problem_id, session.problem_rating,
-            session.problem_name, session.problem_tags,
+            session.problem_id,
+            session.problem_rating,
+            session.problem_name,
+            session.problem_tags,
         )
         return StartChallengeResponse(
             session_id=session.id,
@@ -490,10 +497,7 @@ class ChallengeService:
         await db.flush()
 
         # Check if both submitted
-        both_submitted = (
-            session.challenger_time is not None
-            and session.opponent_time is not None
-        )
+        both_submitted = session.challenger_time is not None and session.opponent_time is not None
 
         if both_submitted:
             return await _settle_challenge(db, session, submitting_user_id=user.id, cf_service=cf_service)
@@ -526,8 +530,10 @@ class ChallengeService:
         problem_info = None
         if session.problem_id:
             problem_info = _build_problem_info(
-                session.problem_id, session.problem_rating,
-                session.problem_name, session.problem_tags,
+                session.problem_id,
+                session.problem_rating,
+                session.problem_name,
+                session.problem_tags,
             )
 
         is_challenger = user.id == session.challenger_id
@@ -571,8 +577,11 @@ class ChallengeService:
         """Get the user's currently active challenge session, if any.
 
         Returns a summary suitable for the resume banner / auto-restore.
-        Returns None if no active session exists.
+        Falls back to recently completed sessions (within 10 minutes) so that
+        a user navigating away and back can still see the result.
+        Returns None if no active or recently completed session exists.
         """
+        # First, look for an active session
         stmt = (
             select(ChallengeSession)
             .where(
@@ -584,6 +593,22 @@ class ChallengeService:
         )
         result = await db.execute(stmt)
         session = result.scalar_one_or_none()
+
+        # If no active session, check for recently completed sessions
+        if session is None:
+            cutoff = datetime.now(UTC) - timedelta(minutes=10)
+            completed_stmt = (
+                select(ChallengeSession)
+                .where(
+                    (ChallengeSession.challenger_id == user.id) | (ChallengeSession.opponent_id == user.id),
+                    ChallengeSession.status == "completed",
+                    ChallengeSession.completed_at >= cutoff,
+                )
+                .order_by(ChallengeSession.completed_at.desc())
+                .limit(1)
+            )
+            result = await db.execute(completed_stmt)
+            session = result.scalar_one_or_none()
 
         if session is None:
             return None
@@ -946,46 +971,61 @@ async def _settle_challenge(
         if session.challenger_solved and session.challenger_time is not None:
             challenger_wa = max(0, (session.challenger_submissions or 0) - 1)
             challenger_eff_time = TimeFactorService.compute_effective_time(
-                session.challenger_time, challenger_wa,
+                session.challenger_time,
+                challenger_wa,
             )
             challenger_exp_time = await TimeFactorService.calculate_expected_time(
-                cf_service, session.problem_id, session.problem_rating, challenger.elo,
+                cf_service,
+                session.problem_id,
+                session.problem_rating,
+                challenger.elo,
             )
             time_factor_challenger = TimeFactorService.calculate_time_factor(
-                challenger_eff_time, challenger_exp_time, s_value_challenger,
+                challenger_eff_time,
+                challenger_exp_time,
+                s_value_challenger,
             )
         # Opponent time factor
         if session.opponent_solved and session.opponent_time is not None:
             opponent_wa = max(0, (session.opponent_submissions or 0) - 1)
             opponent_eff_time = TimeFactorService.compute_effective_time(
-                session.opponent_time, opponent_wa,
+                session.opponent_time,
+                opponent_wa,
             )
             opponent_exp_time = await TimeFactorService.calculate_expected_time(
-                cf_service, session.problem_id, session.problem_rating, opponent.elo,
+                cf_service,
+                session.problem_id,
+                session.problem_rating,
+                opponent.elo,
             )
             time_factor_opponent = TimeFactorService.calculate_time_factor(
-                opponent_eff_time, opponent_exp_time, s_value_opponent,
+                opponent_eff_time,
+                opponent_exp_time,
+                s_value_opponent,
             )
 
-    new_challenger_elo, new_opponent_elo, challenger_elo_change, _opponent_elo_change = (
-        await EloService.process_challenge_result(
-            db=db,
-            challenger_id=challenger.id,
-            opponent_id=opponent.id,
-            challenger_rating=challenger.elo,
-            opponent_rating=opponent.elo,
-            actual_score_a=actual_score_a,
-            session_id=session.id,
-            hint_level_challenger=session.hints_used_challenger or 0,
-            hint_level_opponent=session.hints_used_opponent or 0,
-            challenger_submission_count=challenger_sub_count,
-            opponent_submission_count=opponent_sub_count,
-            k_factor_config=k_factor_config,
-            s_value_challenger=s_value_challenger,
-            s_value_opponent=s_value_opponent,
-            time_factor_challenger=time_factor_challenger,
-            time_factor_opponent=time_factor_opponent,
-        )
+    (
+        new_challenger_elo,
+        new_opponent_elo,
+        challenger_elo_change,
+        _opponent_elo_change,
+    ) = await EloService.process_challenge_result(
+        db=db,
+        challenger_id=challenger.id,
+        opponent_id=opponent.id,
+        challenger_rating=challenger.elo,
+        opponent_rating=opponent.elo,
+        actual_score_a=actual_score_a,
+        session_id=session.id,
+        hint_level_challenger=session.hints_used_challenger or 0,
+        hint_level_opponent=session.hints_used_opponent or 0,
+        challenger_submission_count=challenger_sub_count,
+        opponent_submission_count=opponent_sub_count,
+        k_factor_config=k_factor_config,
+        s_value_challenger=s_value_challenger,
+        s_value_opponent=s_value_opponent,
+        time_factor_challenger=time_factor_challenger,
+        time_factor_opponent=time_factor_opponent,
     )
 
     # Save pre-settlement Elo for PP overkill calculation
@@ -1012,7 +1052,9 @@ async def _settle_challenge(
     # Award tokens via economy_service (enforces daily cap, updates daily_tokens_earned)
     if tokens_challenger > 0:
         await economy_svc.award_tokens(
-            db, challenger, tokens_challenger,
+            db,
+            challenger,
+            tokens_challenger,
             tx_type="challenge_reward",
             reference_type="challenge_session",
             reference_id=session.id,
@@ -1020,7 +1062,9 @@ async def _settle_challenge(
 
     if tokens_opponent > 0:
         await economy_svc.award_tokens(
-            db, opponent, tokens_opponent,
+            db,
+            opponent,
+            tokens_opponent,
             tx_type="challenge_reward",
             reference_type="challenge_session",
             reference_id=session.id,
@@ -1037,7 +1081,9 @@ async def _settle_challenge(
         time_bonus = economy_svc.time_bonus_for_rating(session.problem_rating)
         if time_bonus > 0:
             await economy_svc.award_tokens(
-                db, challenger, time_bonus,
+                db,
+                challenger,
+                time_bonus,
                 tx_type="time_bonus",
                 reference_type="challenge_session",
                 reference_id=session.id,
@@ -1054,7 +1100,9 @@ async def _settle_challenge(
         time_bonus = economy_svc.time_bonus_for_rating(session.problem_rating)
         if time_bonus > 0:
             await economy_svc.award_tokens(
-                db, opponent, time_bonus,
+                db,
+                opponent,
+                time_bonus,
                 tx_type="time_bonus",
                 reference_type="challenge_session",
                 reference_id=session.id,
@@ -1067,7 +1115,9 @@ async def _settle_challenge(
             attempt_tokens = economy_svc.attempt_tokens_for_rating(session.problem_rating)
             if attempt_tokens > 0:
                 awarded = await economy_svc.award_tokens(
-                    db, challenger, attempt_tokens,
+                    db,
+                    challenger,
+                    attempt_tokens,
                     tx_type="reward_attempt",
                     reference_type="challenge_session",
                     reference_id=session.id,
@@ -1078,7 +1128,9 @@ async def _settle_challenge(
             attempt_tokens = economy_svc.attempt_tokens_for_rating(session.problem_rating)
             if attempt_tokens > 0:
                 awarded = await economy_svc.award_tokens(
-                    db, opponent, attempt_tokens,
+                    db,
+                    opponent,
+                    attempt_tokens,
                     tx_type="reward_attempt",
                     reference_type="challenge_session",
                     reference_id=session.id,
@@ -1140,10 +1192,12 @@ async def _settle_challenge(
         hint_att_opponent = None
         if session.hints_used_challenger and session.hints_used_challenger > 0:
             from app.services.elo_service import EloConfig
+
             _hint_cfg = EloConfig()
             hint_att_challenger = _hint_cfg.hint_attenuation.get(session.hints_used_challenger)
         if session.hints_used_opponent and session.hints_used_opponent > 0:
             from app.services.elo_service import EloConfig
+
             _hint_cfg = EloConfig()
             hint_att_opponent = _hint_cfg.hint_attenuation.get(session.hints_used_opponent)
 
@@ -1192,7 +1246,8 @@ async def _settle_challenge(
         # Use pre-settlement Elo for overkill detection (fair comparison with problem rating)
         challenger_elo_before = new_challenger_elo - challenger_elo_change
         challenger_overkill = PPService.calculate_overkill_multiplier(
-            challenger_elo_before, session.problem_rating,
+            challenger_elo_before,
+            session.problem_rating,
         )
         overkill_event = AchievementService.check_overkill(
             user_elo=challenger_elo_before,
@@ -1215,7 +1270,8 @@ async def _settle_challenge(
     if session.opponent_solved and session.problem_rating > 0:
         opponent_elo_before = new_opponent_elo - _opponent_elo_change
         opponent_overkill = PPService.calculate_overkill_multiplier(
-            opponent_elo_before, session.problem_rating,
+            opponent_elo_before,
+            session.problem_rating,
         )
         opponent_overkill_event = AchievementService.check_overkill(
             user_elo=opponent_elo_before,
@@ -1238,13 +1294,9 @@ async def _settle_challenge(
     if submitting_user_id is not None:
         user_result = _result_for_user(session, submitting_user_id)
         user_elo = _elo_change_for_user(session, submitting_user_id)
-        user_tokens = (
-            tokens_challenger if submitting_user_id == session.challenger_id else tokens_opponent
-        )
+        user_tokens = tokens_challenger if submitting_user_id == session.challenger_id else tokens_opponent
         user_solved = (
-            session.challenger_solved
-            if submitting_user_id == session.challenger_id
-            else session.opponent_solved
+            session.challenger_solved if submitting_user_id == session.challenger_id else session.opponent_solved
         )
     else:
         # Fallback: return challenger perspective (should not normally happen)

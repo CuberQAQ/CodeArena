@@ -29,15 +29,9 @@ class ContestSession(Base, UUIDPrimaryKeyMixin):
 
     # Relationships
     user = relationship("User", back_populates="contest_sessions")
-    problem_records = relationship(
-        "ContestProblemRecord", back_populates="contest", cascade="all, delete-orphan"
-    )
-    bots = relationship(
-        "ContestBot", back_populates="contest", cascade="all, delete-orphan"
-    )
-    medals = relationship(
-        "ContestMedal", back_populates="contest_session", cascade="all, delete-orphan"
-    )
+    problem_records = relationship("ContestProblemRecord", back_populates="contest", cascade="all, delete-orphan")
+    bots = relationship("ContestBot", back_populates="contest", cascade="all, delete-orphan")
+    medals = relationship("ContestMedal", back_populates="contest_session", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<ContestSession(id={self.id}, contest_tier={self.contest_tier})>"

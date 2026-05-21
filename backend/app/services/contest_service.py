@@ -83,13 +83,13 @@ TIER_CONFIGS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 _TOKEN_TIERS: list[tuple[int, int]] = [
-    (1200, 10),   # gray (800-1199)
-    (1400, 20),   # green (1200-1399)
-    (1600, 25),   # cyan (1400-1599)
-    (1900, 35),   # blue (1600-1899)
-    (2100, 45),   # purple (1900-2099)
-    (2400, 55),   # orange (2100-2399)
-    (9999, 65),   # red (2400+)
+    (1200, 10),  # gray (800-1199)
+    (1400, 20),  # green (1200-1399)
+    (1600, 25),  # cyan (1400-1599)
+    (1900, 35),  # blue (1600-1899)
+    (2100, 45),  # purple (1900-2099)
+    (2400, 55),  # orange (2100-2399)
+    (9999, 65),  # red (2400+)
 ]
 
 
@@ -145,16 +145,18 @@ class ContestService:
             # for the tier's target audience but doesn't block higher-Elo users.
             eligible = not (min_elo is not None and user.elo < min_elo)
 
-            tiers.append(TierInfo(
-                tier=tier_key,
-                name=cfg["name"],
-                min_elo=min_elo,
-                max_elo=max_elo,
-                duration_minutes=cfg["duration_minutes"],
-                problem_count=cfg["problem_count"],
-                rating_range=cfg["rating_range"],
-                eligible=eligible,
-            ))
+            tiers.append(
+                TierInfo(
+                    tier=tier_key,
+                    name=cfg["name"],
+                    min_elo=min_elo,
+                    max_elo=max_elo,
+                    duration_minutes=cfg["duration_minutes"],
+                    problem_count=cfg["problem_count"],
+                    rating_range=cfg["rating_range"],
+                    eligible=eligible,
+                )
+            )
 
         return tiers
 
@@ -178,9 +180,7 @@ class ContestService:
         # Check eligibility
         min_elo = cfg.get("min_elo")
         if min_elo is not None and user.elo < min_elo:
-            raise BadRequestException(
-                message=f"Elo {user.elo} is too low for {tier} contest (min: {min_elo})"
-            )
+            raise BadRequestException(message=f"Elo {user.elo} is too low for {tier} contest (min: {min_elo})")
 
         # Check for existing active contest
         active_stmt = select(ContestSession).where(
@@ -317,9 +317,7 @@ class ContestService:
         contest_id: uuid.UUID,
     ) -> ContestSessionInfo:
         """Get the current status of a contest session with remaining time."""
-        session = await ContestService._get_and_validate_session(
-            db, user, contest_id
-        )
+        session = await ContestService._get_and_validate_session(db, user, contest_id)
 
         # Calculate remaining time
         remaining = ContestService._calculate_remaining(session)
@@ -367,9 +365,7 @@ class ContestService:
         time_spent: float,
     ) -> SubmitContestResponse:
         """Submit a problem result in a contest."""
-        session = await ContestService._get_and_validate_session(
-            db, user, contest_id
-        )
+        session = await ContestService._get_and_validate_session(db, user, contest_id)
 
         if session.status != "active":
             raise BadRequestException(message="Contest session is not active")
@@ -450,7 +446,9 @@ class ContestService:
             # Award AC tokens via economy_service (enforces daily cap)
             if tokens_earned > 0:
                 await economy_svc.award_tokens(
-                    db, user, tokens_earned,
+                    db,
+                    user,
+                    tokens_earned,
                     tx_type="reward_ac",
                     reference_type="contest",
                     reference_id=contest_id,
@@ -461,7 +459,9 @@ class ContestService:
                 time_bonus = economy_svc.time_bonus_for_rating(problem_rating)
                 if time_bonus > 0:
                     await economy_svc.award_tokens(
-                        db, user, time_bonus,
+                        db,
+                        user,
+                        time_bonus,
                         tx_type="time_bonus",
                         reference_type="contest",
                         reference_id=contest_id,
@@ -472,7 +472,9 @@ class ContestService:
             attempt_tokens = economy_svc.attempt_tokens_for_rating(problem_rating)
             if attempt_tokens > 0:
                 awarded = await economy_svc.award_tokens(
-                    db, user, attempt_tokens,
+                    db,
+                    user,
+                    attempt_tokens,
                     tx_type="reward_attempt",
                     reference_type="contest",
                     reference_id=contest_id,
@@ -507,6 +509,7 @@ class ContestService:
             hint_att = None
             if hint_level > 0:
                 from app.services.elo_service import EloConfig
+
                 _hint_cfg = EloConfig()
                 hint_att = _hint_cfg.hint_attenuation.get(hint_level)
 
@@ -515,13 +518,9 @@ class ContestService:
             if solved and time_spent and time_spent > 0:
                 effective_t = TimeFactorService.compute_effective_time(time_spent, wa_count)
                 try:
-                    expected_t = await TimeFactorService.calculate_expected_time(
-                        db, problem_id, user.elo
-                    )
+                    expected_t = await TimeFactorService.calculate_expected_time(db, problem_id, user.elo)
                     if expected_t and expected_t > 0:
-                        contest_time_factor = TimeFactorService.calculate_time_factor(
-                            effective_t, expected_t
-                        )
+                        contest_time_factor = TimeFactorService.calculate_time_factor(effective_t, expected_t)
                 except Exception:
                     pass  # Fallback to 1.0 on calculation failure
 
@@ -559,9 +558,7 @@ class ContestService:
         cf_service: CFApiService | None = None,
     ) -> ContestResult:
         """End a contest session and calculate results."""
-        session = await ContestService._get_and_validate_session(
-            db, user, contest_id
-        )
+        session = await ContestService._get_and_validate_session(db, user, contest_id)
 
         if session.status != "active":
             raise BadRequestException(message="Contest session is not active")
@@ -670,9 +667,7 @@ class ContestService:
     ) -> list[ContestHistoryItem]:
         """Get all contest sessions for the user, newest first."""
         stmt = (
-            select(ContestSession)
-            .where(ContestSession.user_id == user.id)
-            .order_by(ContestSession.started_at.desc())
+            select(ContestSession).where(ContestSession.user_id == user.id).order_by(ContestSession.started_at.desc())
         )
         result = await db.execute(stmt)
         sessions = result.scalars().all()
@@ -704,9 +699,7 @@ class ContestService:
         contest_id: uuid.UUID,
     ) -> ContestResult:
         """Get detailed results for a completed contest."""
-        session = await ContestService._get_and_validate_session(
-            db, user, contest_id
-        )
+        session = await ContestService._get_and_validate_session(db, user, contest_id)
 
         problem_infos = await ContestService._build_problem_infos(db, session)
 
@@ -862,21 +855,18 @@ class ContestService:
         except Exception:
             logger.warning("CF API unavailable for contest problem selection")
             # Fallback: generate placeholder problems
-            return ContestService._generate_placeholder_problems(
-                rating_min, rating_max, count
-            )
+            return ContestService._generate_placeholder_problems(rating_min, rating_max, count)
 
         # Filter by rating range
         valid_problems = [
-            p for p in all_problems
-            if p.get("rating") is not None
-            and rating_min <= p["rating"] <= rating_max
+            p for p in all_problems if p.get("rating") is not None and rating_min <= p["rating"] <= rating_max
         ]
 
         # Get user's solved problems to avoid duplicates
         solved_problem_ids: set[str] = set()
         try:
             from app.models.training_problem_record import TrainingProblemRecord
+
             training_solved_stmt = select(TrainingProblemRecord.problem_id).where(
                 TrainingProblemRecord.user_id == user_id,
                 TrainingProblemRecord.solved.is_(True),
@@ -888,15 +878,12 @@ class ContestService:
             pass
 
         valid_problems = [
-            p for p in valid_problems
-            if f"{p.get('contestId', '')}{p.get('index', '')}" not in solved_problem_ids
+            p for p in valid_problems if f"{p.get('contestId', '')}{p.get('index', '')}" not in solved_problem_ids
         ]
 
         # Divide the rating range into equal segments
         if not valid_problems:
-            return ContestService._generate_placeholder_problems(
-                rating_min, rating_max, count
-            )
+            return ContestService._generate_placeholder_problems(rating_min, rating_max, count)
 
         selected: list[ContestProblemInfo] = []
         segment_size = (rating_max - rating_min) / count if count > 0 else 0
@@ -907,16 +894,15 @@ class ContestService:
 
             # Find problems in this segment
             segment_problems = [
-                p for p in valid_problems
-                if seg_min <= p.get("rating", 0) < seg_max
-                or (i == count - 1 and p.get("rating", 0) == seg_max)
+                p
+                for p in valid_problems
+                if seg_min <= p.get("rating", 0) < seg_max or (i == count - 1 and p.get("rating", 0) == seg_max)
             ]
 
             if not segment_problems:
                 # Expand search to adjacent segments
                 segment_problems = [
-                    p for p in valid_problems
-                    if abs(p.get("rating", 0) - (seg_min + seg_max) / 2) <= segment_size
+                    p for p in valid_problems if abs(p.get("rating", 0) - (seg_min + seg_max) / 2) <= segment_size
                 ]
 
             if segment_problems:
@@ -925,15 +911,17 @@ class ContestService:
                 contest_id = chosen.get("contestId", 0)
                 index = chosen.get("index", "")
                 pid = f"{contest_id}{index}"
-                selected.append(ContestProblemInfo(
-                    problem_id=pid,
-                    contest_id=contest_id,
-                    index=index,
-                    name=chosen.get("name", ""),
-                    rating=chosen.get("rating", 1000),
-                    tags=chosen.get("tags", []),
-                    url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
-                ))
+                selected.append(
+                    ContestProblemInfo(
+                        problem_id=pid,
+                        contest_id=contest_id,
+                        index=index,
+                        name=chosen.get("name", ""),
+                        rating=chosen.get("rating", 1000),
+                        tags=chosen.get("tags", []),
+                        url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
+                    )
+                )
                 # Remove from pool to avoid duplicates
                 valid_problems.remove(chosen)
 
@@ -943,27 +931,31 @@ class ContestService:
             contest_id = chosen.get("contestId", 0)
             index = chosen.get("index", "")
             pid = f"{contest_id}{index}"
-            selected.append(ContestProblemInfo(
-                problem_id=pid,
-                contest_id=contest_id,
-                index=index,
-                name=chosen.get("name", ""),
-                rating=chosen.get("rating", 1000),
-                tags=chosen.get("tags", []),
-                url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
-            ))
+            selected.append(
+                ContestProblemInfo(
+                    problem_id=pid,
+                    contest_id=contest_id,
+                    index=index,
+                    name=chosen.get("name", ""),
+                    rating=chosen.get("rating", 1000),
+                    tags=chosen.get("tags", []),
+                    url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
+                )
+            )
             valid_problems.remove(chosen)
 
         # If still not enough, add placeholders
         while len(selected) < count:
             target_rating = rating_min + (len(selected) * (rating_max - rating_min) // count)
-            selected.append(ContestProblemInfo(
-                problem_id=f"placeholder_{len(selected)}",
-                contest_id=0,
-                index="",
-                name=f"Problem {len(selected) + 1}",
-                rating=target_rating,
-            ))
+            selected.append(
+                ContestProblemInfo(
+                    problem_id=f"placeholder_{len(selected)}",
+                    contest_id=0,
+                    index="",
+                    name=f"Problem {len(selected) + 1}",
+                    rating=target_rating,
+                )
+            )
 
         return selected
 
@@ -977,13 +969,15 @@ class ContestService:
         problems: list[ContestProblemInfo] = []
         for i in range(count):
             target_rating = rating_min + (i * (rating_max - rating_min) // max(count - 1, 1))
-            problems.append(ContestProblemInfo(
-                problem_id=f"placeholder_{i}",
-                contest_id=0,
-                index="",
-                name=f"Problem {i + 1}",
-                rating=target_rating,
-            ))
+            problems.append(
+                ContestProblemInfo(
+                    problem_id=f"placeholder_{i}",
+                    contest_id=0,
+                    index="",
+                    name=f"Problem {i + 1}",
+                    rating=target_rating,
+                )
+            )
         return problems
 
     @staticmethod
@@ -1005,18 +999,20 @@ class ContestService:
         for p in stored_problems:
             pid = p.get("problem_id", "")
             record = records.get(pid)
-            problem_infos.append(ContestProblemInfo(
-                problem_id=pid,
-                contest_id=p.get("contest_id", 0),
-                index=p.get("index", ""),
-                name=p.get("name", ""),
-                rating=p.get("rating", 1000),
-                tags=p.get("tags", []),
-                url=p.get("url", ""),
-                solved=record.solved if record else False,
-                attempts=record.attempts if record else 0,
-                time_spent=record.time_spent if record else None,
-            ))
+            problem_infos.append(
+                ContestProblemInfo(
+                    problem_id=pid,
+                    contest_id=p.get("contest_id", 0),
+                    index=p.get("index", ""),
+                    name=p.get("name", ""),
+                    rating=p.get("rating", 1000),
+                    tags=p.get("tags", []),
+                    url=p.get("url", ""),
+                    solved=record.solved if record else False,
+                    attempts=record.attempts if record else 0,
+                    time_spent=record.time_spent if record else None,
+                )
+            )
 
         return problem_infos
 
@@ -1131,7 +1127,10 @@ class ContestService:
                 wa_count = max(0, record.attempts - 1)
                 effective_time = TimeFactorService.compute_effective_time(record.time_spent, wa_count)
                 expected_time = await TimeFactorService.calculate_expected_time(
-                    cf_service, pid, prating, elo_before,
+                    cf_service,
+                    pid,
+                    prating,
+                    elo_before,
                 )
                 # S-value > 0 for solved problems
                 is_first_ac = record.attempts <= 1
@@ -1167,26 +1166,29 @@ class ContestService:
             )
         except Exception:
             # Medal awarding is best-effort and must not break settlement.
-            logger.warning(
-                "Failed to award contest medal for contest %s", contest_id, exc_info=True
-            )
+            logger.warning("Failed to award contest medal for contest %s", contest_id, exc_info=True)
 
         # --- Achievement event detection (overkill + personal best PP) ---
         achievements: list[dict] = []
 
         try:
             # Collect solved problem ratings for overkill check
-            solved_stmt = select(ContestProblemRecord).where(
-                ContestProblemRecord.contest_id == contest_id,
-                ContestProblemRecord.solved.is_(True),
-            ).order_by(ContestProblemRecord.problem_rating.desc())
+            solved_stmt = (
+                select(ContestProblemRecord)
+                .where(
+                    ContestProblemRecord.contest_id == contest_id,
+                    ContestProblemRecord.solved.is_(True),
+                )
+                .order_by(ContestProblemRecord.problem_rating.desc())
+            )
             solved_result = await db.execute(solved_stmt)
             solved_records = solved_result.scalars().all()
 
             # Check overkill achievement for each solved problem
             for record in solved_records:
                 overkill_multiplier = PPService.calculate_overkill_multiplier(
-                    elo_before, record.problem_rating,
+                    elo_before,
+                    record.problem_rating,
                 )
                 overkill_event = AchievementService.check_overkill(
                     user_elo=elo_before,
@@ -1222,7 +1224,8 @@ class ContestService:
             # Achievement detection is best-effort and must not break settlement.
             logger.debug(
                 "Achievement detection (overkill/PP) skipped for contest %s",
-                contest_id, exc_info=True,
+                contest_id,
+                exc_info=True,
             )
 
         return elo_change, achievements

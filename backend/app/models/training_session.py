@@ -25,17 +25,13 @@ class TrainingSession(Base, UUIDPrimaryKeyMixin):
     total_problems: Mapped[int] = mapped_column(Integer, nullable=False)
     streak_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     status: Mapped[str] = mapped_column(String(20), server_default="active", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="training_sessions")
     topic = relationship("TopicCategory")
-    problem_records = relationship(
-        "TrainingProblemRecord", back_populates="session", cascade="all, delete-orphan"
-    )
+    problem_records = relationship("TrainingProblemRecord", back_populates="session", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<TrainingSession(id={self.id}, status={self.status})>"

@@ -4,18 +4,13 @@ Tests tier listing, contest start, problem submission, contest end,
 and Elo/token/PP updates.
 """
 
-import uuid
-from datetime import UTC, datetime
-
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .conftest import (
     create_test_user,
     make_cf_problems_response,
     mock_cf_service,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -145,8 +140,13 @@ class TestContestSubmit:
         problem_id = session_info.problems[0].problem_id
 
         result = await ContestService.submit_problem(
-            db_session, user, session_info.id,
-            problem_id=problem_id, solved=True, attempts=1, time_spent=300.0,
+            db_session,
+            user,
+            session_info.id,
+            problem_id=problem_id,
+            solved=True,
+            attempts=1,
+            time_spent=300.0,
         )
         assert result.solved is True
         assert result.tokens_earned > 0
@@ -162,8 +162,13 @@ class TestContestSubmit:
 
         with pytest.raises(Exception, match="not found in this contest"):
             await ContestService.submit_problem(
-                db_session, user, session_info.id,
-                problem_id="9999Z", solved=True, attempts=1, time_spent=300.0,
+                db_session,
+                user,
+                session_info.id,
+                problem_id="9999Z",
+                solved=True,
+                attempts=1,
+                time_spent=300.0,
             )
 
     async def test_submit_updates_pp(self, db_session):
@@ -174,8 +179,13 @@ class TestContestSubmit:
 
         problem_id = session_info.problems[0].problem_id
         await ContestService.submit_problem(
-            db_session, user, session_info.id,
-            problem_id=problem_id, solved=True, attempts=1, time_spent=300.0,
+            db_session,
+            user,
+            session_info.id,
+            problem_id=problem_id,
+            solved=True,
+            attempts=1,
+            time_spent=300.0,
         )
 
         await db_session.refresh(user)
@@ -198,8 +208,13 @@ class TestContestEnd:
         # Submit all problems as solved
         for p in session_info.problems:
             await ContestService.submit_problem(
-                db_session, user, session_info.id,
-                problem_id=p.problem_id, solved=True, attempts=1, time_spent=300.0,
+                db_session,
+                user,
+                session_info.id,
+                problem_id=p.problem_id,
+                solved=True,
+                attempts=1,
+                time_spent=300.0,
             )
 
         return user, session_info

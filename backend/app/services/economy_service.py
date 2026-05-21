@@ -14,7 +14,7 @@ Key responsibilities:
 
 import logging
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,27 +33,27 @@ DAILY_TOKEN_CAP: int = 120
 
 # Token reward tiers by problem rating threshold (7 tiers aligned with CF boundaries)
 _TOKEN_TIERS: list[tuple[int, int]] = [
-    (1200, 10),   # gray (800-1199)
-    (1400, 20),   # green (1200-1399)
-    (1600, 25),   # cyan (1400-1599)
-    (1900, 35),   # blue (1600-1899)
-    (2100, 45),   # purple (1900-2099)
-    (2400, 55),   # orange (2100-2399)
-    (9999, 65),   # red (2400+)
+    (1200, 10),  # gray (800-1199)
+    (1400, 20),  # green (1200-1399)
+    (1600, 25),  # cyan (1400-1599)
+    (1900, 35),  # blue (1600-1899)
+    (2100, 45),  # purple (1900-2099)
+    (2400, 55),  # orange (2100-2399)
+    (9999, 65),  # red (2400+)
 ]
 
 _ATTEMPT_TOKEN_TIERS: list[tuple[int, int]] = [
-    (1200, 2),   # gray
-    (1400, 3),   # green
-    (1600, 4),   # cyan
-    (1900, 5),   # blue
-    (2100, 6),   # purple
-    (2400, 7),   # orange
-    (9999, 8),   # red
+    (1200, 2),  # gray
+    (1400, 3),  # green
+    (1600, 4),  # cyan
+    (1900, 5),  # blue
+    (2100, 6),  # purple
+    (2400, 7),  # orange
+    (9999, 8),  # red
 ]
 
 _TIME_BONUS_TIERS: list[tuple[int, int]] = [
-    (1200, 5),   # gray
+    (1200, 5),  # gray
     (1400, 10),  # green
     (1600, 12),  # cyan
     (1900, 18),  # blue
@@ -203,9 +203,7 @@ async def spend_tokens(
         raise BadRequestException(message="Token spend amount must be positive")
 
     if user.tokens < amount:
-        raise BadRequestException(
-            message=f"Insufficient tokens: have {user.tokens}, need {amount}"
-        )
+        raise BadRequestException(message=f"Insufficient tokens: have {user.tokens}, need {amount}")
 
     user.tokens -= amount
 
@@ -257,10 +255,7 @@ async def get_transactions(
     Returns ``(items, total_count)``.
     """
     # Total count
-    count_stmt = (
-        select(func.count(TokenTransaction.id))
-        .where(TokenTransaction.user_id == user_id)
-    )
+    count_stmt = select(func.count(TokenTransaction.id)).where(TokenTransaction.user_id == user_id)
     count_result = await db.execute(count_stmt)
     total = count_result.scalar_one()
 
@@ -282,8 +277,8 @@ async def get_daily_status(db: AsyncSession, user: User) -> dict:
     """Return detailed daily earning status."""
     await check_and_reset_daily(db, user)
 
-    # Summarise today's transactions by type
-    today = date.today()
+    # Summarise today's transactions by type (UTC date to match DB timestamps)
+    today = datetime.now(UTC).date()
     today_start = datetime(today.year, today.month, today.day, tzinfo=UTC)
 
     stmt = (

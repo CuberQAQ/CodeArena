@@ -171,6 +171,7 @@ async def db(async_engine):
     async def _mock_get_config(db, key):
         """Return default elo config for tests."""
         from app.core.default_config import DEFAULT_CONFIG
+
         return DEFAULT_CONFIG.get("elo", {})
 
     async def _mock_get_submission_count(db, user_id):
@@ -477,7 +478,9 @@ class TestSubmitProblem:
 
         problem = started.problems[0]
         result = await ContestService.submit_problem(
-            db, user, started.id,
+            db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=True,
             attempts=1,
@@ -501,7 +504,9 @@ class TestSubmitProblem:
 
         problem = started.problems[0]
         result = await ContestService.submit_problem(
-            db, user, started.id,
+            db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=False,
             attempts=2,
@@ -525,7 +530,9 @@ class TestSubmitProblem:
 
         problem = started.problems[0]
         await ContestService.submit_problem(
-            db, user, started.id,
+            db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=True,
             attempts=1,
@@ -550,7 +557,9 @@ class TestSubmitProblem:
 
         with pytest.raises(BadRequestException, match="not found"):
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id="nonexistent",
                 solved=True,
                 attempts=1,
@@ -570,7 +579,9 @@ class TestSubmitProblem:
 
         problem = started.problems[0]
         await ContestService.submit_problem(
-            db, user, started.id,
+            db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=True,
             attempts=1,
@@ -580,7 +591,9 @@ class TestSubmitProblem:
 
         with pytest.raises(BadRequestException, match="already solved"):
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=True,
                 attempts=2,
@@ -645,7 +658,9 @@ class TestTokenRewards:
 
         gray_problem = next(p for p in started.problems if p.rating == 900)
         result = await ContestService.submit_problem(
-            db, user, started.id,
+            db,
+            user,
+            started.id,
             problem_id=gray_problem.problem_id,
             solved=True,
             attempts=1,
@@ -672,7 +687,9 @@ class TestTokenRewards:
 
         green_problem = next(p for p in started.problems if p.rating == 1200)
         result = await ContestService.submit_problem(
-            db, user, started.id,
+            db,
+            user,
+            started.id,
             problem_id=green_problem.problem_id,
             solved=True,
             attempts=1,
@@ -718,7 +735,9 @@ class TestContestSettlement:
         # Submit one problem (unsolved) to count as 1 submission
         problem = started.problems[0]
         await ContestService.submit_problem(
-            db, user, started.id,
+            db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=False,
             attempts=1,
@@ -745,7 +764,9 @@ class TestContestSettlement:
         for i in range(2):
             problem = started.problems[i]
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=False,
                 attempts=1,
@@ -771,7 +792,9 @@ class TestContestSettlement:
         for i in range(3):
             problem = started.problems[i]
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=(i < 2),
                 attempts=1,
@@ -799,7 +822,9 @@ class TestContestSettlement:
         for i in range(4):
             problem = started.problems[i]
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=True,
                 attempts=1,
@@ -828,7 +853,9 @@ class TestContestSettlement:
         for i in range(3):
             problem = started.problems[i]
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=False,
                 attempts=2,
@@ -930,7 +957,9 @@ class TestContestResult:
         for i in range(2):
             problem = started.problems[i]
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=True,
                 attempts=1,
@@ -991,7 +1020,9 @@ class TestAccessControl:
         problem = started.problems[0]
         with pytest.raises(ForbiddenException, match="Not your"):
             await ContestService.submit_problem(
-                db, user2, started.id,
+                db,
+                user2,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=True,
                 attempts=1,
@@ -1134,7 +1165,9 @@ class TestMEloCalculation:
 
         for problem in started.problems:
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=True,
                 attempts=1,
@@ -1159,7 +1192,9 @@ class TestMEloCalculation:
         for i in range(3):
             problem = started.problems[i]
             await ContestService.submit_problem(
-                db, user, started.id,
+                db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=False,
                 attempts=3,
@@ -1188,7 +1223,9 @@ class TestMEloCalculation:
         await db.commit()
         for problem in started1.problems:
             await ContestService.submit_problem(
-                db, user1, started1.id,
+                db,
+                user1,
+                started1.id,
                 problem_id=problem.problem_id,
                 solved=True,
                 attempts=1,
@@ -1204,7 +1241,9 @@ class TestMEloCalculation:
         for i in range(3):
             problem = started2.problems[i]
             await ContestService.submit_problem(
-                db, user2, started2.id,
+                db,
+                user2,
+                started2.id,
                 problem_id=problem.problem_id,
                 solved=(i < 2),
                 attempts=1,
@@ -1336,7 +1375,9 @@ class TestGetActiveContest:
         # Solve one problem
         problem = started.problems[0]
         await ContestService.submit_problem(
-            db, user, started.id,
+            db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=True,
             attempts=1,

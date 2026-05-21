@@ -25,10 +25,13 @@ export function EloChange({ value, triggerKey, className = "" }: EloChangeProps)
 
   useEffect(() => {
     if (value == null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hide animation when no value
       setVisible(false);
       return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- trigger animation on value change
     setVisible(true);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset counter for new value
     setDisplayValue(0);
 
     if (reduced) {

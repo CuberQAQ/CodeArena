@@ -50,18 +50,21 @@ class _TestBase(DeclarativeBase):
 
 class JSONText(TypeDecorator):
     """SQLite-compatible JSON storage using TEXT column."""
+
     impl = String(2000)
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is not None:
             import json
+
             return json.dumps(value)
         return value
 
     def process_result_value(self, value, dialect):
         if value is not None:
             import json
+
             return json.loads(value)
         return value
 
@@ -184,6 +187,7 @@ async def db(async_engine, fake_redis):
     async def _mock_get_config(db, key):
         """Return default elo config for tests."""
         from app.core.default_config import DEFAULT_CONFIG
+
         return DEFAULT_CONFIG.get("elo", {})
 
     async def _mock_get_submission_count(db, user_id):
@@ -510,12 +514,15 @@ class TestStartChallenge:
         await db.flush()
 
         # Set up pending state
-        await _set_pending(session.id, {
-            "player_a_id": user_a.id,
-            "player_b_id": user_b.id,
-            "avg_elo": 1200.0,
-            "confirmed": set(),
-        })
+        await _set_pending(
+            session.id,
+            {
+                "player_a_id": user_a.id,
+                "player_b_id": user_b.id,
+                "avg_elo": 1200.0,
+                "confirmed": set(),
+            },
+        )
 
         cf_mock = AsyncMock()
         result = await ChallengeService.start_challenge(db, user_a, session.id, cf_mock)
@@ -534,12 +541,15 @@ class TestStartChallenge:
         await db.flush()
 
         # Set up pending state with A already confirmed
-        await _set_pending(session.id, {
-            "player_a_id": user_a.id,
-            "player_b_id": user_b.id,
-            "avg_elo": 1200.0,
-            "confirmed": {user_a.id},
-        })
+        await _set_pending(
+            session.id,
+            {
+                "player_a_id": user_a.id,
+                "player_b_id": user_b.id,
+                "avg_elo": 1200.0,
+                "confirmed": {user_a.id},
+            },
+        )
 
         cf_mock = AsyncMock()
         cf_mock.get_problemset_problems.return_value = {
@@ -632,9 +642,7 @@ def _setup_elo_mocks(mock_elo_cls):
 
 def _setup_pp_mocks(mock_pp_cls):
     """Add calculate_overkill_multiplier mock to a PPService mock."""
-    mock_pp_cls.calculate_overkill_multiplier = staticmethod(
-        lambda *args, **kwargs: 1.0
-    )
+    mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda *args, **kwargs: 1.0)
 
 
 def _setup_config_mocks(mock_config_cls):
@@ -1030,12 +1038,15 @@ class TestFullChallengeFlow:
         }
 
         # Set up pending state (normally done by join_queue)
-        await _set_pending(session_id, {
-            "player_a_id": user_a.id,
-            "player_b_id": user_b.id,
-            "avg_elo": 1225.0,
-            "confirmed": set(),
-        })
+        await _set_pending(
+            session_id,
+            {
+                "player_a_id": user_a.id,
+                "player_b_id": user_b.id,
+                "avg_elo": 1225.0,
+                "confirmed": set(),
+            },
+        )
 
         # Player A confirms first -> waiting
         start_a = await ChallengeService.start_challenge(db, user_a, session_id, cf_mock)
@@ -1132,12 +1143,15 @@ class TestPendingState:
     async def test_remove_pending(self, fake_redis):
         with patch("app.services.challenge_service.get_redis", return_value=fake_redis):
             sid = uuid.uuid4()
-            await _set_pending(sid, {
-                "confirmed": set(),
-                "player_a_id": uuid.uuid4(),
-                "player_b_id": uuid.uuid4(),
-                "avg_elo": 1000,
-            })
+            await _set_pending(
+                sid,
+                {
+                    "confirmed": set(),
+                    "player_a_id": uuid.uuid4(),
+                    "player_b_id": uuid.uuid4(),
+                    "avg_elo": 1000,
+                },
+            )
             await _remove_pending(sid)
             result = await _get_pending(sid)
             assert result is None
@@ -1150,12 +1164,15 @@ class TestPendingState:
         """Verify that pending keys have TTL set."""
         with patch("app.services.challenge_service.get_redis", return_value=fake_redis):
             sid = uuid.uuid4()
-            await _set_pending(sid, {
-                "confirmed": set(),
-                "player_a_id": uuid.uuid4(),
-                "player_b_id": uuid.uuid4(),
-                "avg_elo": 1000,
-            })
+            await _set_pending(
+                sid,
+                {
+                    "confirmed": set(),
+                    "player_a_id": uuid.uuid4(),
+                    "player_b_id": uuid.uuid4(),
+                    "avg_elo": 1000,
+                },
+            )
             ttl = await fake_redis.ttl(_pending_key(sid))
             assert ttl > 0  # Should have a TTL
             assert ttl <= 300  # Should be at most 5 minutes
@@ -1193,12 +1210,15 @@ class TestProblemNamePersistence:
         await db.flush()
 
         # Set up pending state with A already confirmed
-        await _set_pending(session.id, {
-            "player_a_id": user_a.id,
-            "player_b_id": user_b.id,
-            "avg_elo": 1200.0,
-            "confirmed": {user_a.id},
-        })
+        await _set_pending(
+            session.id,
+            {
+                "player_a_id": user_a.id,
+                "player_b_id": user_b.id,
+                "avg_elo": 1200.0,
+                "confirmed": {user_a.id},
+            },
+        )
 
         cf_mock = AsyncMock()
         cf_mock.get_problemset_problems.return_value = {
@@ -1503,7 +1523,11 @@ class TestPerspectiveTransformation:
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_submit_result_returns_perspective_elo_and_tokens(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_pp_cls,
+        mock_config_cls,
+        db,
     ):
         """submit_result returns elo_change and tokens_earned from the submitting user's perspective."""
         _setup_config_mocks(mock_config_cls)
@@ -1557,7 +1581,10 @@ class TestPerspectiveTransformation:
             mock_elo_cls.process_quit_penalty = AsyncMock(return_value=(1180, -20))
 
             result = await ChallengeService.quit_challenge(
-                db, user_a, session.id, submissions=1,
+                db,
+                user_a,
+                session.id,
+                submissions=1,
             )
             assert result["result"] == "quit"
             assert result["elo_change"] == -20
@@ -1577,7 +1604,10 @@ class TestQuitEloChangeSemantics:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_challenger_quit_stores_challenger_penalty_in_elo_change(
-        self, mock_elo_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_config_cls,
+        db,
     ):
         """When challenger quits with 1-2 submissions, session.elo_change = challenger's penalty."""
         _setup_config_mocks(mock_config_cls)
@@ -1604,7 +1634,10 @@ class TestQuitEloChangeSemantics:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_opponent_quit_stores_opponent_penalty_in_opponent_elo_change(
-        self, mock_elo_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_config_cls,
+        db,
     ):
         """When opponent quits with 1-2 submissions, session.opponent_elo_change = opponent's penalty."""
         _setup_config_mocks(mock_config_cls)
@@ -1631,7 +1664,10 @@ class TestQuitEloChangeSemantics:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_challenger_quit_3plus_submissions_stores_both_elo_changes(
-        self, mock_elo_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_config_cls,
+        db,
     ):
         """When challenger quits with 3+ submissions, both Elo changes are stored correctly."""
         _setup_config_mocks(mock_config_cls)
@@ -1663,7 +1699,10 @@ class TestQuitEloChangeSemantics:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_opponent_quit_3plus_submissions_stores_both_elo_changes(
-        self, mock_elo_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_config_cls,
+        db,
     ):
         """When opponent quits with 3+ submissions, both Elo changes are stored correctly."""
         _setup_config_mocks(mock_config_cls)
@@ -1692,7 +1731,10 @@ class TestQuitEloChangeSemantics:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_quit_detail_shows_correct_elo_change_for_both_players(
-        self, mock_elo_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_config_cls,
+        db,
     ):
         """After opponent quits, both players see correct elo_change in detail."""
         _setup_config_mocks(mock_config_cls)
@@ -1735,7 +1777,11 @@ class TestChallengerTokensPersistence:
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_settlement_stores_challenger_tokens_earned(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_pp_cls,
+        mock_config_cls,
+        db,
     ):
         """_settle_challenge saves challenger_tokens_earned to the session."""
         _setup_config_mocks(mock_config_cls)
@@ -1769,7 +1815,11 @@ class TestChallengerTokensPersistence:
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_detail_returns_tokens_earned_for_challenger(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_pp_cls,
+        mock_config_cls,
+        db,
     ):
         """get_challenge_detail returns tokens_earned from challenger's perspective."""
         _setup_config_mocks(mock_config_cls)
@@ -1799,7 +1849,11 @@ class TestChallengerTokensPersistence:
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
     async def test_detail_returns_tokens_earned_for_opponent(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, db,
+        self,
+        mock_elo_cls,
+        mock_pp_cls,
+        mock_config_cls,
+        db,
     ):
         """get_challenge_detail returns tokens_earned from opponent's perspective."""
         _setup_config_mocks(mock_config_cls)
@@ -1853,10 +1907,15 @@ class TestGetActiveChallenge:
         await db.flush()
 
         session = _make_test_session(
-            user_a.id, user_b.id, status="active", problem_id="1234B", problem_rating=1400,
+            user_a.id,
+            user_b.id,
+            status="active",
+            problem_id="1234B",
+            problem_rating=1400,
         )
         session.problem_name = "Test Problem"
         from datetime import datetime as _dt
+
         session.created_at = _dt(2026, 1, 15, 10, 30, 0)
         db.add(session)
         await db.flush()
@@ -1879,7 +1938,11 @@ class TestGetActiveChallenge:
         await db.flush()
 
         session = _make_test_session(
-            user_a.id, user_b.id, status="active", problem_id="1234B", problem_rating=1400,
+            user_a.id,
+            user_b.id,
+            status="active",
+            problem_id="1234B",
+            problem_rating=1400,
         )
         session.problem_name = "Test Problem"
         db.add(session)
@@ -1900,7 +1963,10 @@ class TestGetActiveChallenge:
         await db.flush()
 
         session = _make_test_session(
-            user_a.id, user_b.id, status="completed", problem_rating=1400,
+            user_a.id,
+            user_b.id,
+            status="completed",
+            problem_rating=1400,
         )
         db.add(session)
         await db.flush()
@@ -1916,7 +1982,10 @@ class TestGetActiveChallenge:
         await db.flush()
 
         session = _make_test_session(
-            user_a.id, user_b.id, status="pending", problem_rating=1400,
+            user_a.id,
+            user_b.id,
+            status="pending",
+            problem_rating=1400,
         )
         db.add(session)
         await db.flush()
@@ -1934,14 +2003,22 @@ class TestGetActiveChallenge:
         from datetime import datetime as _dt
 
         old_session = _make_test_session(
-            user_a.id, user_b.id, status="active", problem_id="1111A", problem_rating=1200,
+            user_a.id,
+            user_b.id,
+            status="active",
+            problem_id="1111A",
+            problem_rating=1200,
         )
         old_session.problem_name = "Old Problem"
         old_session.created_at = _dt(2026, 1, 1, 10, 0, 0)
         db.add(old_session)
 
         new_session = _make_test_session(
-            user_a.id, user_b.id, status="active", problem_id="2222B", problem_rating=1500,
+            user_a.id,
+            user_b.id,
+            status="active",
+            problem_id="2222B",
+            problem_rating=1500,
         )
         new_session.problem_name = "New Problem"
         new_session.created_at = _dt(2026, 1, 15, 10, 0, 0)
@@ -1974,9 +2051,7 @@ class TestOverkillAchievement:
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
         # Overkill multiplier > 1.0 means the problem is above user's Elo
-        mock_pp_cls.calculate_overkill_multiplier = staticmethod(
-            lambda elo, rating: 1.5 if rating > elo else 1.0
-        )
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda elo, rating: 1.5 if rating > elo else 1.0)
         mock_pp_cls.record_pp = AsyncMock()
 
         user_a = _make_test_user(db, username="user_a", elo=1200, tokens=0)
@@ -2008,9 +2083,7 @@ class TestOverkillAchievement:
         """Opponent solving a hard problem triggers overkill achievement."""
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
-        mock_pp_cls.calculate_overkill_multiplier = staticmethod(
-            lambda elo, rating: 1.5 if rating > elo else 1.0
-        )
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda elo, rating: 1.5 if rating > elo else 1.0)
         mock_pp_cls.record_pp = AsyncMock()
 
         # Opponent has lower Elo than the problem
@@ -2043,9 +2116,7 @@ class TestOverkillAchievement:
         """Both players solving a hard problem each triggers two overkill achievements."""
         _setup_config_mocks(mock_config_cls)
         _setup_elo_mocks(mock_elo_cls)
-        mock_pp_cls.calculate_overkill_multiplier = staticmethod(
-            lambda elo, rating: 1.5 if rating > elo else 1.0
-        )
+        mock_pp_cls.calculate_overkill_multiplier = staticmethod(lambda elo, rating: 1.5 if rating > elo else 1.0)
         mock_pp_cls.record_pp = AsyncMock()
 
         # Both players have lower Elo than the problem

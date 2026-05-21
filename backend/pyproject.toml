@@ -13,7 +13,12 @@ select = ["E", "F", "I", "N", "UP", "B", "A", "SIM"]
 
 # B008: Function call in argument defaults is idiomatic FastAPI for Depends()
 # N818: Custom exceptions use AppException suffix pattern, not Error suffix
-ignore = ["B008", "N818"]
+# E712: SQLAlchemy .where(col == True) is valid SQL, not a Python truth check
+# B904: raise-from style — existing code uses direct raise, fixing incrementally
+# B017: pytest.raises(Exception) in tests — legitimate for verifying any-exception cases
+# B007: unused loop var in tests — _ prefix convention not enforced
+# UP038: isinstance(x, (int, float)) — clearer than X | Y for type tuples
+ignore = ["B008", "N818", "E712", "B904", "B017", "B007", "UP038"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

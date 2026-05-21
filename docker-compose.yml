@@ -1,3 +1,5 @@
+name: code-arena-dev
+
 services:
   # ---- Database ----
   db:
@@ -22,7 +24,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -43,6 +45,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-code_arena}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-300}
     depends_on:
       db:
         condition: service_healthy

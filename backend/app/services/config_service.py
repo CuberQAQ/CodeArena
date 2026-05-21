@@ -136,18 +136,12 @@ def _validate_config_value(key: str, value: Any) -> None:
             pass  # acceptable
         else:
             type_name = getattr(expected_type, "__name__", str(expected_type))
-            raise ValueError(
-                f"Config key '{key}': expected type {type_name}, got {type(value).__name__}"
-            )
+            raise ValueError(f"Config key '{key}': expected type {type_name}, got {type(value).__name__}")
 
     if "min" in rule and isinstance(value, (int, float)) and value < rule["min"]:
-        raise ValueError(
-            f"Config key '{key}': value {value} is below minimum {rule['min']}"
-        )
+        raise ValueError(f"Config key '{key}': value {value} is below minimum {rule['min']}")
     if "max" in rule and isinstance(value, (int, float)) and value > rule["max"]:
-        raise ValueError(
-            f"Config key '{key}': value {value} is above maximum {rule['max']}"
-        )
+        raise ValueError(f"Config key '{key}': value {value} is above maximum {rule['max']}")
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +196,7 @@ class ConfigService:
                 merged = deepcopy(value)
                 for child in child_rows:
                     if child.config_value is not None:
-                        child_suffix = child.config_key[len(prefix):]
+                        child_suffix = child.config_key[len(prefix) :]
                         with suppress(KeyError):
                             _set_by_path(merged, child_suffix, child.config_value)
                 _cache_set(key, merged)
@@ -319,9 +313,7 @@ class ConfigService:
         # Batch-load existing keys to avoid N+1 queries
         existing_keys: set[str] = set()
         if flat:
-            stmt = select(SystemConfig.config_key).where(
-                SystemConfig.config_key.in_(flat.keys())
-            )
+            stmt = select(SystemConfig.config_key).where(SystemConfig.config_key.in_(flat.keys()))
             result = await db.execute(stmt)
             existing_keys = {row[0] for row in result.all()}
 
