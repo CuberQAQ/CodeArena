@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS base
 
-# Install curl for health check, then clean up
+# Install curl for health check + Playwright Chromium deps, then clean up
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
@@ -15,6 +15,10 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir gunicorn>=22.0.0
+
+# Install Playwright Chromium (for CF problem statement scraping)
+RUN playwright install chromium --with-deps && \
+    playwright install-deps chromium
 
 # Copy application code
 COPY backend/ .
