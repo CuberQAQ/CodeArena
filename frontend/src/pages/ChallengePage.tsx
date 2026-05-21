@@ -638,13 +638,15 @@ export default function ChallengePage() {
               </div>
               <p className="text-sm font-medium text-foreground">{t("waitingForOpponentResult")}</p>
               {problem && (
-                <Button
-                  variant="outline"
-                  onClick={() => window.open(problem.url, "_blank")}
+                <a
+                  href={problem.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-primary underline underline-offset-4 hover:text-primary/80"
                 >
-                  <ExternalLink className="mr-2 size-4" />
+                  <ExternalLink className="size-4" />
                   {t("openOnCodeforces")}
-                </Button>
+                </a>
               )}
             </div>
           ) : (
