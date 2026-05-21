@@ -786,3 +786,232 @@ class TestGetActiveSessionForTopic:
         """POST is not allowed on this endpoint."""
         resp = app_client.post(f"/training/topics/{SAMPLE_UUID}/active-session")
         assert resp.status_code == 405
+
+
+# ===========================================================================
+# GET /training/topics/{topic_id}/curated-problems
+# ===========================================================================
+
+
+def _curated_problems_dict(**overrides):
+    d = {
+        "problems": [
+            {
+                "problem_id": "800A",
+                "contest_id": 800,
+                "index": "A",
+                "name": "Easy Problem",
+                "rating": 800,
+                "tags": ["dp"],
+                "url": "https://codeforces.com/problemset/problem/800/A",
+                "solved": False,
+            },
+            {
+                "problem_id": "1200B",
+                "contest_id": 1200,
+                "index": "B",
+                "name": "Medium Problem",
+                "rating": 1200,
+                "tags": ["dp"],
+                "url": "https://codeforces.com/problemset/problem/1200/B",
+                "solved": True,
+            },
+        ],
+        "total": 2,
+        "offset": 0,
+        "limit": 20,
+    }
+    d.update(overrides)
+    return d
+
+
+class TestGetCuratedProblems:
+    """Tests for GET /training/topics/{topic_id}/curated-problems."""
+
+    @patch("app.api.v1.training.TrainingService")
+    @patch("app.api.v1.training._get_cf_service")
+    def test_curated_problems_success(self, mock_cf, mock_svc, app_client):
+        """Returns curated problems with pagination info."""
+        result = MagicMock()
+        result.model_dump.return_value = _curated_problems_dict()
+        mock_svc.get_curated_problems = AsyncMock(return_value=result)
+
+        resp = app_client.get(f"/training/topics/{SAMPLE_UUID}/curated-problems")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert len(body["data"]["problems"]) == 2
+        assert body["data"]["total"] == 2
+        assert body["data"]["offset"] == 0
+        assert body["data"]["limit"] == 20
+        assert body["message"] == "Curated problems retrieved"
+
+    @patch("app.api.v1.training.TrainingService")
+    @patch("app.api.v1.training._get_cf_service")
+    def test_curated_problems_with_pagination(self, mock_cf, mock_svc, app_client):
+        """Supports offset and limit query parameters."""
+        result = MagicMock()
+        result.model_dump.return_value = _curated_problems_dict(
+            problems=[],
+            total=50,
+            offset=20,
+            limit=20,
+        )
+        mock_svc.get_curated_problems = AsyncMock(return_value=result)
+
+        resp = app_client.get(
+            f"/training/topics/{SAMPLE_UUID}/curated-problems?limit=20&offset=20",
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["offset"] == 20
+        assert body["data"]["total"] == 50
+
+    @patch("app.api.v1.training.TrainingService")
+    @patch("app.api.v1.training._get_cf_service")
+    def test_curated_problems_with_rating_filter(self, mock_cf, mock_svc, app_client):
+        """Supports min_rating and max_rating query parameters."""
+        result = MagicMock()
+        result.model_dump.return_value = _curated_problems_dict(total=1)
+        mock_svc.get_curated_problems = AsyncMock(return_value=result)
+
+        resp = app_client.get(
+            f"/training/topics/{SAMPLE_UUID}/curated-problems?min_rating=1000&max_rating=1600",
+        )
+        assert resp.status_code == 200
+
+    @patch("app.api.v1.training.TrainingService")
+    @patch("app.api.v1.training._get_cf_service")
+    def test_curated_problems_topic_not_found(self, mock_cf, mock_svc, app_client):
+        """Returns 404 for non-existent topic."""
+        mock_svc.get_curated_problems = AsyncMock(
+            side_effect=NotFoundException("Topic not found"),
+        )
+
+        resp = app_client.get(f"/training/topics/{SAMPLE_UUID}/curated-problems")
+        assert resp.status_code == 404
+
+    def test_curated_problems_invalid_uuid(self, app_client):
+        """Returns 422 for invalid topic UUID."""
+        resp = app_client.get("/training/topics/bad-uuid/curated-problems")
+        assert resp.status_code == 422
+
+    def test_curated_problems_unauthenticated(self):
+        """Returns 401 for unauthenticated requests."""
+        client = _unauth_client()
+        resp = client.get(f"/training/topics/{SAMPLE_UUID}/curated-problems")
+        assert resp.status_code == 401
+
+    def test_curated_problems_wrong_method(self, app_client):
+        """POST is not allowed on this endpoint."""
+        resp = app_client.post(f"/training/topics/{SAMPLE_UUID}/curated-problems")
+        assert resp.status_code == 405
+
+    @patch("app.api.v1.training.TrainingService")
+    @patch("app.api.v1.training._get_cf_service")
+    def test_curated_problems_empty(self, mock_cf, mock_svc, app_client):
+        """Returns empty list when no problems match filters."""
+        result = MagicMock()
+        result.model_dump.return_value = {
+            "problems": [],
+            "total": 0,
+            "offset": 0,
+            "limit": 20,
+        }
+        mock_svc.get_curated_problems = AsyncMock(return_value=result)
+
+        resp = app_client.get(f"/training/topics/{SAMPLE_UUID}/curated-problems")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["problems"] == []
+        assert body["data"]["total"] == 0
+
+
+# ===========================================================================
+# GET /training/recommended-topics
+# ===========================================================================
+
+
+def _recommended_topics_list():
+    return [
+        {
+            "slug": "dp",
+            "name": "Dynamic Programming",
+            "name_zh": "动态规划",
+            "melo": 1100.0,
+            "reason": "Your Dynamic Programming M-Elo is 1100, the weakest area to improve",
+        },
+        {
+            "slug": "greedy",
+            "name": "Greedy",
+            "name_zh": "贪心",
+            "melo": None,
+            "reason": "Your Greedy M-Elo is unestablished -- start practicing!",
+        },
+        {
+            "slug": "math",
+            "name": "Math",
+            "name_zh": "数学",
+            "melo": 1250.0,
+            "reason": "Your Math M-Elo is 1250, the weakest area to improve",
+        },
+    ]
+
+
+class TestGetRecommendedTopics:
+    """Tests for GET /training/recommended-topics."""
+
+    @patch("app.api.v1.training.TrainingService")
+    def test_recommended_topics_success(self, mock_svc, app_client):
+        """Returns 2-3 recommended topics with reason text."""
+        topics = [
+            MagicMock(
+                slug=t["slug"],
+                name=t["name"],
+                name_zh=t["name_zh"],
+                melo=t["melo"],
+                reason=t["reason"],
+                model_dump=MagicMock(return_value=t),
+            )
+            for t in _recommended_topics_list()
+        ]
+        mock_svc.get_recommended_topics = AsyncMock(return_value=topics)
+
+        resp = app_client.get("/training/recommended-topics")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert len(body["data"]) == 3
+        assert body["data"][0]["slug"] == "dp"
+        assert "weakest" in body["data"][0]["reason"]
+        assert body["message"] == "Recommended topics retrieved"
+
+    @patch("app.api.v1.training.TrainingService")
+    def test_recommended_topics_custom_limit(self, mock_svc, app_client):
+        """Respects the limit query parameter."""
+        topic = _recommended_topics_list()[0]
+        mock_topic = MagicMock(
+            slug=topic["slug"],
+            name=topic["name"],
+            name_zh=topic["name_zh"],
+            melo=topic["melo"],
+            reason=topic["reason"],
+            model_dump=MagicMock(return_value=topic),
+        )
+        mock_svc.get_recommended_topics = AsyncMock(return_value=[mock_topic])
+
+        resp = app_client.get("/training/recommended-topics?limit=1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 1
+
+    def test_recommended_topics_unauthenticated(self):
+        """Returns 401 for unauthenticated requests."""
+        client = _unauth_client()
+        resp = client.get("/training/recommended-topics")
+        assert resp.status_code == 401
+
+    def test_recommended_topics_wrong_method(self, app_client):
+        """POST is not allowed on this endpoint."""
+        resp = app_client.post("/training/recommended-topics")
+        assert resp.status_code == 405

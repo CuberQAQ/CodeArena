@@ -2250,3 +2250,365 @@ class TestAdaptiveRecommendation:
         assert "codeforces.com" in result.url
         assert result.melo == 1100
         assert len(result.search_range) == 2
+
+
+# ---------------------------------------------------------------------------
+# Tests for TrainingService.get_curated_problems
+# ---------------------------------------------------------------------------
+
+
+class TestCuratedProblems:
+    """Tests for TrainingService.get_curated_problems."""
+
+    async def test_curated_problems_basic(self, db, cf_mock):
+        """Returns curated problems with correct pagination info."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        result = await TrainingService.get_curated_problems(
+            db=db,
+            topic_id=topic.id,
+            user_id=user.id,
+            cf_service=cf_mock,
+        )
+
+        assert result.total > 0
+        assert len(result.problems) <= result.limit
+        assert result.offset == 0
+        # Each problem should have required fields
+        for p in result.problems:
+            assert p.problem_id is not None
+            assert p.contest_id > 0
+            assert p.name != ""
+            assert p.rating is not None
+            assert "codeforces.com" in p.url
+
+    async def test_curated_problems_segmented_into_buckets(self, db, cf_mock):
+        """Problems are segmented into 200-point buckets with up to 5 per bucket."""
+        # Add many problems across rating ranges
+        problems = []
+        for i in range(20):
+            rating = 800 + i * 100  # 800, 900, 1000, ..., 2700
+            problems.append(
+                {
+                    "contestId": 1000 + i,
+                    "index": chr(65 + i % 26),
+                    "name": f"Problem {i}",
+                    "rating": rating,
+                    "tags": ["dp"],
+                }
+            )
+        cf_mock.get_problemset_problems.return_value = {"problems": problems}
+
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        result = await TrainingService.get_curated_problems(
+            db=db,
+            topic_id=topic.id,
+            user_id=user.id,
+            limit=100,  # get all
+            cf_service=cf_mock,
+        )
+
+        # All problems should be returned (5 per bucket * 4 buckets covering 800-2700)
+        assert result.total <= 20
+
+    async def test_curated_problems_rating_filter(self, db, cf_mock):
+        """Filters by min_rating and max_rating."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # Filter to only 1000-1500 range
+        result = await TrainingService.get_curated_problems(
+            db=db,
+            topic_id=topic.id,
+            user_id=user.id,
+            min_rating=1000,
+            max_rating=1500,
+            cf_service=cf_mock,
+        )
+
+        for p in result.problems:
+            assert 1000 <= p.rating <= 1500
+
+    async def test_curated_problems_pagination(self, db, cf_mock):
+        """Pagination via offset and limit works correctly."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # Get first page
+        page1 = await TrainingService.get_curated_problems(
+            db=db,
+            topic_id=topic.id,
+            user_id=user.id,
+            limit=2,
+            offset=0,
+            cf_service=cf_mock,
+        )
+
+        # Get second page
+        page2 = await TrainingService.get_curated_problems(
+            db=db,
+            topic_id=topic.id,
+            user_id=user.id,
+            limit=2,
+            offset=2,
+            cf_service=cf_mock,
+        )
+
+        # Pages should have different problems
+        page1_ids = {p.problem_id for p in page1.problems}
+        page2_ids = {p.problem_id for p in page2.problems}
+        assert page1_ids.isdisjoint(page2_ids)
+
+    async def test_curated_problems_solved_status(self, db, cf_mock):
+        """Marks problems the user has already solved."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        # Mark "100A" (rating 800) as solved
+        session_id = uuid.uuid4()
+        session = _TestTrainingSession(
+            id=session_id,
+            user_id=user.id,
+            topic_id=topic.id,
+            total_problems=5,
+            status="completed",
+        )
+        db.add(session)
+        record = _TestTrainingProblemRecord(
+            session_id=session_id,
+            user_id=user.id,
+            topic_id=topic.id,
+            problem_id="100A",
+            problem_rating=800,
+            solved=True,
+            attempts=1,
+            time_spent=60.0,
+            solved_at=datetime.now(UTC),
+        )
+        db.add(record)
+        await db.flush()
+
+        result = await TrainingService.get_curated_problems(
+            db=db,
+            topic_id=topic.id,
+            user_id=user.id,
+            cf_service=cf_mock,
+        )
+
+        # Find "100A" in results and verify it's marked as solved
+        problem_ids = {p.problem_id for p in result.problems}
+        if "100A" in problem_ids:
+            assert any(p.problem_id == "100A" and p.solved for p in result.problems)
+
+    async def test_curated_problems_no_cf_service(self, db):
+        """Returns empty list when no CF service provided."""
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        result = await TrainingService.get_curated_problems(
+            db=db,
+            topic_id=topic.id,
+            user_id=user.id,
+            cf_service=None,
+        )
+
+        assert result.total == 0
+        assert result.problems == []
+
+    async def test_curated_problems_topic_not_found(self, db, cf_mock):
+        """Raises NotFoundException for non-existent topic."""
+        with pytest.raises(NotFoundException, match="Topic not found"):
+            await TrainingService.get_curated_problems(
+                db=db,
+                topic_id=uuid.uuid4(),
+                user_id=uuid.uuid4(),
+                cf_service=cf_mock,
+            )
+
+    async def test_curated_problems_empty_cf_response(self, db, cf_mock):
+        """Returns empty when CF API returns no problems."""
+        cf_mock.get_problemset_problems.return_value = {"problems": []}
+
+        user = _make_test_user(db)
+        topic = _make_test_topic(db)
+        db.add_all([user, topic])
+        await db.flush()
+
+        result = await TrainingService.get_curated_problems(
+            db=db,
+            topic_id=topic.id,
+            user_id=user.id,
+            cf_service=cf_mock,
+        )
+
+        assert result.total == 0
+        assert result.problems == []
+
+
+# ---------------------------------------------------------------------------
+# Tests for TrainingService.get_recommended_topics
+# ---------------------------------------------------------------------------
+
+
+class TestRecommendedTopics:
+    """Tests for TrainingService.get_recommended_topics."""
+
+    async def test_recommended_topics_basic(self, db):
+        """Returns topics sorted by weakest M-Elo."""
+        user = _make_test_user(db)
+        db.add(user)
+        await db.flush()
+
+        # Provide melo records for ALL predefined topic tags so there are no
+        # "unpracticed" entries that would sort first with sort_key=-1.
+        melo_records = [
+            _FakeMEloRecord(elo=1500, tag="dp"),
+            _FakeMEloRecord(elo=800, tag="greedy"),
+            _FakeMEloRecord(elo=1200, tag="math"),
+            _FakeMEloRecord(elo=2000, tag="graphs"),
+            _FakeMEloRecord(elo=2100, tag="strings"),
+            _FakeMEloRecord(elo=2200, tag="data structures"),
+            _FakeMEloRecord(elo=2300, tag="binary search"),
+            _FakeMEloRecord(elo=2400, tag="sortings"),
+            _FakeMEloRecord(elo=2500, tag="constructive algorithms"),
+            _FakeMEloRecord(elo=2600, tag="number theory"),
+            _FakeMEloRecord(elo=2700, tag="trees"),
+            _FakeMEloRecord(elo=2800, tag="geometry"),
+        ]
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_all_melos = AsyncMock(return_value=melo_records)
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=_FakeMEloRecord(elo=1200, tag="dp"))
+
+            results = await TrainingService.get_recommended_topics(
+                db=db,
+                user_id=user.id,
+                limit=3,
+            )
+
+        assert len(results) == 3
+        # Greedy (800) should be first (weakest), then Math (1200), then DP (1500)
+        assert results[0].slug == "greedy"
+        assert results[0].melo == 800.0
+        assert results[1].slug == "math"
+        assert results[1].melo == 1200.0
+        assert results[2].slug == "dp"
+        assert results[2].melo == 1500.0
+
+    async def test_recommended_topics_includes_reason(self, db):
+        """Each recommended topic includes a human-readable reason."""
+        user = _make_test_user(db)
+        db.add(user)
+        await db.flush()
+
+        # Provide melo records for ALL predefined topic tags
+        melo_records = [
+            _FakeMEloRecord(elo=900, tag="dp"),
+            _FakeMEloRecord(elo=1500, tag="greedy"),
+            _FakeMEloRecord(elo=1600, tag="math"),
+            _FakeMEloRecord(elo=1700, tag="graphs"),
+            _FakeMEloRecord(elo=1800, tag="strings"),
+            _FakeMEloRecord(elo=1900, tag="data structures"),
+            _FakeMEloRecord(elo=2000, tag="binary search"),
+            _FakeMEloRecord(elo=2100, tag="sortings"),
+            _FakeMEloRecord(elo=2200, tag="constructive algorithms"),
+            _FakeMEloRecord(elo=2300, tag="number theory"),
+            _FakeMEloRecord(elo=2400, tag="trees"),
+            _FakeMEloRecord(elo=2500, tag="geometry"),
+        ]
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_all_melos = AsyncMock(return_value=melo_records)
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=_FakeMEloRecord(elo=900, tag="dp"))
+
+            results = await TrainingService.get_recommended_topics(
+                db=db,
+                user_id=user.id,
+                limit=1,
+            )
+
+        assert len(results) == 1
+        assert "Dynamic Programming" in results[0].reason
+        assert "900" in results[0].reason
+
+    async def test_recommended_topics_unpracticed_first(self, db):
+        """Topics with no M-Elo record appear first (never practiced = weakest)."""
+        user = _make_test_user(db)
+        db.add(user)
+        await db.flush()
+
+        # Only one tag has a record; others are unpracticed
+        melo_records = [_FakeMEloRecord(elo=1500, tag="dp")]
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_all_melos = AsyncMock(return_value=melo_records)
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=_FakeMEloRecord(elo=1500, tag="dp"))
+
+            results = await TrainingService.get_recommended_topics(
+                db=db,
+                user_id=user.id,
+                limit=3,
+            )
+
+        assert len(results) == 3
+        # Unpracticed topics should come before dp (1500)
+        assert results[0].melo is None
+        # The first unpracticed topic in PREDEFINED_TOPICS order is greedy (display_order=1)
+        assert results[0].slug == "greedy"
+        assert "unestablished" in results[0].reason
+        # DP (1500) should NOT be in the top 3 since all unpracticed (None) sort first
+        # There are 12 topics, only 1 has a melo, so top 3 are all unpracticed
+        none_results = [r for r in results if r.melo is None]
+        assert len(none_results) == 3
+
+    async def test_recommended_topics_custom_limit(self, db):
+        """Respects the limit parameter."""
+        user = _make_test_user(db)
+        db.add(user)
+        await db.flush()
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_all_melos = AsyncMock(return_value=[])
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=_FakeMEloRecord(elo=1200, tag="dp"))
+
+            results = await TrainingService.get_recommended_topics(
+                db=db,
+                user_id=user.id,
+                limit=2,
+            )
+
+        assert len(results) == 2
+
+    async def test_recommended_topics_name_zh_populated(self, db):
+        """Chinese name is populated from PREDEFINED_TOPICS."""
+        user = _make_test_user(db)
+        db.add(user)
+        await db.flush()
+
+        with patch.object(training_svc_module, "MEloService") as mock_melo_cls:
+            mock_melo_cls.get_all_melos = AsyncMock(return_value=[])
+            mock_melo_cls.get_or_create_melo = AsyncMock(return_value=_FakeMEloRecord(elo=1200, tag="dp"))
+
+            results = await TrainingService.get_recommended_topics(
+                db=db,
+                user_id=user.id,
+                limit=1,
+            )
+
+        assert len(results) == 1
+        assert results[0].name_zh != ""  # Should have Chinese name

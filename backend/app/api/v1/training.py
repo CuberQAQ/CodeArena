@@ -1,9 +1,10 @@
 """Training API routes.
 
-Mounts eleven endpoints under ``/api/v1/training/``:
+Mounts thirteen endpoints under ``/api/v1/training/``:
   GET  /topics              -- list all topics
   GET  /topics/{id}         -- topic detail with problems
   GET  /topics/{id}/recommend -- adaptive problem recommendation
+  GET  /topics/{id}/curated-problems -- curated problem list with pagination
   GET  /topics/{id}/active-session -- session recovery for a topic
   POST /start               -- start training session
   GET  /session/{id}        -- get session status
@@ -12,6 +13,7 @@ Mounts eleven endpoints under ``/api/v1/training/``:
   GET  /progress            -- progress across all topics
   GET  /progress/{topic_id} -- progress for a single topic
   GET  /melo                -- get user's all tag M-Elo (for radar chart)
+  GET  /recommended-topics  -- recommend topics based on weakest M-Elo
 """
 
 from uuid import UUID
@@ -116,6 +118,39 @@ async def get_recommended_problem(
     return success_response(
         data=result.model_dump(mode="json"),
         message="Recommended problem found",
+    )
+
+
+@router.get("/topics/{topic_id}/curated-problems")
+async def get_curated_problems(
+    topic_id: UUID,
+    limit: int = 20,
+    offset: int = 0,
+    min_rating: int | None = None,
+    max_rating: int | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a curated list of problems for a topic with pagination.
+
+    Returns a subset of problems segmented into 200-point rating buckets,
+    with up to 5 representatives per bucket.  Supports difficulty filtering
+    via min_rating/max_rating query parameters and load-more via offset/limit.
+    """
+    cf_service = _get_cf_service()
+    result = await TrainingService.get_curated_problems(
+        db=db,
+        topic_id=topic_id,
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+        min_rating=min_rating,
+        max_rating=max_rating,
+        cf_service=cf_service,
+    )
+    return success_response(
+        data=result.model_dump(mode="json"),
+        message="Curated problems retrieved",
     )
 
 
@@ -306,4 +341,26 @@ async def get_melo(
     return success_response(
         data=response.model_dump(mode="json"),
         message="M-Elo retrieved",
+    )
+
+
+@router.get("/recommended-topics")
+async def get_recommended_topics(
+    limit: int = 3,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get 2-3 topics the user should prioritize based on weakest M-Elo.
+
+    Returns topics sorted by the user's M-Elo (ascending -- weakest first)
+    with reason text explaining why each topic is recommended.
+    """
+    results = await TrainingService.get_recommended_topics(
+        db=db,
+        user_id=current_user.id,
+        limit=limit,
+    )
+    return success_response(
+        data=[r.model_dump(mode="json") for r in results],
+        message="Recommended topics retrieved",
     )

@@ -171,3 +171,35 @@ class RecommendedProblemResponse(BaseModel):
     search_range: list[int] = Field(
         description="The [low, high] rating range used to find this problem",
     )
+
+
+class CuratedProblemInfo(BaseModel):
+    """A single problem in a curated list, with solved status."""
+
+    problem_id: str
+    contest_id: int
+    index: str
+    name: str
+    rating: int | None = None
+    tags: list[str] = []
+    url: str
+    solved: bool = False
+
+
+class CuratedProblemsResponse(BaseModel):
+    """Paginated curated problem list for a topic."""
+
+    problems: list[CuratedProblemInfo] = []
+    total: int = 0
+    offset: int = 0
+    limit: int = 20
+
+
+class RecommendedTopicResponse(BaseModel):
+    """A recommended topic with a reason for the user to prioritize."""
+
+    slug: str
+    name: str
+    name_zh: str = ""
+    melo: float | None = None
+    reason: str = ""

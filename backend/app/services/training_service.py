@@ -28,7 +28,10 @@ from app.models.training_session import TrainingSession
 from app.models.user import User
 from app.schemas.training import (
     AbandonTrainingResponse,
+    CuratedProblemInfo,
+    CuratedProblemsResponse,
     RecommendedProblemResponse,
+    RecommendedTopicResponse,
     SubmitTrainingResponse,
     TopicDetail,
     TopicInfo,
@@ -573,6 +576,194 @@ class TrainingService:
 
         # 6. No suitable problem found after all rounds
         return None
+
+    # ------------------------------------------------------------------
+    # 3c. Curated problem list with pagination and difficulty filter
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def get_curated_problems(
+        db: AsyncSession,
+        topic_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        min_rating: int | None = None,
+        max_rating: int | None = None,
+        cf_service: CFApiService | None = None,
+    ) -> CuratedProblemsResponse:
+        """Return a curated subset of problems for a topic.
+
+        Curation logic:
+        1. Fetch all problems for the topic's CF tags
+        2. Filter by rating bounds if provided
+        3. Sort by rating and segment into 200-point buckets
+        4. From each bucket, pick up to 5 representative problems
+           (preferring problems with lower rating first for approachability)
+        5. Apply offset/limit for pagination
+        6. Mark which ones the user has solved
+        """
+        topic = await db.get(TopicCategory, topic_id)
+        if topic is None:
+            raise NotFoundException(message="Topic not found")
+
+        cf_tags = topic.cf_tags if isinstance(topic.cf_tags, list) else []
+
+        # Fetch all problems for this topic
+        all_problems: list[dict] = []
+        if cf_service is not None:
+            all_problems = await TrainingService._get_all_problems_cached(cf_service)
+        problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
+
+        # Filter to problems with a valid rating
+        rated = [p for p in problems if p.get("rating") is not None]
+
+        # Apply rating filters
+        if min_rating is not None:
+            rated = [p for p in rated if p["rating"] >= min_rating]
+        if max_rating is not None:
+            rated = [p for p in rated if p["rating"] <= max_rating]
+
+        # Sort by rating ascending
+        rated.sort(key=lambda p: p["rating"])
+
+        if not rated:
+            return CuratedProblemsResponse(
+                problems=[],
+                total=0,
+                offset=offset,
+                limit=limit,
+            )
+
+        # Segment into 200-point buckets and pick representatives
+        buckets: dict[int, list[dict]] = {}
+        for p in rated:
+            bucket_key = (p["rating"] // 200) * 200
+            buckets.setdefault(bucket_key, []).append(p)
+
+        curated: list[dict] = []
+        for key in sorted(buckets.keys()):
+            bucket_problems = buckets[key]
+            # Pick up to 5 from each bucket, preferring lower rating
+            curated.extend(bucket_problems[:5])
+
+        # Total count after curation (before pagination)
+        total_curated = len(curated)
+
+        # Apply pagination
+        paginated = curated[offset : offset + limit]
+
+        # Fetch user's solved status for this topic
+        solved_ids: set[str] = set()
+        if user_id is not None:
+            solved_stmt = select(TrainingProblemRecord.problem_id).where(
+                TrainingProblemRecord.user_id == user_id,
+                TrainingProblemRecord.topic_id == topic_id,
+                TrainingProblemRecord.solved.is_(True),
+            )
+            solved_result = await db.execute(solved_stmt)
+            solved_ids = set(solved_result.scalars().all())
+
+        # Build response
+        problem_infos: list[CuratedProblemInfo] = []
+        for p in paginated:
+            contest_id = p.get("contestId", 0)
+            index = p.get("index", "")
+            pid = f"{contest_id}{index}"
+            problem_infos.append(
+                CuratedProblemInfo(
+                    problem_id=pid,
+                    contest_id=contest_id,
+                    index=index,
+                    name=p.get("name", ""),
+                    rating=p.get("rating"),
+                    tags=p.get("tags", []),
+                    url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
+                    solved=pid in solved_ids,
+                )
+            )
+
+        return CuratedProblemsResponse(
+            problems=problem_infos,
+            total=total_curated,
+            offset=offset,
+            limit=limit,
+        )
+
+    # ------------------------------------------------------------------
+    # 3d. Recommend topics based on user's weakest M-Elo
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def get_recommended_topics(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        limit: int = 3,
+    ) -> list[RecommendedTopicResponse]:
+        """Recommend topics the user should prioritize.
+
+        Logic: Sort all predefined topics by the user's M-Elo for each
+        topic's primary tag (ascending -- weakest first), then return
+        the top *limit* topics with a reason string.
+        """
+        await TrainingService.ensure_topics(db)
+
+        # Bulk-fetch all M-Elo records for this user
+        melo_records = await MEloService.get_all_melos(db, user_id)
+        melo_map: dict[str, object] = {m.tag: m for m in melo_records}
+
+        # Build topic M-Elo entries
+        topic_melos: list[dict] = []
+        for topic_def in PREDEFINED_TOPICS:
+            primary_tag = topic_def["cf_tags"][0] if topic_def["cf_tags"] else None
+            if primary_tag is None:
+                continue
+
+            melo_rec = melo_map.get(primary_tag)
+            # No M-Elo record = user never touched this tag
+            melo_val = None if melo_rec is None else float(melo_rec.elo)
+
+            topic_melos.append(
+                {
+                    "slug": topic_def["slug"],
+                    "name": topic_def["name"],
+                    "name_zh": topic_def.get("name_zh", ""),
+                    "melo": melo_val,
+                    "primary_tag": primary_tag,
+                }
+            )
+
+        # Sort: None (never practiced) treated as weakest (sort first),
+        # then ascending by M-Elo
+        def _sort_key(entry: dict) -> float:
+            melo = entry["melo"]
+            if melo is None:
+                return -1.0  # Never practiced = weakest
+            return melo
+
+        topic_melos.sort(key=_sort_key)
+
+        # Take top N
+        results: list[RecommendedTopicResponse] = []
+        for entry in topic_melos[:limit]:
+            name = entry["name"]
+            name_zh = entry["name_zh"]
+            melo = entry["melo"]
+            if melo is None:
+                reason = f"Your {name} M-Elo is unestablished -- start practicing!"
+            else:
+                reason = f"Your {name} M-Elo is {melo:.0f}, the weakest area to improve"
+            results.append(
+                RecommendedTopicResponse(
+                    slug=entry["slug"],
+                    name=name,
+                    name_zh=name_zh,
+                    melo=melo,
+                    reason=reason,
+                )
+            )
+
+        return results
 
     # ------------------------------------------------------------------
     # 4. Start training session
