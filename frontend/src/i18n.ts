@@ -16,6 +16,7 @@ import enAdmin from "./locales/en/admin.json";
 import enRating from "./locales/en/rating.json";
 import enFreePlay from "./locales/en/free_play.json";
 import enMedal from "./locales/en/medal.json";
+import enRanking from "./locales/en/ranking.json";
 
 // Chinese
 import zhCommon from "./locales/zh/common.json";
@@ -31,6 +32,7 @@ import zhAdmin from "./locales/zh/admin.json";
 import zhRating from "./locales/zh/rating.json";
 import zhFreePlay from "./locales/zh/free_play.json";
 import zhMedal from "./locales/zh/medal.json";
+import zhRanking from "./locales/zh/ranking.json";
 
 const resources = {
   en: {
@@ -47,6 +49,7 @@ const resources = {
     rating: enRating,
     free_play: enFreePlay,
     medal: enMedal,
+    ranking: enRanking,
   },
   zh: {
     common: zhCommon,
@@ -62,6 +65,7 @@ const resources = {
     rating: zhRating,
     free_play: zhFreePlay,
     medal: zhMedal,
+    ranking: zhRanking,
   },
 };
 
@@ -79,6 +83,7 @@ const namespaces = [
   "rating",
   "free_play",
   "medal",
+  "ranking",
 ];
 
 i18n

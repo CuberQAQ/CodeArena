@@ -670,3 +670,32 @@ export interface PPRankData {
   total_users: number;
   top_percent: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// Global Ranking
+// ---------------------------------------------------------------------------
+
+export interface GlobalRankingItem {
+  rank: number;
+  name: string;
+  pp: number;
+  country: string | null;
+  verified: boolean;
+  cf_rating?: number;
+}
+
+export interface ArenaRankingItem {
+  rank: number;
+  name: string;
+  pp: number;
+  elo: number;
+  country: string | null;
+  verified: boolean;
+}
+
+export interface RankingPageData<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
