@@ -54,7 +54,7 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
   const eloColor = getRatingColor(user.elo);
 
   // Build medal display text
-  let medalText = "";
+  let medalText: string;
   let medalColor = eloColor;
   if (displayMode === "medal" && overallMedal && overallMedal.type) {
     medalColor = MEDAL_COLORS[overallMedal.type] ?? "#9CA3AF";

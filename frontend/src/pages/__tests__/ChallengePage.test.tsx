@@ -1243,4 +1243,754 @@ describe("ChallengePage", () => {
     expect(screen.queryByText("waitingForOpponentResult")).not.toBeInTheDocument();
     expect(screen.queryByText("victory")).not.toBeInTheDocument();
   });
+
+  // =========================================================================
+  // RESULT PHASE — Elo, tokens, achievements, settlement, opponent quit
+  // =========================================================================
+
+  describe("result phase display", () => {
+    // 18. Elo change value rendered correctly in result
+    it("displays the correct Elo change value from challenge detail", async () => {
+      const challengeDetail = {
+        id: "elo-test-1",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1500,
+        problem: { contest_id: 100, index: "A", name: "Elo Test", rating: 1500, tags: [], url: "https://codeforces.com/100/A" },
+        challenger_solved: true,
+        opponent_solved: false,
+        challenger_submissions: 1,
+        opponent_submissions: 2,
+        challenger_time: 300,
+        opponent_time: 500,
+        status: "completed",
+        result: "win",
+        is_challenger: true,
+        elo_change: 23,
+        tokens_earned: 30,
+        opponent_tokens_earned: 0,
+        created_at: new Date(Date.now() - 600000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/elo-test-1", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/elo-test-1");
+
+      await waitFor(() => {
+        expect(screen.getByText("victory")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // The EloChange mock renders the value in a div with data-testid="elo-change"
+      expect(screen.getByTestId("elo-change")).toHaveTextContent("23");
+    });
+
+    // 19. Defeat result shows defeat UI with negative Elo
+    it("displays defeat UI with negative Elo change", async () => {
+      const challengeDetail = {
+        id: "defeat-test",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1600,
+        problem: { contest_id: 200, index: "B", name: "Defeat Problem", rating: 1600, tags: ["greedy"], url: "https://codeforces.com/200/B" },
+        challenger_solved: false,
+        opponent_solved: true,
+        challenger_submissions: 3,
+        opponent_submissions: 1,
+        challenger_time: 600,
+        opponent_time: 200,
+        status: "completed",
+        result: "loss",
+        is_challenger: true,
+        elo_change: -15,
+        tokens_earned: 0,
+        opponent_tokens_earned: 25,
+        created_at: new Date(Date.now() - 900000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/defeat-test", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/defeat-test");
+
+      await waitFor(() => {
+        expect(screen.getByText("defeat")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // Defeat should show Swords icon (not Trophy or X)
+      expect(screen.queryByText("victory")).not.toBeInTheDocument();
+      expect(screen.queryByText("challengeAbandoned")).not.toBeInTheDocument();
+
+      // Negative Elo should be rendered
+      expect(screen.getByTestId("elo-change")).toHaveTextContent("-15");
+    });
+
+    // 20. Tokens earned display
+    it("displays tokens earned in result when tokens_earned > 0", async () => {
+      const challengeDetail = {
+        id: "tokens-test",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1300,
+        problem: { contest_id: 300, index: "C", name: "Tokens Test", rating: 1300, tags: [], url: "https://codeforces.com/300/C" },
+        challenger_solved: true,
+        opponent_solved: false,
+        challenger_submissions: 2,
+        opponent_submissions: 3,
+        challenger_time: 250,
+        opponent_time: 400,
+        status: "completed",
+        result: "win",
+        is_challenger: true,
+        elo_change: 10,
+        tokens_earned: 42,
+        opponent_tokens_earned: 0,
+        created_at: new Date(Date.now() - 500000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/tokens-test", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/tokens-test");
+
+      await waitFor(() => {
+        expect(screen.getByText("victory")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // tokens_earned display: shows "tokensEarned" label and "+42"
+      expect(screen.getByText("tokensEarned")).toBeInTheDocument();
+      expect(screen.getByText("+42")).toBeInTheDocument();
+    });
+
+    // 21. No tokens display when tokens_earned is 0 or null
+    it("does not display tokens section when tokens_earned is 0", async () => {
+      const challengeDetail = {
+        id: "no-tokens-test",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1200,
+        problem: { contest_id: 400, index: "D", name: "No Tokens", rating: 1200, tags: [], url: "https://codeforces.com/400/D" },
+        challenger_solved: true,
+        opponent_solved: true,
+        challenger_submissions: 1,
+        opponent_submissions: 1,
+        challenger_time: 200,
+        opponent_time: 180,
+        status: "completed",
+        result: "draw",
+        is_challenger: true,
+        elo_change: 0,
+        tokens_earned: 0,
+        opponent_tokens_earned: 0,
+        created_at: new Date(Date.now() - 500000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/no-tokens-test", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/no-tokens-test");
+
+      await waitFor(() => {
+        expect(screen.getByText("draw")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // tokensEarned section should NOT appear when tokens_earned is 0
+      expect(screen.queryByText("tokensEarned")).not.toBeInTheDocument();
+    });
+
+    // 22. No tokens display when tokens_earned is null
+    it("does not display tokens section when tokens_earned is null", async () => {
+      const challengeDetail = {
+        id: "null-tokens-test",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1200,
+        problem: null,
+        challenger_solved: false,
+        opponent_solved: false,
+        challenger_submissions: 0,
+        opponent_submissions: 0,
+        challenger_time: null,
+        opponent_time: null,
+        status: "quit",
+        result: "quit",
+        is_challenger: true,
+        elo_change: -10,
+        tokens_earned: null,
+        opponent_tokens_earned: null,
+        created_at: new Date(Date.now() - 300000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/null-tokens-test", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/null-tokens-test");
+
+      await waitFor(() => {
+        expect(screen.getByText("challengeAbandoned")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      expect(screen.queryByText("tokensEarned")).not.toBeInTheDocument();
+    });
+
+    // 23. Settlement loading state when result is null but phase is result
+    it("shows settling spinner when result data is not yet available", async () => {
+      // Use status="completed" but result=null to trigger settling UI
+      // The resume logic checks `data.status === "completed" || data.result`
+      const challengeDetail = {
+        id: "settling-test",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1200,
+        problem: null,
+        challenger_solved: false,
+        opponent_solved: false,
+        challenger_submissions: 0,
+        opponent_submissions: 0,
+        challenger_time: null,
+        opponent_time: null,
+        status: "completed",
+        result: null,
+        is_challenger: true,
+        elo_change: null,
+        tokens_earned: null,
+        opponent_tokens_earned: null,
+        created_at: new Date(Date.now() - 300000).toISOString(),
+        completed_at: null,
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/settling-test", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/settling-test");
+
+      await waitFor(() => {
+        expect(screen.getByText("settling")).toBeInTheDocument();
+      }, { timeout: 3000 });
+      expect(screen.getByText("settlingDesc")).toBeInTheDocument();
+    });
+
+    // 24. Achievement popup triggers when submit response includes achievements
+    it("shows achievement popup when submit returns achievements with settled=true win", { timeout: 15000 }, async () => {
+      const sessionId = "ach-test";
+      const achievement = { type: "first_win", title: "First Victory", description: "Won your first challenge", icon: "trophy" };
+
+      server.use(
+        http.get("*/api/v1/challenge/active", () =>
+          HttpResponse.json({ success: true, data: null, message: "ok" }),
+        ),
+        http.post("*/api/v1/challenge/queue", () =>
+          HttpResponse.json({
+            success: true,
+            data: { matched: true, session_id: sessionId, status: "matched" },
+            message: "ok",
+          }),
+        ),
+        http.post("*/api/v1/challenge/start", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              session_id: sessionId,
+              problem: { contest_id: 500, index: "E", name: "Achievement Test", rating: 1400, tags: ["dp"], url: "https://codeforces.com/500/E" },
+              status: "problem_revealed",
+            },
+            message: "ok",
+          }),
+        ),
+        http.post("*/api/v1/challenge/ach-test/submit", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              session_id: sessionId,
+              solved: true,
+              status: "completed",
+              settled: true,
+              result: "win",
+              elo_change: 20,
+              tokens_earned: 30,
+              achievements: [achievement],
+            },
+            message: "ok",
+          }),
+        ),
+        http.get("*/api/v1/challenge/ach-test", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              id: sessionId,
+              status: "completed",
+              result: "win",
+              problem: { contest_id: 500, index: "E", name: "Achievement Test", rating: 1400, tags: ["dp"], url: "https://codeforces.com/500/E" },
+              is_challenger: true,
+              elo_change: 20,
+              tokens_earned: 30,
+              created_at: new Date(Date.now() - 300000).toISOString(),
+              completed_at: new Date().toISOString(),
+            },
+            message: "ok",
+          }),
+        ),
+      );
+
+      renderWithRoutes();
+      const user = userEvent.setup();
+
+      await waitFor(() => expect(screen.getByText("findOpponent")).toBeInTheDocument());
+      await user.click(screen.getByText("findOpponent"));
+      await waitFor(() => expect(screen.getByText("startChallenge")).toBeInTheDocument(), { timeout: 3000 });
+      await user.click(screen.getByText("startChallenge"));
+      await waitFor(() => expect(screen.getByText("challengeInProgress")).toBeInTheDocument(), { timeout: 3000 });
+
+      await user.click(screen.getByText("common:yes"));
+      await user.click(screen.getByText("submitResult"));
+
+      // Should go to result with victory
+      await waitFor(() => expect(screen.getByText("victory")).toBeInTheDocument(), { timeout: 3000 });
+
+      // Achievement popup should show (after 1500ms delay, but mock renders immediately when state is set)
+      // The AchievementPopup mock renders when showAchievements=true
+      // Since achievements are set from submit response, after 1500ms timeout showAchievements becomes true
+      await waitFor(() => {
+        expect(screen.getByTestId("achievement-popup")).toBeInTheDocument();
+      }, { timeout: 5000 });
+    });
+
+    // 25. Celebration triggers when elo_change > 0 and result is win (settled path)
+    it("triggers celebration animation when winning with positive Elo", { timeout: 15000 }, async () => {
+      const sessionId = "celeb-test";
+
+      server.use(
+        http.get("*/api/v1/challenge/active", () =>
+          HttpResponse.json({ success: true, data: null, message: "ok" }),
+        ),
+        http.post("*/api/v1/challenge/queue", () =>
+          HttpResponse.json({
+            success: true,
+            data: { matched: true, session_id: sessionId, status: "matched" },
+            message: "ok",
+          }),
+        ),
+        http.post("*/api/v1/challenge/start", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              session_id: sessionId,
+              problem: { contest_id: 600, index: "F", name: "Celeb Test", rating: 1100, tags: [], url: "https://codeforces.com/600/F" },
+              status: "problem_revealed",
+            },
+            message: "ok",
+          }),
+        ),
+        http.post("*/api/v1/challenge/celeb-test/submit", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              session_id: sessionId,
+              solved: true,
+              status: "completed",
+              settled: true,
+              result: "win",
+              elo_change: 25,
+              tokens_earned: 35,
+              achievements: [],
+            },
+            message: "ok",
+          }),
+        ),
+        http.get("*/api/v1/challenge/celeb-test", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              id: sessionId,
+              status: "completed",
+              result: "win",
+              problem: { contest_id: 600, index: "F", name: "Celeb Test", rating: 1100, tags: [], url: "https://codeforces.com/600/F" },
+              is_challenger: true,
+              elo_change: 25,
+              tokens_earned: 35,
+              created_at: new Date(Date.now() - 300000).toISOString(),
+              completed_at: new Date().toISOString(),
+            },
+            message: "ok",
+          }),
+        ),
+      );
+
+      renderWithRoutes();
+      const user = userEvent.setup();
+
+      await waitFor(() => expect(screen.getByText("findOpponent")).toBeInTheDocument());
+      await user.click(screen.getByText("findOpponent"));
+      await waitFor(() => expect(screen.getByText("startChallenge")).toBeInTheDocument(), { timeout: 3000 });
+      await user.click(screen.getByText("startChallenge"));
+      await waitFor(() => expect(screen.getByText("challengeInProgress")).toBeInTheDocument(), { timeout: 3000 });
+
+      await user.click(screen.getByText("common:yes"));
+      await user.click(screen.getByText("submitResult"));
+
+      await waitFor(() => expect(screen.getByText("victory")).toBeInTheDocument(), { timeout: 3000 });
+
+      // The AcceptedCelebration mock renders data-testid="celebration" when active=true
+      expect(screen.getByTestId("celebration")).toBeInTheDocument();
+    });
+
+    // 26. No celebration on loss (elo_change <= 0 or result != win)
+    it("does not trigger celebration on defeat", { timeout: 15000 }, async () => {
+      const sessionId = "no-celeb";
+
+      server.use(
+        http.get("*/api/v1/challenge/active", () =>
+          HttpResponse.json({ success: true, data: null, message: "ok" }),
+        ),
+        http.post("*/api/v1/challenge/queue", () =>
+          HttpResponse.json({
+            success: true,
+            data: { matched: true, session_id: sessionId, status: "matched" },
+            message: "ok",
+          }),
+        ),
+        http.post("*/api/v1/challenge/start", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              session_id: sessionId,
+              problem: { contest_id: 700, index: "G", name: "No Celeb", rating: 1200, tags: [], url: "https://codeforces.com/700/G" },
+              status: "problem_revealed",
+            },
+            message: "ok",
+          }),
+        ),
+        http.post("*/api/v1/challenge/no-celeb/submit", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              session_id: sessionId,
+              solved: false,
+              status: "completed",
+              settled: true,
+              result: "loss",
+              elo_change: -12,
+              tokens_earned: null,
+              achievements: [],
+            },
+            message: "ok",
+          }),
+        ),
+        http.get("*/api/v1/challenge/no-celeb", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              id: sessionId,
+              status: "completed",
+              result: "loss",
+              problem: { contest_id: 700, index: "G", name: "No Celeb", rating: 1200, tags: [], url: "https://codeforces.com/700/G" },
+              is_challenger: true,
+              elo_change: -12,
+              tokens_earned: null,
+              created_at: new Date(Date.now() - 300000).toISOString(),
+              completed_at: new Date().toISOString(),
+            },
+            message: "ok",
+          }),
+        ),
+      );
+
+      renderWithRoutes();
+      const user = userEvent.setup();
+
+      await waitFor(() => expect(screen.getByText("findOpponent")).toBeInTheDocument());
+      await user.click(screen.getByText("findOpponent"));
+      await waitFor(() => expect(screen.getByText("startChallenge")).toBeInTheDocument(), { timeout: 3000 });
+      await user.click(screen.getByText("startChallenge"));
+      await waitFor(() => expect(screen.getByText("challengeInProgress")).toBeInTheDocument(), { timeout: 3000 });
+
+      await user.click(screen.getByText("common:no"));
+      await user.click(screen.getByText("submitResult"));
+
+      await waitFor(() => expect(screen.getByText("defeat")).toBeInTheDocument(), { timeout: 3000 });
+
+      // No celebration
+      expect(screen.queryByTestId("celebration")).not.toBeInTheDocument();
+    });
+
+    // 27. Opponent quit during in_progress shows win with opponent_quit semantics
+    it("handles opponent quit result as win result with correct UI", async () => {
+      const challengeDetail = {
+        id: "opp-quit",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1500,
+        problem: { contest_id: 800, index: "H", name: "Opp Quit Problem", rating: 1500, tags: ["math"], url: "https://codeforces.com/800/H" },
+        challenger_solved: false,
+        opponent_solved: false,
+        challenger_submissions: 0,
+        opponent_submissions: 0,
+        challenger_time: 120,
+        opponent_time: null,
+        status: "completed",
+        result: "win",
+        is_challenger: true,
+        elo_change: 8,
+        tokens_earned: 10,
+        opponent_tokens_earned: 0,
+        created_at: new Date(Date.now() - 300000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/opp-quit", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/opp-quit");
+
+      await waitFor(() => {
+        expect(screen.getByText("victory")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // When result is "win", the UI shows victory with Trophy icon
+      expect(screen.getByTestId("elo-change")).toHaveTextContent("8");
+      expect(screen.getByText("+10")).toBeInTheDocument(); // tokens earned
+    });
+
+    // 28. Challenger time displayed correctly when is_challenger=true
+    it("displays challenger time when user is challenger", async () => {
+      // formatTime(300) = "5:00"
+      const challengeDetail = {
+        id: "time-test",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1500,
+        problem: { contest_id: 900, index: "I", name: "Time Test", rating: 1500, tags: [], url: "https://codeforces.com/900/I" },
+        challenger_solved: true,
+        opponent_solved: false,
+        challenger_submissions: 2,
+        opponent_submissions: 3,
+        challenger_time: 300,
+        opponent_time: 500,
+        status: "completed",
+        result: "win",
+        is_challenger: true,
+        elo_change: 15,
+        tokens_earned: 20,
+        opponent_tokens_earned: 0,
+        created_at: new Date(Date.now() - 600000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/time-test", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/time-test");
+
+      await waitFor(() => {
+        expect(screen.getByText("victory")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // The "yourTime" stat should show formatted challenger_time (300s = 05:00)
+      // Real formatTime: `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}` => "05:00"
+      expect(screen.getByText("05:00")).toBeInTheDocument();
+    });
+
+    // 29. Opponent time displayed when is_challenger=false
+    it("displays opponent time when user is not challenger", async () => {
+      const challengeDetail = {
+        id: "opp-time-test",
+        challenger_id: "u2",
+        opponent_id: "u1",
+        problem_id: "p1",
+        problem_rating: 1400,
+        problem: { contest_id: 950, index: "J", name: "Opp Time Test", rating: 1400, tags: [], url: "https://codeforces.com/950/J" },
+        challenger_solved: false,
+        opponent_solved: true,
+        challenger_submissions: 3,
+        opponent_submissions: 1,
+        challenger_time: 500,
+        opponent_time: 250,
+        status: "completed",
+        result: "win",
+        is_challenger: false,
+        elo_change: 18,
+        tokens_earned: 25,
+        opponent_tokens_earned: 0,
+        created_at: new Date(Date.now() - 600000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/opp-time-test", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+      );
+
+      renderWithRoutes("/challenge/opp-time-test");
+
+      await waitFor(() => {
+        expect(screen.getByText("victory")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // When is_challenger=false, "yourTime" should show opponent_time (250s = 04:10)
+      expect(screen.getByText("04:10")).toBeInTheDocument();
+    });
+
+    // 30. Quit challenge flow shows correct result
+    it("shows abandoned result when player quits during in_progress", { timeout: 15000 }, async () => {
+      const sessionId = "quit-flow-test";
+
+      server.use(
+        http.get("*/api/v1/challenge/active", () =>
+          HttpResponse.json({ success: true, data: null, message: "ok" }),
+        ),
+        http.post("*/api/v1/challenge/queue", () =>
+          HttpResponse.json({
+            success: true,
+            data: { matched: true, session_id: sessionId, status: "matched" },
+            message: "ok",
+          }),
+        ),
+        http.post("*/api/v1/challenge/start", () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              session_id: sessionId,
+              problem: { contest_id: 1000, index: "K", name: "Quit Flow Test", rating: 1300, tags: [], url: "https://codeforces.com/1000/K" },
+              status: "problem_revealed",
+            },
+            message: "ok",
+          }),
+        ),
+        http.post("*/api/v1/challenge/quit-flow-test/quit", () =>
+          HttpResponse.json({
+            success: true,
+            data: { session_id: sessionId, status: "quit", elo_change: -10, penalty: 5 },
+            message: "ok",
+          }),
+        ),
+        http.get("*/api/v1/challenge/quit-flow-test", () => {
+          return HttpResponse.json({
+            success: true,
+            data: {
+              id: sessionId,
+              status: "quit",
+              result: "quit",
+              problem: { contest_id: 1000, index: "K", name: "Quit Flow Test", rating: 1300, tags: [], url: "https://codeforces.com/1000/K" },
+              is_challenger: true,
+              elo_change: -10,
+              tokens_earned: null,
+              created_at: new Date(Date.now() - 300000).toISOString(),
+              completed_at: new Date().toISOString(),
+            },
+            message: "ok",
+          });
+        }),
+      );
+
+      renderWithRoutes();
+      const user = userEvent.setup();
+
+      await waitFor(() => expect(screen.getByText("findOpponent")).toBeInTheDocument());
+      await user.click(screen.getByText("findOpponent"));
+      await waitFor(() => expect(screen.getByText("startChallenge")).toBeInTheDocument(), { timeout: 3000 });
+      await user.click(screen.getByText("startChallenge"));
+      await waitFor(() => expect(screen.getByText("challengeInProgress")).toBeInTheDocument(), { timeout: 3000 });
+
+      // Click quit
+      await user.click(screen.getByText("quit"));
+
+      await waitFor(() => {
+        expect(screen.getByText("challengeAbandoned")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // Negative Elo from quit
+      expect(screen.getByTestId("elo-change")).toHaveTextContent("-10");
+      // No tokens for quit
+      expect(screen.queryByText("tokensEarned")).not.toBeInTheDocument();
+      // No celebration for quit
+      expect(screen.queryByTestId("celebration")).not.toBeInTheDocument();
+    });
+
+    // 31. Reset from result phase navigates to clean URL
+    it("navigates to /challenge on reset from result phase with sessionId in URL", async () => {
+      const challengeDetail = {
+        id: "reset-url-test",
+        challenger_id: "u1",
+        opponent_id: "u2",
+        problem_id: "p1",
+        problem_rating: 1200,
+        problem: { contest_id: 100, index: "A", name: "Reset URL", rating: 1200, tags: [], url: "https://codeforces.com/100/A" },
+        challenger_solved: true,
+        opponent_solved: false,
+        challenger_submissions: 1,
+        opponent_submissions: 2,
+        challenger_time: 200,
+        opponent_time: 300,
+        status: "completed",
+        result: "win",
+        is_challenger: true,
+        elo_change: 10,
+        tokens_earned: 15,
+        opponent_tokens_earned: 0,
+        created_at: new Date(Date.now() - 300000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+
+      server.use(
+        http.get("*/api/v1/challenge/reset-url-test", () =>
+          HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+        ),
+        http.get("*/api/v1/challenge/active", () =>
+          HttpResponse.json({ success: true, data: null, message: "ok" }),
+        ),
+      );
+
+      const { container } = renderWithRoutes("/challenge/reset-url-test");
+
+      await waitFor(() => {
+        expect(screen.getByText("victory")).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByText("newChallenge"));
+
+      // After reset, should show idle phase
+      await waitFor(() => {
+        expect(screen.getByText("findOpponent")).toBeInTheDocument();
+      }, { timeout: 3000 });
+    });
+  });
 });

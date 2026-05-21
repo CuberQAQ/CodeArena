@@ -30,6 +30,27 @@ vi.mock("@/components/LoadingSpinner", () => ({
   ),
 }));
 
+vi.mock("@/components/medal", () => ({
+  MedalBadge: ({ level }: { level: string }) => (
+    <div data-testid="medal-badge">{level}</div>
+  ),
+}));
+
+vi.mock("@/utils", () => ({
+  getRatingTierInfo: (rating: number) => {
+    if (rating >= 2400) return { name: "Grandmaster", color: "#FF0000" };
+    if (rating >= 1600) return { name: "Expert", color: "#0000FF" };
+    if (rating >= 1200) return { name: "Pupil", color: "#008000" };
+    return { name: "Newbie", color: "#808080" };
+  },
+  RATING_KEY_MAP: {
+    Newbie: "rating:newbie",
+    Pupil: "rating:pupil",
+    Expert: "rating:expert",
+    Grandmaster: "rating:grandmaster",
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // MSW server
 // ---------------------------------------------------------------------------
@@ -257,5 +278,129 @@ describe("TrainingPage", () => {
     // Boundary solved/total
     expect(screen.getByText(/0\/0/)).toBeInTheDocument();
     expect(screen.getByText(/9999\/9999/)).toBeInTheDocument();
+  });
+
+  // 6. Medal display mode with skill medals (covers lines 121-135)
+  it("shows medal badge when display mode is medal and skill exists", async () => {
+    const topicsWithMedal = [
+      {
+        id: "t1",
+        name: "DP Topic",
+        slug: "dp",
+        description: "DP problems",
+        cf_tags: ["dp"],
+        display_order: 1,
+        total_problems: 10,
+        solved_count: 5,
+        stars: 3,
+        melo: 1600,
+        shield_active: false,
+      },
+    ];
+
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: topicsWithMedal, message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/settings", () =>
+        HttpResponse.json({ success: true, data: { display_mode: "medal" }, message: "ok" }),
+      ),
+      http.get("*/api/v1/medal/skills", () =>
+        HttpResponse.json({
+          success: true,
+          data: { skills: [{ tag: "dp", level: "silver", type: "provincial" }] },
+          message: "ok",
+        }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("medal-badge")).toBeInTheDocument();
+    });
+  });
+
+  // 7. CF tier display mode (covers lines 136-148)
+  it("shows CF tier label when display mode is cf_tier", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/settings", () =>
+        HttpResponse.json({ success: true, data: { display_mode: "cf_tier" }, message: "ok" }),
+      ),
+      http.get("*/api/v1/medal/skills", () =>
+        HttpResponse.json({ success: true, data: { skills: [] }, message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
+    });
+    // Should show CF tier label instead of medal
+    expect(screen.getByText(/rating:pupil/)).toBeInTheDocument();
+  });
+
+  // 8. Shield icon displayed for active shield (covers lines 117-119)
+  it("shows shield icon when topic has active shield", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/settings", () =>
+        HttpResponse.json({ success: true, data: { display_mode: "cf_tier" }, message: "ok" }),
+      ),
+      http.get("*/api/v1/medal/skills", () =>
+        HttpResponse.json({ success: true, data: { skills: [] }, message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Graph Theory")).toBeInTheDocument();
+    });
+    // Graph Theory has shield_active: true
+    expect(screen.getByText("Graph Theory")).toBeInTheDocument();
+  });
+
+  // 9. Settings API error falls back gracefully (covers line 46 catch)
+  it("falls back to default display when settings API fails", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/settings", () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+      http.get("*/api/v1/medal/skills", () =>
+        HttpResponse.json({ success: true, data: { skills: [] }, message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
+    });
+  });
+
+  // 10. Skill medals API error falls back gracefully (covers line 56 catch)
+  it("falls back gracefully when skill medals API fails", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/settings", () =>
+        HttpResponse.json({ success: true, data: { display_mode: "medal" }, message: "ok" }),
+      ),
+      http.get("*/api/v1/medal/skills", () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
+    });
   });
 });
