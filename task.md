@@ -927,7 +927,7 @@ ProblemStatementViewer 组件：KaTeX 渲染 LaTeX、样例复制、加载/错�
 > 目标：以发现和修复 bug 为最高优先级，补充后端关键服务缺失的测试。当前后端整体覆盖率 86%，但多个 API 路由层和高复杂度服务覆盖严重不足。
 
 ### Task 36.1: 修复前端 ProblemStatementViewer 失败测试
-**状态**: ⬜ 待开发
+**状态**: 🟢 已完成
 **优先级**: P0
 **依赖**: 无
 
@@ -955,7 +955,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ---
 
 ### Task 36.2: 后端 API 路由层测试 — auth / training / challenge
-**状态**: ⬜ 待开发
+**状态**: 🟢 已完成
 **优先级**: P1
 **依赖**: 无
 
@@ -991,7 +991,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ---
 
 ### Task 36.3: 后端关键服务测试 — match_service / problem_scraper / rate_limiter
-**状态**: ⬜ 待开发
+**状态**: 🟢 已完成
 **优先级**: P1
 **依赖**: 无
 
