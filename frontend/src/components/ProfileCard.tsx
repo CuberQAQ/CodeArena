@@ -7,7 +7,7 @@ import { getRatingColor, getDifficultyLabelKey } from "@/utils";
 import type { MedalInfo, SkillMedalItem } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Medal color constants (same as MedalBadge)
+// Medal color constants
 // ---------------------------------------------------------------------------
 
 const MEDAL_COLORS: Record<string, string> = {
@@ -41,12 +41,11 @@ export interface ProfileCardProps {
   skillMedals: SkillMedalItem[];
   totalSolved: number;
   streakDays: number;
-  /** PP rank, if available */
   ppRank?: number | null;
 }
 
 // ---------------------------------------------------------------------------
-// The visual card (rendered off-screen for html2canvas capture)
+// The visual card
 // ---------------------------------------------------------------------------
 
 function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skillMedals, totalSolved, streakDays, ppRank }: ProfileCardProps) {
@@ -54,42 +53,15 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
 
   const eloColor = getRatingColor(user.elo);
 
-  // Build medal display
-  let medalDisplay: React.ReactNode;
+  // Build medal display text
+  let medalText = "";
+  let medalColor = eloColor;
   if (displayMode === "medal" && overallMedal && overallMedal.type) {
-    const color = MEDAL_COLORS[overallMedal.type] ?? "#9CA3AF";
-    medalDisplay = (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 28,
-            height: 28,
-            borderRadius: "50%",
-            backgroundColor: `${color}20`,
-            color,
-            border: `2px solid ${color}`,
-            fontWeight: 700,
-            fontSize: 14,
-          }}
-        >
-          {MEDAL_TYPE_SYMBOLS[overallMedal.type] ?? ""}
-        </span>
-        <span style={{ color, fontWeight: 600, fontSize: 13 }}>
-          {t(`medal:levels.${levelToI18nKey(overallMedal.level)}`)} {t(`medal:types.${overallMedal.type}`)}
-        </span>
-      </span>
-    );
+    medalColor = MEDAL_COLORS[overallMedal.type] ?? "#9CA3AF";
+    medalText = `${MEDAL_TYPE_SYMBOLS[overallMedal.type]} ${t(`medal:levels.${levelToI18nKey(overallMedal.level)}`)} ${t(`medal:types.${overallMedal.type}`)}`;
   } else {
-    // CF tier mode
     const tierKey = getDifficultyLabelKey(user.elo);
-    medalDisplay = (
-      <span style={{ color: eloColor, fontWeight: 600, fontSize: 13 }}>
-        {t(tierKey)}
-      </span>
-    );
+    medalText = t(tierKey);
   }
 
   return (
@@ -97,9 +69,9 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
       style={{
         width: 400,
         height: 533,
-        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+        background: "linear-gradient(160deg, #0c0e1a 0%, #141828 40%, #1a1040 100%)",
         borderRadius: 16,
-        padding: 24,
+        padding: 0,
         color: "#e2e8f0",
         fontFamily: "system-ui, -apple-system, sans-serif",
         position: "relative",
@@ -108,223 +80,276 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
         flexDirection: "column",
       }}
     >
-      {/* Subtle decorative circle */}
+      {/* Accent glow - top right, colored by Elo */}
       <div
         style={{
           position: "absolute",
-          top: -40,
-          right: -40,
-          width: 120,
-          height: 120,
+          top: -60,
+          right: -60,
+          width: 200,
+          height: 200,
           borderRadius: "50%",
-          background: "rgba(99, 102, 241, 0.08)",
+          background: eloColor,
+          filter: "blur(80px)",
+          opacity: 0.15,
+        }}
+      />
+      {/* Secondary glow - bottom left */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: -40,
+          left: -40,
+          width: 140,
+          height: 140,
+          borderRadius: "50%",
+          background: "#6366f1",
+          filter: "blur(60px)",
+          opacity: 0.08,
         }}
       />
 
-      {/* Title */}
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          textTransform: "uppercase" as const,
-          letterSpacing: 1.5,
-          color: "#64748b",
-          marginBottom: 16,
-        }}
-      >
-        {t("profile:cardTitle")}
-      </div>
-
-      {/* Top section: Avatar + Name + CF Handle */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            overflow: "hidden",
-            backgroundColor: "#334155",
-            flexShrink: 0,
-          }}
-        >
-          {/* Inline avatar for export -- use img directly */}
-          <img
-            src={`/api/v1/auth/avatar/${user.id}`}
-            alt=""
-            style={{ width: 56, height: 56, objectFit: "cover" }}
-            onError={(e) => {
-              // Hide on error, show placeholder bg
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              color: "#f1f5f9",
-              lineHeight: 1.2,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {user.username}
-          </div>
-          {user.cf_handle && (
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-              CF: {user.cf_handle}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Middle section: Medal/Tier + Elo + PP */}
+      {/* Header bar */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "12px 16px",
-          backgroundColor: "rgba(30, 41, 59, 0.8)",
-          borderRadius: 10,
-          border: "1px solid rgba(71, 85, 105, 0.3)",
-          marginBottom: 16,
+          padding: "16px 20px 0",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            {t("profile:eloRating")}
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: 2,
+            color: "#64748b",
+            textTransform: "uppercase",
+          }}
+        >
+          CODE ARENA
+        </span>
+        <div
+          style={{
+            height: 2,
+            flex: 1,
+            margin: "0 12px",
+            background: `linear-gradient(90deg, transparent, ${eloColor}40, transparent)`,
+          }}
+        />
+        {medalText && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: medalColor, whiteSpace: "nowrap" }}>
+            {medalText}
+          </span>
+        )}
+      </div>
+
+      {/* Main content */}
+      <div style={{ padding: "16px 20px 0", flex: 1, display: "flex", flexDirection: "column" }}>
+        {/* Avatar + Name row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "50%",
+              overflow: "hidden",
+              backgroundColor: "#1e293b",
+              flexShrink: 0,
+              border: `2px solid ${eloColor}40`,
+            }}
+          >
+            <img
+              src={`/api/v1/auth/avatar/${user.id}`}
+              alt=""
+              style={{ width: 48, height: 48, objectFit: "cover" }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 22, fontWeight: 700, color: eloColor }}>{user.elo}</span>
-            {medalDisplay}
-          </div>
-        </div>
-        <div style={{ width: 1, height: 36, backgroundColor: "rgba(71, 85, 105, 0.3)" }} />
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            {t("profile:performancePoints")}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 22, fontWeight: 700, color: "#facc15" }}>{user.pp}</span>
-            {ppRank != null && (
-              <span style={{ fontSize: 11, color: "#94a3b8" }}>#{ppRank}</span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                color: "#f8fafc",
+                lineHeight: 1.2,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {user.username}
+            </div>
+            {user.cf_handle && (
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>
+                CF: {user.cf_handle}
+              </div>
             )}
           </div>
         </div>
-        <div style={{ width: 1, height: 36, backgroundColor: "rgba(71, 85, 105, 0.3)" }} />
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            {t("medal:cabinet.title")}
+
+        {/* Elo centerpiece */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 16,
+            padding: "16px 0",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#475569", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
+              {t("profile:eloRating")}
+            </span>
+            <span style={{ fontSize: 36, fontWeight: 900, color: eloColor, lineHeight: 1.1 }}>
+              {user.elo}
+            </span>
           </div>
-          <span style={{ fontSize: 22, fontWeight: 700, color: "#f1f5f9" }}>{totalMedals}</span>
+          <div style={{ width: 1, height: 40, background: "rgba(71, 85, 105, 0.25)" }} />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#475569", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
+              PP
+            </span>
+            <span style={{ fontSize: 36, fontWeight: 900, color: "#facc15", lineHeight: 1.1 }}>
+              {user.pp}
+            </span>
+            {ppRank != null && (
+              <span style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>#{ppRank}</span>
+            )}
+          </div>
+          <div style={{ width: 1, height: 40, background: "rgba(71, 85, 105, 0.25)" }} />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#475569", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
+              {t("medal:cabinet.title")}
+            </span>
+            <span style={{ fontSize: 36, fontWeight: 900, color: "#f8fafc", lineHeight: 1.1 }}>
+              {totalMedals}
+            </span>
+          </div>
         </div>
-      </div>
 
-      {/* Stats row: Solved + Check-in Days */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
+        {/* Stats row */}
         <div
           style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
             gap: 8,
-            padding: "8px 12px",
-            backgroundColor: "rgba(30, 41, 59, 0.6)",
-            borderRadius: 8,
-            border: "1px solid rgba(71, 85, 105, 0.2)",
+            marginBottom: 12,
           }}
         >
-          <span style={{ fontSize: 11, color: "#64748b" }}>{t("profile:cardSolved")}</span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#34d399", marginLeft: "auto" }}>{totalSolved}</span>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 12px",
-            backgroundColor: "rgba(30, 41, 59, 0.6)",
-            borderRadius: 8,
-            border: "1px solid rgba(71, 85, 105, 0.2)",
-          }}
-        >
-          <span style={{ fontSize: 11, color: "#64748b" }}>{t("profile:cardCheckins")}</span>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#fb923c", marginLeft: "auto" }}>{streakDays}</span>
-        </div>
-      </div>
-
-      {/* Skill Medal Overview */}
-      {skillMedals.length > 0 && (
-        <div style={{ marginBottom: 0, flex: 1, minHeight: 0 }}>
           <div
             style={{
-              fontSize: 10,
-              color: "#64748b",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
-              marginBottom: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: "rgba(30, 41, 59, 0.5)",
+              border: "1px solid rgba(71, 85, 105, 0.15)",
             }}
           >
-            {t("profile:cardSkillMedals")}
+            <span style={{ fontSize: 11, color: "#64748b" }}>{t("profile:cardSolved")}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#34d399" }}>{totalSolved}</span>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {skillMedals.map((skill) => {
-              const mType = skill.type;
-              if (!mType) {
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: "rgba(30, 41, 59, 0.5)",
+              border: "1px solid rgba(71, 85, 105, 0.15)",
+            }}
+          >
+            <span style={{ fontSize: 11, color: "#64748b" }}>{t("profile:cardCheckins")}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#fb923c" }}>{streakDays}</span>
+          </div>
+        </div>
+
+        {/* Skill Medals */}
+        {skillMedals.length > 0 && (
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <div
+              style={{
+                fontSize: 9,
+                color: "#475569",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+                marginBottom: 6,
+              }}
+            >
+              {t("profile:cardSkillMedals")}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {skillMedals.map((skill) => {
+                const mType = skill.type;
+                if (!mType) {
+                  return (
+                    <span
+                      key={skill.tag}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "2px 7px",
+                        borderRadius: 4,
+                        backgroundColor: "rgba(30, 41, 59, 0.6)",
+                        fontSize: 9,
+                        color: "#64748b",
+                      }}
+                    >
+                      {skill.tag}
+                    </span>
+                  );
+                }
+                const color = MEDAL_COLORS[mType] ?? "#9CA3AF";
                 return (
                   <span
                     key={skill.tag}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: 4,
-                      padding: "3px 8px",
-                      borderRadius: 6,
-                      backgroundColor: "rgba(51, 65, 85, 0.6)",
-                      fontSize: 10,
-                      color: "#94a3b8",
+                      gap: 3,
+                      padding: "2px 7px",
+                      borderRadius: 4,
+                      backgroundColor: `${color}12`,
+                      border: `1px solid ${color}30`,
+                      fontSize: 9,
+                      fontWeight: 600,
+                      color,
                     }}
                   >
+                    <span style={{ fontSize: 8 }}>{MEDAL_TYPE_SYMBOLS[mType]}</span>
                     {skill.tag}
                   </span>
                 );
-              }
-              const color = MEDAL_COLORS[mType] ?? "#9CA3AF";
-              return (
-                <span
-                  key={skill.tag}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "3px 8px",
-                    borderRadius: 6,
-                    backgroundColor: `${color}15`,
-                    border: `1px solid ${color}40`,
-                    fontSize: 10,
-                    fontWeight: 500,
-                    color,
-                  }}
-                >
-                  <span style={{ fontSize: 9 }}>{MEDAL_TYPE_SYMBOLS[mType]}</span>
-                  {skill.tag}
-                </span>
-              );
-            })}
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "0 20px 14px",
+          gap: 8,
+        }}
+      >
+        <div style={{ height: 1, flex: 1, background: "rgba(71, 85, 105, 0.15)" }} />
+        <span style={{ fontSize: 8, color: "#334155", letterSpacing: 1.5, fontWeight: 600 }}>
+          CODE-ARENA
+        </span>
+        <div style={{ height: 1, flex: 1, background: "rgba(71, 85, 105, 0.15)" }} />
+      </div>
     </div>
   );
 }
@@ -364,7 +389,6 @@ export function ProfileCardExport(props: ProfileCardProps) {
 
   return (
     <div>
-      {/* Hidden render target for html2canvas */}
       <div
         aria-hidden
         style={{
@@ -378,7 +402,6 @@ export function ProfileCardExport(props: ProfileCardProps) {
         </div>
       </div>
 
-      {/* Export button */}
       <Button
         variant="outline"
         size="sm"
@@ -401,7 +424,7 @@ export function ProfileCardExport(props: ProfileCardProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: convert medal level to i18n key suffix
+// Helper
 // ---------------------------------------------------------------------------
 
 function levelToI18nKey(level: string): string {
