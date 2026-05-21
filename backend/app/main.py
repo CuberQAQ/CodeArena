@@ -55,6 +55,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     await close_redis_pool()
     await submission_scheduler.stop()
+    # Close Playwright browser used by problem scraper
+    from app.services.problem_scraper_service import scraper_service
+
+    await scraper_service.shutdown()
     logger.info("Shutting down %s", settings.APP_NAME)
     await engine.dispose()
 

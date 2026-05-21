@@ -45,7 +45,14 @@
     "loadFailed": "题目加载失败，你可以在 Codeforces 上打开查看。",
     "openOnCodeforces": "在 Codeforces 上打开题目",
     "openInNewTab": "在新标签页打开题目",
-    "iframeNote": "如果题目无法正常显示，请在 Codeforces 上打开。"
+    "iframeNote": "如果题目无法正常显示，请在 Codeforces 上打开。",
+    "timeLimit": "时间限制：{{limit}}",
+    "memoryLimit": "内存限制：{{limit}}",
+    "samples": "样例",
+    "viewOnCodeforces": "在 Codeforces 上查看原始页面",
+    "input": "输入",
+    "output": "输出",
+    "copy": "复制"
   },
   "timeline": {
     "title": "Elo 预测",

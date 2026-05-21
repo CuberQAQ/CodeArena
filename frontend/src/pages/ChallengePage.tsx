@@ -9,6 +9,7 @@ import { EloChange } from "@/components/animations/EloChange";
 import { AcceptedCelebration } from "@/components/animations/AcceptedCelebration";
 import { AchievementPopup } from "@/components/animations";
 import { SolvingTimeline } from "@/components/SolvingTimeline";
+import { ProblemViewer } from "@/components/ProblemViewer";
 import { useAuthStore } from "@/stores/auth";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
@@ -619,52 +620,13 @@ export default function ChallengePage() {
             </div>
           )}
 
-          {/* Problem card */}
+          {/* Problem statement (in-app viewer) */}
           {problem && (
-            <div className="rounded-xl border border-border bg-card p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-foreground">
-                    {problem.name}
-                  </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {problem.contest_id}
-                    {problem.index}
-                  </p>
-                </div>
-                {problem.rating && (
-                  <span
-                    className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold"
-                    style={{
-                      color: getRatingColor(problem.rating),
-                      backgroundColor: `${getRatingColor(problem.rating)}20`,
-                    }}
-                  >
-                    {problem.rating}
-                  </span>
-                )}
-              </div>
-              {problem.tags.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {problem.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={() => window.open(problem.url, "_blank")}
-              >
-                <ExternalLink className="mr-2 size-4" />
-                {t("openOnCodeforces")}
-              </Button>
-            </div>
+            <ProblemViewer
+              contestId={problem.contest_id}
+              index={problem.index}
+              blindBox={false}
+            />
           )}
 
           {/* Submit result area: auto-tracking + manual submit */}
@@ -676,13 +638,15 @@ export default function ChallengePage() {
               </div>
               <p className="text-sm font-medium text-foreground">{t("waitingForOpponentResult")}</p>
               {problem && (
-                <Button
-                  variant="outline"
-                  onClick={() => window.open(problem.url, "_blank")}
+                <a
+                  href={problem.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-primary underline underline-offset-4 hover:text-primary/80"
                 >
-                  <ExternalLink className="mr-2 size-4" />
+                  <ExternalLink className="size-4" />
                   {t("openOnCodeforces")}
-                </Button>
+                </a>
               )}
             </div>
           ) : (

@@ -45,7 +45,14 @@
     "loadFailed": "Failed to load problem. You can open it on Codeforces instead.",
     "openOnCodeforces": "Open problem on Codeforces",
     "openInNewTab": "Open problem in a new tab",
-    "iframeNote": "If the problem does not display correctly, please open it on Codeforces."
+    "iframeNote": "If the problem does not display correctly, please open it on Codeforces.",
+    "timeLimit": "Time limit: {{limit}}",
+    "memoryLimit": "Memory limit: {{limit}}",
+    "samples": "Examples",
+    "viewOnCodeforces": "View original page on Codeforces",
+    "input": "Input",
+    "output": "Output",
+    "copy": "Copy"
   },
   "timeline": {
     "title": "Elo Prediction",

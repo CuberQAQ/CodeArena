@@ -70,6 +70,7 @@
     "overkillBonus": "Overkill Bonus!",
     "overkillDesc": "You conquered a problem above your level! Token multiplier: x{{multiplier}}",
     "newChallenge": "New Challenge",
-    "backToDashboard": "Back to Dashboard"
+    "backToDashboard": "Back to Dashboard",
+    "openProblemInApp": "View Problem In-App"
   }
 }

@@ -20,12 +20,14 @@ import {
   HelpCircle,
   RotateCcw,
   Zap,
+  Eye,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EloChange, CoinAnimation, AcceptedCelebration, AchievementPopup } from "@/components/animations";
 import { SolvingTimeline } from "@/components/SolvingTimeline";
+import { ProblemViewer } from "@/components/ProblemViewer";
 import { useAuthStore } from "@/stores/auth";
 import { usePvEChallengeStore } from "@/stores/pveChallengeStore";
 import * as pveApi from "@/services/pveChallengeApi";
@@ -128,6 +130,7 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
 
   const elapsed = useElapsedTime(phase === "in_progress");
   const [submitting, setSubmitting] = useState(false);
+  const [boxOpened, setBoxOpened] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<Date>(new Date());
 
@@ -213,51 +216,29 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
           </div>
         )}
 
-        {/* Problem card -- blind box */}
+        {/* Problem statement -- blind box mode */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden rounded-xl border-2 border-purple-500/30 bg-card p-5"
+          className="space-y-3"
         >
-          {/* Mystery shimmer overlay */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-purple-500/5 via-transparent to-purple-500/5" />
+          <ProblemViewer
+            contestId={problem.contest_id}
+            index={problem.index}
+            blindBox={!boxOpened}
+          />
 
-          <div className="relative space-y-3">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-bold text-foreground">{problem.name}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {problem.contest_id}
-                  {problem.index}
-                </p>
-              </div>
-              {/* Hidden rating */}
-              <span className="shrink-0 rounded-lg bg-purple-500/20 px-3 py-1 text-sm font-bold text-purple-400">
-                ???
-              </span>
-            </div>
-
-            {/* Hidden tags */}
-            <div className="flex flex-wrap gap-1.5">
-              {[1, 2, 3].map((i) => (
-                <span
-                  key={i}
-                  className="rounded-md bg-purple-500/10 px-2.5 py-0.5 text-xs font-medium text-purple-400"
-                >
-                  ???
-                </span>
-              ))}
-            </div>
-
+          {/* Open blind box button -- reveal the problem statement in-app */}
+          {!boxOpened && (
             <Button
               variant="outline"
-              className="mt-1"
-              onClick={() => window.open(problem.url, "_blank")}
+              className="w-full border-purple-500/30 text-purple-400 hover:bg-purple-500/10 hover:text-purple-300"
+              onClick={() => setBoxOpened(true)}
             >
-              <ExternalLink className="mr-2 size-4" />
-              {t("challenge:openOnCodeforces")}
+              <Eye className="mr-2 size-4" />
+              {t("challenge:pve.openProblemInApp")}
             </Button>
-          </div>
+          )}
         </motion.div>
 
         {/* Auto-tracking panel */}

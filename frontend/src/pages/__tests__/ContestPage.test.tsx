@@ -24,6 +24,15 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+const mockNavigate = vi.fn();
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 vi.mock("@/stores/auth", () => ({
   useAuthStore: vi.fn(() => ({
     user: { id: "u1", username: "testuser", elo: 1500, tokens: 100 },
@@ -269,6 +278,141 @@ describe("ContestPage", () => {
     await user.click(startButtons[0]);
     await waitFor(() => {
       expect(screen.getByText("Cannot start contest")).toBeInTheDocument();
+    });
+  });
+
+  // 7. Successful contest start navigates to contest page (covers lines 61-63)
+  it("navigates to contest page on successful start", async () => {
+    server.use(
+      http.get("*/api/v1/contest/tiers", () =>
+        HttpResponse.json({ success: true, data: typicalTiers, message: "ok" }),
+      ),
+      http.get("*/api/v1/contest/history*", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+      http.get("*/api/v1/contest/active", () =>
+        HttpResponse.json({ success: true, data: null, message: "ok" }),
+      ),
+      http.post("*/api/v1/contest/start", () =>
+        HttpResponse.json({
+          success: true,
+          data: { id: "new-contest-123" },
+          message: "ok",
+        }),
+      ),
+    );
+
+    renderPage();
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByText("Beginner")).toBeInTheDocument();
+    });
+
+    const startButtons = screen.getAllByText("startContest");
+    await user.click(startButtons[0]);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/contest/new-contest-123");
+    });
+  });
+
+  // 8. Resume active contest navigates to contest page (covers line 111)
+  it("navigates to active contest on resume click", async () => {
+    const activeContest = {
+      id: "active-123",
+      tier: "beginner",
+      problems: [],
+      total_problems: 4,
+      problems_solved: 1,
+      submissions: 2,
+      time_limit_minutes: 90,
+      started_at: "2025-06-01T08:00:00Z",
+      ended_at: null,
+      remaining_seconds: 3600,
+      end_time: null,
+      status: "active",
+      elo_change: null,
+    };
+
+    server.use(
+      http.get("*/api/v1/contest/tiers", () =>
+        HttpResponse.json({ success: true, data: typicalTiers, message: "ok" }),
+      ),
+      http.get("*/api/v1/contest/history*", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+      http.get("*/api/v1/contest/active", () =>
+        HttpResponse.json({ success: true, data: activeContest, message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByText("resumeContest")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("resumeContest"));
+    expect(mockNavigate).toHaveBeenCalledWith("/contest/active-123");
+  });
+
+  // 9. History item click navigates to contest detail (covers line 204)
+  it("navigates to contest detail on history item click", async () => {
+    server.use(
+      http.get("*/api/v1/contest/tiers", () =>
+        HttpResponse.json({ success: true, data: typicalTiers, message: "ok" }),
+      ),
+      http.get("*/api/v1/contest/history*", () =>
+        HttpResponse.json({ success: true, data: typicalHistory, message: "ok" }),
+      ),
+      http.get("*/api/v1/contest/active", () =>
+        HttpResponse.json({ success: true, data: null, message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByText("recentContests")).toBeInTheDocument();
+    });
+
+    // Click on the history item showing tier "beginner" (capitalize renders "Beginner")
+    // The history item shows `item.tier` with capitalize, so "beginner" -> "Beginner"
+    // But this is different from the tier card. Find the history item by its solved count.
+    await user.click(screen.getByText(/3\/4/));
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/contest/contest1");
+    });
+  });
+
+  // 10. Starting state shows spinner (covers lines 175-179)
+  it("shows loading spinner while contest is starting", async () => {
+    server.use(
+      http.get("*/api/v1/contest/tiers", () =>
+        HttpResponse.json({ success: true, data: typicalTiers, message: "ok" }),
+      ),
+      http.get("*/api/v1/contest/history*", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+      http.get("*/api/v1/contest/active", () =>
+        HttpResponse.json({ success: true, data: null, message: "ok" }),
+      ),
+      http.post("*/api/v1/contest/start", async () => {
+        await new Promise(() => {}); // Never resolves
+      }),
+    );
+
+    renderPage();
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByText("Beginner")).toBeInTheDocument();
+    });
+
+    const startButtons = screen.getAllByText("startContest");
+    await user.click(startButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("starting")).toBeInTheDocument();
     });
   });
 });

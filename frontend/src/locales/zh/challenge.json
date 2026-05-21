@@ -70,6 +70,7 @@
     "overkillBonus": "越级奖励！",
     "overkillDesc": "你征服了超出你水平的题目！代币倍率：x{{multiplier}}",
     "newChallenge": "新挑战",
-    "backToDashboard": "返回仪表盘"
+    "backToDashboard": "返回仪表盘",
+    "openProblemInApp": "在站内查看题目"
   }
 }

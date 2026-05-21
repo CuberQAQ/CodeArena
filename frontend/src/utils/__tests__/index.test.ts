@@ -3,8 +3,11 @@ import {
   getRatingTierInfo,
   getRatingColor,
   getDifficultyLabel,
+  getDifficultyLabelKey,
   formatTime,
+  formatDate,
   extractApiError,
+  ratingToMedal,
   RATING_TIERS,
 } from "../index";
 
@@ -287,5 +290,116 @@ describe("RATING_TIERS", () => {
     for (let i = 1; i < RATING_TIERS.length; i++) {
       expect(RATING_TIERS[i].min).toBeGreaterThan(RATING_TIERS[i - 1].min);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getDifficultyLabelKey
+// ---------------------------------------------------------------------------
+
+describe("getDifficultyLabelKey", () => {
+  it("returns unrated key for null", () => {
+    expect(getDifficultyLabelKey(null)).toBe("rating:unrated");
+  });
+
+  it("returns unrated key for undefined", () => {
+    expect(getDifficultyLabelKey(undefined)).toBe("rating:unrated");
+  });
+
+  it("returns correct i18n key for Pupil rating", () => {
+    expect(getDifficultyLabelKey(1200)).toBe("rating:pupil");
+  });
+
+  it("returns correct i18n key for Expert rating", () => {
+    expect(getDifficultyLabelKey(1600)).toBe("rating:expert");
+  });
+
+  it("returns correct i18n key for Grandmaster rating", () => {
+    expect(getDifficultyLabelKey(2400)).toBe("rating:grandmaster");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatDate
+// ---------------------------------------------------------------------------
+
+describe("formatDate", () => {
+  it("returns dash for null", () => {
+    expect(formatDate(null)).toBe("-");
+  });
+
+  it("returns dash for undefined", () => {
+    expect(formatDate(undefined)).toBe("-");
+  });
+
+  it("returns dash for empty string", () => {
+    expect(formatDate("")).toBe("-");
+  });
+
+  it("formats a valid date string in English", () => {
+    const result = formatDate("2025-06-15T10:30:00Z", "en-US");
+    expect(result).toContain("2025");
+    expect(result).toContain("Jun");
+  });
+
+  it("formats a valid date string in Chinese", () => {
+    const result = formatDate("2025-06-15T10:30:00Z", "zh-CN");
+    expect(result).toContain("2025");
+  });
+
+  it("formats without explicit locale (uses default)", () => {
+    const result = formatDate("2025-06-15T10:30:00Z");
+    expect(result).toBeTruthy();
+    expect(result).not.toBe("-");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ratingToMedal
+// ---------------------------------------------------------------------------
+
+describe("ratingToMedal", () => {
+  it("returns unranked for low rating", () => {
+    expect(ratingToMedal(1000)).toEqual({ level: "unranked" });
+  });
+
+  it("returns provincial bronze at 1200", () => {
+    expect(ratingToMedal(1200)).toEqual({ level: "provincial", type: "bronze" });
+  });
+
+  it("returns provincial silver at 1400", () => {
+    expect(ratingToMedal(1400)).toEqual({ level: "provincial", type: "silver" });
+  });
+
+  it("returns provincial gold at 1600", () => {
+    expect(ratingToMedal(1600)).toEqual({ level: "provincial", type: "gold" });
+  });
+
+  it("returns regional bronze at 1800", () => {
+    expect(ratingToMedal(1800)).toEqual({ level: "regional", type: "bronze" });
+  });
+
+  it("returns regional silver at 2000", () => {
+    expect(ratingToMedal(2000)).toEqual({ level: "regional", type: "silver" });
+  });
+
+  it("returns regional gold at 2200", () => {
+    expect(ratingToMedal(2200)).toEqual({ level: "regional", type: "gold" });
+  });
+
+  it("returns world finals bronze at 2400", () => {
+    expect(ratingToMedal(2400)).toEqual({ level: "world_finals", type: "bronze" });
+  });
+
+  it("returns world finals silver at 2600", () => {
+    expect(ratingToMedal(2600)).toEqual({ level: "world_finals", type: "silver" });
+  });
+
+  it("returns world finals gold at 2800", () => {
+    expect(ratingToMedal(2800)).toEqual({ level: "world_finals", type: "gold" });
+  });
+
+  it("returns highest medal for extreme rating", () => {
+    expect(ratingToMedal(3000)).toEqual({ level: "world_finals", type: "gold" });
   });
 });
