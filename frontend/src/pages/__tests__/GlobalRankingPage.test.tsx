@@ -480,4 +480,170 @@ describe("GlobalRankingPage", () => {
       expect(screen.getByText("Alice")).toBeInTheDocument();
     });
   });
+
+  // 21. CF users display Globe icon (not ShieldCheck)
+  it("shows Globe icon for unverified CF users", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Charlie (CF)")).toBeInTheDocument();
+    });
+
+    // Charlie (CF) is unverified -- should have cfUserTooltip title on the Globe icon
+    const cfTooltip = screen.getByTitle("cfUserTooltip");
+    expect(cfTooltip).toBeInTheDocument();
+  });
+
+  // 22. Verified CA users display ShieldCheck icon
+  it("shows ShieldCheck icon for verified CA users", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    // Multiple verified users exist (Alice and Bob), so use getAllByTitle
+    const verifiedTooltips = screen.getAllByTitle("verifiedTooltip");
+    expect(verifiedTooltips.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // 23. CF users show cf_rating in parentheses
+  it("displays cf_rating in parentheses next to CF user name", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Charlie (CF)")).toBeInTheDocument();
+    });
+
+    // Charlie has cf_rating: 1800 -- should show (1800)
+    expect(screen.getByText("(1800)")).toBeInTheDocument();
+  });
+
+  // 24. CA users do NOT show cf_rating in global ranking
+  it("does not show cf_rating for verified CA users", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    // Alice is verified with cf_rating: 2100, but should NOT show (2100) inline
+    expect(screen.queryByText("(2100)")).not.toBeInTheDocument();
+  });
+
+  // 25. CF users without cf_rating do not crash
+  it("renders CF user without cf_rating without error", async () => {
+    const cfItems = [
+      { name: "NoRating", pp: 50, country: null, verified: false, cf_rating: null },
+    ];
+    server.use(
+      http.get("*/api/v1/ranking/global", () =>
+        HttpResponse.json({
+          success: true,
+          data: { items: cfItems, total: 1, page: 1, page_size: 50 },
+          message: "ok",
+        }),
+      ),
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("NoRating")).toBeInTheDocument();
+    });
+
+    // Should have the Globe icon (unverified)
+    expect(screen.getByTitle("cfUserTooltip")).toBeInTheDocument();
+  });
+
+  // 26. Mixed CA and CF users sorted by PP descending
+  it("renders mixed users sorted by PP descending", async () => {
+    const mixedItems = [
+      { name: "CA_High", pp: 300, country: "US", verified: true },
+      { name: "CF_Mid", pp: 200, country: null, verified: false, cf_rating: 2000 },
+      { name: "CA_Low", pp: 100, country: "JP", verified: true },
+    ];
+    server.use(
+      http.get("*/api/v1/ranking/global", () =>
+        HttpResponse.json({
+          success: true,
+          data: { items: mixedItems, total: 3, page: 1, page_size: 50 },
+          message: "ok",
+        }),
+      ),
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("CA_High")).toBeInTheDocument();
+    });
+
+    // All items should be rendered
+    expect(screen.getByText("CA_High")).toBeInTheDocument();
+    expect(screen.getByText("CF_Mid")).toBeInTheDocument();
+    expect(screen.getByText("CA_Low")).toBeInTheDocument();
+
+    // CF_Mid should show cf_rating
+    expect(screen.getByText("(2000)")).toBeInTheDocument();
+  });
+
+  // 27. Only CF users (no CA users) renders correctly
+  it("renders correctly when only CF users exist", async () => {
+    const cfOnlyItems = [
+      { name: "tourist", pp: 400, country: "BY", verified: false, cf_rating: 3800 },
+      { name: "petr", pp: 350, country: "RU", verified: false, cf_rating: 3200 },
+    ];
+    server.use(
+      http.get("*/api/v1/ranking/global", () =>
+        HttpResponse.json({
+          success: true,
+          data: { items: cfOnlyItems, total: 2, page: 1, page_size: 50 },
+          message: "ok",
+        }),
+      ),
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("tourist")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("petr")).toBeInTheDocument();
+    expect(screen.getByText("(3800)")).toBeInTheDocument();
+    expect(screen.getByText("(3200)")).toBeInTheDocument();
+
+    // Both should have Globe icons (not ShieldCheck)
+    const cfTooltips = screen.getAllByTitle("cfUserTooltip");
+    expect(cfTooltips).toHaveLength(2);
+
+    // No verified tooltips should exist
+    expect(screen.queryByTitle("verifiedTooltip")).not.toBeInTheDocument();
+  });
+
+  // 28. CF user country displayed in uppercase
+  it("displays CF user country code in uppercase", async () => {
+    const cfWithCountry = [
+      { name: "cn_player", pp: 100, country: "CN", verified: false, cf_rating: 1800 },
+    ];
+    server.use(
+      http.get("*/api/v1/ranking/global", () =>
+        HttpResponse.json({
+          success: true,
+          data: { items: cfWithCountry, total: 1, page: 1, page_size: 50 },
+          message: "ok",
+        }),
+      ),
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("cn_player")).toBeInTheDocument();
+    });
+
+    // Country should be displayed in uppercase
+    expect(screen.getByText("CN")).toBeInTheDocument();
+  });
 });

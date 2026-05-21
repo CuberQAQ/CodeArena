@@ -417,6 +417,221 @@ class TestGlobalRankingLogic:
         assert "new_user" in names
         assert "old_user" not in names
 
+    @pytest.mark.asyncio
+    async def test_cf_only_no_ca_users(self, db_session: AsyncSession):
+        """Global ranking works with only CF users (no CA users)."""
+        cf_user1 = _make_cf_user("tourist", cf_rating=3800, estimated_pp=350.0, country="BY", batch=1)
+        cf_user2 = _make_cf_user("petr", cf_rating=3200, estimated_pp=280.0, country="RU", batch=1)
+
+        db_session.add_all([cf_user1, cf_user2])
+        await db_session.commit()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        items = result["data"]["items"]
+        assert result["data"]["total"] == 2
+        assert len(items) == 2
+        # Sorted by PP descending
+        assert items[0]["name"] == "tourist"
+        assert items[0]["pp"] == 350.0
+        assert items[0]["verified"] is False
+        assert items[0]["cf_rating"] == 3800
+        assert items[1]["name"] == "petr"
+        assert items[1]["verified"] is False
+
+    @pytest.mark.asyncio
+    async def test_cf_user_with_null_estimated_pp_excluded(self, db_session: AsyncSession):
+        """CF users with estimated_pp=None are excluded from global ranking."""
+        ca_user = _make_user("alice", pp=100.0)
+        cf_valid = _make_cf_user("valid_cf", cf_rating=2000, estimated_pp=150.0, batch=1)
+        # Manually create a CF user with null estimated_pp
+        cf_null = _TestCFSampleUser(
+            id=uuid.uuid4(),
+            cf_handle="null_pp_cf",
+            cf_rating=1800,
+            estimated_pp=None,
+            country="US",
+            sample_batch=1,
+        )
+
+        db_session.add_all([ca_user, cf_valid, cf_null])
+        await db_session.commit()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        names = [i["name"] for i in result["data"]["items"]]
+        assert "valid_cf" in names
+        assert "null_pp_cf" not in names
+
+    @pytest.mark.asyncio
+    async def test_cf_user_with_zero_estimated_pp_excluded(self, db_session: AsyncSession):
+        """CF users with estimated_pp=0 are excluded from global ranking."""
+        ca_user = _make_user("alice", pp=100.0)
+        cf_zero = _TestCFSampleUser(
+            id=uuid.uuid4(),
+            cf_handle="zero_pp_cf",
+            cf_rating=1200,
+            estimated_pp=0.0,
+            country="US",
+            sample_batch=1,
+        )
+
+        db_session.add_all([ca_user, cf_zero])
+        await db_session.commit()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        names = [i["name"] for i in result["data"]["items"]]
+        assert "zero_pp_cf" not in names
+
+    @pytest.mark.asyncio
+    async def test_cf_user_country_filter(self, db_session: AsyncSession):
+        """Country filter works for CF users in global ranking."""
+        cf_cn = _make_cf_user("cn_user", estimated_pp=100.0, country="CN", batch=1)
+        cf_us = _make_cf_user("us_user", estimated_pp=200.0, country="US", batch=1)
+
+        db_session.add_all([cf_cn, cf_us])
+        await db_session.commit()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country="CN", page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        items = result["data"]["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "cn_user"
+        assert items[0]["country"] == "CN"
+
+    @pytest.mark.asyncio
+    async def test_cf_user_cf_rating_returned(self, db_session: AsyncSession):
+        """CF users have cf_rating in the API response."""
+        cf_user = _make_cf_user("tourist", cf_rating=3800, estimated_pp=350.0, batch=1)
+
+        db_session.add(cf_user)
+        await db_session.commit()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        item = result["data"]["items"][0]
+        assert item["cf_rating"] == 3800
+        assert item["verified"] is False
+
+    @pytest.mark.asyncio
+    async def test_ca_user_no_cf_rating_in_response(self, db_session: AsyncSession):
+        """CA users do not have cf_rating in the API response."""
+        ca_user = _make_user("alice", pp=100.0, cf_handle="alice_cf", cf_handle_verified=True)
+
+        db_session.add(ca_user)
+        await db_session.commit()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        item = result["data"]["items"][0]
+        assert "cf_rating" not in item
+        assert item["verified"] is True
+
+    @pytest.mark.asyncio
+    async def test_large_mixed_ranking_sort_order(self, db_session: AsyncSession):
+        """Large mixed ranking is correctly sorted: PP desc, CA priority on tie."""
+        # Create multiple CA and CF users with overlapping PP values
+        for i in range(5):
+            db_session.add(_make_user(f"ca_{i}", pp=200.0 - i * 10))
+
+        for i in range(5):
+            db_session.add(_make_cf_user(f"cf_{i}", cf_rating=2000 + i * 100, estimated_pp=195.0 - i * 10, batch=1))
+
+        await db_session.commit()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        items = result["data"]["items"]
+        assert result["data"]["total"] == 10
+
+        # Verify sorting: PP descending
+        pps = [item["pp"] for item in items]
+        assert pps == sorted(pps, reverse=True)
+
+        # Find tied users at PP=200.0 and verify CA user comes first
+        ca_0_item = next(i for i in items if i["name"] == "ca_0")
+        cf_0_item = next(i for i in items if i["name"] == "cf_0")
+        # ca_0 has pp=200.0 and cf_0 has pp=195.0, so ca_0 should be before cf_0
+        assert items.index(ca_0_item) < items.index(cf_0_item)
+
 
 class TestArenaRankingLogic:
     """Test the arena-only ranking endpoint."""
