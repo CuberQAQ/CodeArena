@@ -11,6 +11,8 @@ Endpoints:
   PUT  /admin/users/{id}/toggle-active  -- enable/disable user
   PUT  /admin/users/{id}/toggle-admin   -- grant/revoke admin
   GET  /admin/stats           -- system statistics
+  POST /admin/cf-ranking/pipeline -- trigger CF sampling pipeline
+  GET  /admin/cf-ranking/status   -- query pipeline status
 """
 
 from uuid import UUID
@@ -138,3 +140,38 @@ async def get_system_stats(
     """Retrieve aggregated system statistics."""
     stats = await admin_service.get_system_stats(db)
     return success_response(data=stats, message="System statistics retrieved")
+
+
+# ---------------------------------------------------------------------------
+# CF Ranking Pipeline
+# ---------------------------------------------------------------------------
+
+
+@router.post("/cf-ranking/pipeline")
+async def trigger_cf_ranking_pipeline(
+    _admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger the CF data sampling and regression pipeline.
+
+    This runs as a foreground task that may take 1-2 hours depending on
+    the number of CF users sampled.  The pipeline state can be polled via
+    ``GET /admin/cf-ranking/status``.
+    """
+    from app.services.cf_ranking_service import run_sampling_pipeline
+
+    result = await run_sampling_pipeline(db)
+    if "error" in result:
+        return success_response(data=result, message="Pipeline failed")
+    return success_response(data=result, message="Pipeline completed")
+
+
+@router.get("/cf-ranking/status")
+async def get_cf_ranking_status(
+    _admin: User = Depends(_require_admin),
+):
+    """Get the current status of the CF ranking pipeline."""
+    from app.services.cf_ranking_service import get_pipeline_state
+
+    state = get_pipeline_state()
+    return success_response(data=state.to_dict(), message="Pipeline status retrieved")

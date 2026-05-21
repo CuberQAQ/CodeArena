@@ -1,4 +1,5 @@
 from app.models.base import Base
+from app.models.cf_sample_user import CFSampleUser
 from app.models.check_in import CheckIn
 from app.models.challenge_session import ChallengeSession
 from app.models.contest_bot import ContestBot
@@ -22,6 +23,7 @@ from app.models.user_tag_elo import UserTagElo
 
 __all__ = [
     "Base",
+    "CFSampleUser",
     "User",
     "UserSettings",
     "EloHistory",
