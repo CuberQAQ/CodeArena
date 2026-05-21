@@ -1086,9 +1086,12 @@ async def _settle_challenge(
                 tokens_opponent += awarded
 
     # Record PP for solvers
+    challenger_pp_change = 0.0
+    opponent_pp_change = 0.0
     if session.challenger_solved and session.problem_rating > 0:
         challenger_wa = max(0, (session.challenger_submissions or 0) - 1)
         challenger_time_min = (session.challenger_time or 0.0) / 60.0
+        pp_before_challenger = challenger.pp
         await PPService.record_pp(
             db=db,
             user_id=challenger.id,
@@ -1098,10 +1101,12 @@ async def _settle_challenge(
             time_spent=challenger_time_min,
             user_elo=challenger_elo_original,
         )
+        challenger_pp_change = round(challenger.pp - pp_before_challenger, 2)
 
     if session.opponent_solved and session.problem_rating > 0:
         opponent_wa = max(0, (session.opponent_submissions or 0) - 1)
         opponent_time_min = (session.opponent_time or 0.0) / 60.0
+        pp_before_opponent = opponent.pp
         await PPService.record_pp(
             db=db,
             user_id=opponent.id,
@@ -1111,6 +1116,7 @@ async def _settle_challenge(
             time_spent=opponent_time_min,
             user_elo=opponent_elo_original,
         )
+        opponent_pp_change = round(opponent.pp - pp_before_opponent, 2)
 
     # Update session
     session.status = "completed"
@@ -1196,6 +1202,15 @@ async def _settle_challenge(
         if overkill_event is not None:
             achievements.append(overkill_event.to_dict())
 
+        # Personal best PP for challenger
+        if challenger_pp_change > 0:
+            pp_event = AchievementService.check_personal_best_pp(
+                new_pp=challenger.pp,
+                old_pp=challenger.pp - challenger_pp_change,
+            )
+            if pp_event is not None:
+                achievements.append(pp_event.to_dict())
+
     # Check overkill for opponent (if they solved)
     if session.opponent_solved and session.problem_rating > 0:
         opponent_elo_before = new_opponent_elo - _opponent_elo_change
@@ -1209,6 +1224,15 @@ async def _settle_challenge(
         )
         if opponent_overkill_event is not None:
             achievements.append(opponent_overkill_event.to_dict())
+
+        # Personal best PP for opponent
+        if opponent_pp_change > 0:
+            pp_event = AchievementService.check_personal_best_pp(
+                new_pp=opponent.pp,
+                old_pp=opponent.pp - opponent_pp_change,
+            )
+            if pp_event is not None:
+                achievements.append(pp_event.to_dict())
 
     # Determine the submitting user's perspective
     if submitting_user_id is not None:

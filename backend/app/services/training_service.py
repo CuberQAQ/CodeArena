@@ -784,6 +784,7 @@ class TrainingService:
             # Record PP
             wa_count = max(0, attempts - 1)
             time_spent_minutes = (time_spent or 0.0) / 60.0
+            pp_before_record = user.pp
             await PPService.record_pp(
                 db=db,
                 user_id=user.id,
@@ -793,6 +794,10 @@ class TrainingService:
                 time_spent=time_spent_minutes,
                 user_elo=user.elo,
             )
+            pp_change = round(user.pp - pp_before_record, 2)
+
+            # Capture Elo before settlement (used for overkill detection)
+            elo_before = user.elo
 
             # Elo calculation with shield and polarization
             elo_result = await TrainingService._calculate_training_elo(
@@ -865,15 +870,24 @@ class TrainingService:
 
         if solved and problem_rating > 0:
             overkill_multiplier = PPService.calculate_overkill_multiplier(
-                user.elo, problem_rating,
+                elo_before, problem_rating,
             )
             overkill_event = AchievementService.check_overkill(
-                user_elo=user.elo,
+                user_elo=elo_before,
                 problem_rating=problem_rating,
                 multiplier=overkill_multiplier,
             )
             if overkill_event is not None:
                 achievements.append(overkill_event.to_dict())
+
+            # Personal best PP detection
+            if pp_change > 0:
+                pp_event = AchievementService.check_personal_best_pp(
+                    new_pp=user.pp,
+                    old_pp=user.pp - pp_change,
+                )
+                if pp_event is not None:
+                    achievements.append(pp_event.to_dict())
 
         return SubmitTrainingResponse(
             session_id=session_id,
