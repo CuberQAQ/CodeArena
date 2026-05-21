@@ -94,6 +94,32 @@ describe("API service", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Response interceptor — 429 handling
+  // -----------------------------------------------------------------------
+
+  describe("response interceptor — 429 handling", () => {
+    it("rejects immediately on 429 without clearing tokens", async () => {
+      localStorage.setItem("access_token", "valid-at");
+      localStorage.setItem("refresh_token", "valid-rt");
+
+      setHandler(async (config) => {
+        const err: Record<string, unknown> = {
+          response: { status: 429, data: { success: false } },
+          config,
+          code: "ERR_BAD_RESPONSE",
+        };
+        return Promise.reject(Object.assign(new Error("429"), err));
+      });
+
+      await expect(api.get("/protected")).rejects.toThrow("429");
+
+      // Tokens must NOT be cleared on 429
+      expect(localStorage.getItem("access_token")).toBe("valid-at");
+      expect(localStorage.getItem("refresh_token")).toBe("valid-rt");
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Response interceptor — 401 handling
   // -----------------------------------------------------------------------
 

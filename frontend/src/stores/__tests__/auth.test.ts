@@ -229,7 +229,10 @@ describe("useAuthStore", () => {
     it("clears tokens when token is present but expired/invalid", async () => {
       localStorage.setItem("access_token", "expired-at");
       localStorage.setItem("refresh_token", "expired-rt");
-      mockGet.mockRejectedValueOnce(new Error("401 Unauthorized"));
+      mockGet.mockRejectedValueOnce({
+        response: { status: 401, data: { success: false } },
+        message: "401 Unauthorized",
+      });
 
       await useAuthStore.getState().hydrate();
 
@@ -240,6 +243,23 @@ describe("useAuthStore", () => {
       // Tokens should be cleared
       expect(localStorage.getItem("access_token")).toBeNull();
       expect(localStorage.getItem("refresh_token")).toBeNull();
+    });
+
+    it("preserves tokens when /auth/me returns 429 (rate limited)", async () => {
+      localStorage.setItem("access_token", "valid-at");
+      localStorage.setItem("refresh_token", "valid-rt");
+      mockGet.mockRejectedValueOnce({
+        response: { status: 429, data: { success: false } },
+        message: "Too Many Requests",
+      });
+
+      await useAuthStore.getState().hydrate();
+
+      const state = useAuthStore.getState();
+      expect(state.isLoading).toBe(false);
+      // Tokens must NOT be cleared on 429
+      expect(localStorage.getItem("access_token")).toBe("valid-at");
+      expect(localStorage.getItem("refresh_token")).toBe("valid-rt");
     });
   });
 });

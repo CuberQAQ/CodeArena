@@ -57,8 +57,15 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const status = error.response?.status;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // 429 Too Many Requests — pass through without touching auth state.
+    // The calling code can decide how to surface this to the user.
+    if (status === 429) {
+      return Promise.reject(error);
+    }
+
+    if (status === 401 && !originalRequest._retry) {
       const refreshToken = localStorage.getItem("refresh_token");
 
       // If this is the login endpoint itself failing, no point trying to refresh
