@@ -235,6 +235,48 @@ export interface AbandonTrainingResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Training - Recommended & Curated (FR-3.5)
+// ---------------------------------------------------------------------------
+
+export interface RecommendedTopic {
+  slug: string;
+  name: string;
+  name_zh: string;
+  melo: number | null;
+  reason: string;
+}
+
+export interface RecommendedProblem {
+  problem_id: string;
+  contest_id: number;
+  index: string;
+  name: string;
+  rating: number | null;
+  tags: string[];
+  url: string;
+  melo: number;
+  search_range: [number, number];
+}
+
+export interface CuratedProblemInfo {
+  problem_id: string;
+  contest_id: number;
+  index: string;
+  name: string;
+  rating: number | null;
+  tags: string[];
+  url: string;
+  solved: boolean;
+}
+
+export interface CuratedProblemsResponse {
+  problems: CuratedProblemInfo[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+// ---------------------------------------------------------------------------
 // Contest
 // ---------------------------------------------------------------------------
 

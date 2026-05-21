@@ -10,7 +10,18 @@ import { setupServer } from "msw/node";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, params?: Record<string, unknown> | string) => {
+      if (typeof params === "string") {
+        return params;
+      }
+      if (params && typeof params === "object") {
+        return Object.entries(params).reduce(
+          (acc, [k, v]) => acc.replace(`{{${k}}}`, String(v)),
+          key,
+        );
+      }
+      return key;
+    },
     i18n: { language: "en" },
   }),
 }));
@@ -51,6 +62,10 @@ vi.mock("@/utils", () => ({
   },
 }));
 
+vi.mock("@/services/trainingApi", () => ({
+  getRecommendedTopics: vi.fn().mockResolvedValue([]),
+}));
+
 // ---------------------------------------------------------------------------
 // MSW server
 // ---------------------------------------------------------------------------
@@ -83,6 +98,7 @@ const typicalTopics = [
   {
     id: "t1",
     name: "Dynamic Programming",
+    name_zh: "动态规划",
     slug: "dp",
     description: "Practice DP problems",
     cf_tags: ["dp"],
@@ -96,6 +112,7 @@ const typicalTopics = [
   {
     id: "t2",
     name: "Greedy",
+    name_zh: "贪心",
     slug: "greedy",
     description: "Greedy algorithms",
     cf_tags: ["greedy", "math"],
@@ -109,6 +126,7 @@ const typicalTopics = [
   {
     id: "t3",
     name: "Graph Theory",
+    name_zh: "图论",
     slug: "graphs",
     description: null,
     cf_tags: ["graphs", "dfs", "bfs"],
@@ -144,7 +162,7 @@ describe("TrainingPage", () => {
     expect(screen.getByText("loadingTopics")).toBeInTheDocument();
   });
 
-  // 2. Empty state — no topics
+  // 2. Empty state -- no topics
   it("shows empty state message when no topics available", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
@@ -156,11 +174,10 @@ describe("TrainingPage", () => {
     await waitFor(() => {
       expect(screen.getByText("noTopics")).toBeInTheDocument();
     });
-    // Should not crash and should show the empty state with BookOpen icon
     expect(screen.queryByText("Dynamic Programming")).not.toBeInTheDocument();
   });
 
-  // 3. Error state — API returns error
+  // 3. Error state -- API returns error
   it("shows error message when API returns an error", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
@@ -193,8 +210,8 @@ describe("TrainingPage", () => {
     });
   });
 
-  // 4. Normal data — topics render correctly
-  it("renders topic cards with normal data", async () => {
+  // 4. Normal data -- simplified topic cards render with fallback names
+  it("renders topic cards with fallback names and progress", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
         HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
@@ -203,39 +220,24 @@ describe("TrainingPage", () => {
 
     renderPage();
     await waitFor(() => {
+      // t("topic.dp", "Dynamic Programming") returns "Dynamic Programming" (fallback)
       expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
     });
     expect(screen.getByText("Greedy")).toBeInTheDocument();
     expect(screen.getByText("Graph Theory")).toBeInTheDocument();
-    // Shows descriptions
-    expect(screen.getByText("Practice DP problems")).toBeInTheDocument();
-    expect(screen.getByText("Greedy algorithms")).toBeInTheDocument();
-    // Shows solved/total
+    // Shows progress: solved/total
     expect(screen.getByText(/5\/10/)).toBeInTheDocument();
     expect(screen.getByText(/0\/8/)).toBeInTheDocument();
     expect(screen.getByText(/12\/12/)).toBeInTheDocument();
   });
 
-  it("shows notStarted label when melo is null", async () => {
-    server.use(
-      http.get("*/api/v1/training/topics", () =>
-        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
-      ),
-    );
-
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByText("Greedy")).toBeInTheDocument();
-    });
-    expect(screen.getByText("notStarted")).toBeInTheDocument();
-  });
-
-  // 5. Boundary data — topic with zero problems, extreme melo
+  // 5. Boundary data
   it("renders topics with boundary values correctly", async () => {
     const boundaryTopics = [
       {
         id: "t-empty",
         name: "Empty Topic",
+        name_zh: "空专题",
         slug: "empty",
         description: "A topic with zero problems",
         cf_tags: [],
@@ -248,10 +250,11 @@ describe("TrainingPage", () => {
       },
       {
         id: "t-extreme",
-        name: "Extreme Topic With A Very Very Very Long Name That Should Not Break Layout",
+        name: "Extreme Topic With A Very Long Name",
+        name_zh: "极端专题",
         slug: "extreme",
-        description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-        cf_tags: ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6"],
+        description: "Lorem ipsum dolor sit amet.",
+        cf_tags: ["tag1", "tag2", "tag3"],
         display_order: 2,
         total_problems: 9999,
         solved_count: 9999,
@@ -271,66 +274,71 @@ describe("TrainingPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Empty Topic")).toBeInTheDocument();
     });
-    // Extreme long name should render
-    expect(
-      screen.getByText("Extreme Topic With A Very Very Very Long Name That Should Not Break Layout"),
-    ).toBeInTheDocument();
-    // Boundary solved/total
+    expect(screen.getByText("Extreme Topic With A Very Long Name")).toBeInTheDocument();
     expect(screen.getByText(/0\/0/)).toBeInTheDocument();
     expect(screen.getByText(/9999\/9999/)).toBeInTheDocument();
   });
 
-  // 6. Medal display mode with skill medals (covers lines 121-135)
-  it("shows medal badge when display mode is medal and skill exists", async () => {
-    const topicsWithMedal = [
-      {
-        id: "t1",
-        name: "DP Topic",
-        slug: "dp",
-        description: "DP problems",
-        cf_tags: ["dp"],
-        display_order: 1,
-        total_problems: 10,
-        solved_count: 5,
-        stars: 3,
-        melo: 1600,
-        shield_active: false,
-      },
-    ];
-
+  // 6. Progress ring shows correct percentage
+  it("shows progress percentage in the progress ring", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
-        HttpResponse.json({ success: true, data: topicsWithMedal, message: "ok" }),
-      ),
-      http.get("*/api/v1/auth/settings", () =>
-        HttpResponse.json({ success: true, data: { display_mode: "medal" }, message: "ok" }),
-      ),
-      http.get("*/api/v1/medal/skills", () =>
-        HttpResponse.json({
-          success: true,
-          data: { skills: [{ tag: "dp", level: "silver", type: "provincial" }] },
-          message: "ok",
-        }),
+        HttpResponse.json({ success: true, data: [typicalTopics[0]], message: "ok" }),
       ),
     );
 
     renderPage();
     await waitFor(() => {
-      expect(screen.getByTestId("medal-badge")).toBeInTheDocument();
+      // DP topic: 5/10 = 50%
+      expect(screen.getByText("50%")).toBeInTheDocument();
     });
   });
 
-  // 7. CF tier display mode (covers lines 136-148)
-  it("shows CF tier label when display mode is cf_tier", async () => {
+  // 7. Today's training goal section
+  it("shows today's training goal section", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
         HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
       ),
-      http.get("*/api/v1/auth/settings", () =>
-        HttpResponse.json({ success: true, data: { display_mode: "cf_tier" }, message: "ok" }),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("todayGoal.title")).toBeInTheDocument();
+    });
+  });
+
+  // 8. Recommended topics section displays when API returns data
+  it("shows recommended topics section when API returns data", async () => {
+    const { getRecommendedTopics } = await import("@/services/trainingApi");
+    vi.mocked(getRecommendedTopics).mockResolvedValue([
+      { slug: "dp", name: "Dynamic Programming", name_zh: "动态规划", melo: 1000, reason: "Lowest M-Elo" },
+      { slug: "greedy", name: "Greedy", name_zh: "贪心", melo: null, reason: "Not started" },
+    ]);
+
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
       ),
-      http.get("*/api/v1/medal/skills", () =>
-        HttpResponse.json({ success: true, data: { skills: [] }, message: "ok" }),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("recommendedTopics.title")).toBeInTheDocument();
+    });
+    // Recommended cards should appear (topics also have same names, so use getAllByText)
+    expect(screen.getAllByText("Dynamic Programming").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Greedy").length).toBeGreaterThanOrEqual(2);
+  });
+
+  // 9. Recommended topics section hidden when API fails
+  it("hides recommended topics section when API fails", async () => {
+    const { getRecommendedTopics } = await import("@/services/trainingApi");
+    vi.mocked(getRecommendedTopics).mockRejectedValue(new Error("Failed"));
+
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
       ),
     );
 
@@ -338,43 +346,29 @@ describe("TrainingPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
     });
-    // Should show CF tier label instead of medal
-    expect(screen.getByText(/rating:pupil/)).toBeInTheDocument();
+    expect(screen.queryByText("recommendedTopics.title")).not.toBeInTheDocument();
   });
 
-  // 8. Shield icon displayed for active shield (covers lines 117-119)
-  it("shows shield icon when topic has active shield", async () => {
+  // 10. Topic cards link to correct detail page
+  it("links topic cards to the correct training detail page", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
-        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
-      ),
-      http.get("*/api/v1/auth/settings", () =>
-        HttpResponse.json({ success: true, data: { display_mode: "cf_tier" }, message: "ok" }),
-      ),
-      http.get("*/api/v1/medal/skills", () =>
-        HttpResponse.json({ success: true, data: { skills: [] }, message: "ok" }),
+        HttpResponse.json({ success: true, data: [typicalTopics[0]], message: "ok" }),
       ),
     );
 
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("Graph Theory")).toBeInTheDocument();
+      const link = screen.getByText("Dynamic Programming").closest("a");
+      expect(link).toHaveAttribute("href", "/training/t1");
     });
-    // Graph Theory has shield_active: true
-    expect(screen.getByText("Graph Theory")).toBeInTheDocument();
   });
 
-  // 9. Settings API error falls back gracefully (covers line 46 catch)
-  it("falls back to default display when settings API fails", async () => {
+  // 11. Hover-only secondary info present in DOM
+  it("has melo and solved count info in topic cards for hover", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
-        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
-      ),
-      http.get("*/api/v1/auth/settings", () =>
-        HttpResponse.json({ success: false }, { status: 500 }),
-      ),
-      http.get("*/api/v1/medal/skills", () =>
-        HttpResponse.json({ success: true, data: { skills: [] }, message: "ok" }),
+        HttpResponse.json({ success: true, data: [typicalTopics[0]], message: "ok" }),
       ),
     );
 
@@ -382,25 +376,7 @@ describe("TrainingPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
     });
-  });
-
-  // 10. Skill medals API error falls back gracefully (covers line 56 catch)
-  it("falls back gracefully when skill medals API fails", async () => {
-    server.use(
-      http.get("*/api/v1/training/topics", () =>
-        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
-      ),
-      http.get("*/api/v1/auth/settings", () =>
-        HttpResponse.json({ success: true, data: { display_mode: "medal" }, message: "ok" }),
-      ),
-      http.get("*/api/v1/medal/skills", () =>
-        HttpResponse.json({ success: false }, { status: 500 }),
-      ),
-    );
-
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
-    });
+    // The hover info section exists (opacity-0 by default)
+    expect(screen.getByText(/meloLabel/)).toBeInTheDocument();
   });
 });

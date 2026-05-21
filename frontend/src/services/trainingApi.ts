@@ -4,7 +4,14 @@
  */
 
 import api from "@/services/api";
-import type { ApiResponse, MEloListResponse, TrainingSessionInfo } from "@/types";
+import type {
+  ApiResponse,
+  CuratedProblemsResponse,
+  MEloListResponse,
+  RecommendedProblem,
+  RecommendedTopic,
+  TrainingSessionInfo,
+} from "@/types";
 
 // ---------------------------------------------------------------------------
 // M-Elo (per-tag Elo) for radar chart
@@ -24,6 +31,53 @@ export async function getActiveTrainingSession(
 ): Promise<TrainingSessionInfo | null> {
   const res = await api.get<ApiResponse<TrainingSessionInfo | null>>(
     `/training/topics/${topicId}/active-session`,
+  );
+  return res.data.data;
+}
+
+// ---------------------------------------------------------------------------
+// Recommended topics (FR-3.5)
+// ---------------------------------------------------------------------------
+
+export async function getRecommendedTopics(
+  limit = 3,
+): Promise<RecommendedTopic[]> {
+  const res = await api.get<ApiResponse<RecommendedTopic[]>>(
+    "/training/recommended-topics",
+    { params: { limit } },
+  );
+  return res.data.data;
+}
+
+// ---------------------------------------------------------------------------
+// Adaptive problem recommendation (FR-3.5)
+// ---------------------------------------------------------------------------
+
+export async function getRecommendedProblem(
+  topicId: string,
+): Promise<RecommendedProblem | null> {
+  const res = await api.get<ApiResponse<RecommendedProblem | null>>(
+    `/training/topics/${topicId}/recommend`,
+  );
+  return res.data.data;
+}
+
+// ---------------------------------------------------------------------------
+// Curated problem list with pagination (FR-3.5)
+// ---------------------------------------------------------------------------
+
+export async function getCuratedProblems(
+  topicId: string,
+  params?: {
+    limit?: number;
+    offset?: number;
+    min_rating?: number;
+    max_rating?: number;
+  },
+): Promise<CuratedProblemsResponse> {
+  const res = await api.get<ApiResponse<CuratedProblemsResponse>>(
+    `/training/topics/${topicId}/curated-problems`,
+    { params },
   );
   return res.data.data;
 }

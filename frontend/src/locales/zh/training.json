@@ -42,5 +42,39 @@
   "radar": {
     "title": "技能雷达",
     "empty": "暂无 M-Elo 数据，开始训练来构建你的技能画像！"
+  },
+  "recommendedTopics": {
+    "title": "推荐训练",
+    "meloLowest": "你的{{topic}} M-Elo 最低，建议优先练习",
+    "notStarted": "你还没有练习过{{topic}}，来试试吧",
+    "improve": "你的{{topic}} M-Elo 为 {{melo}}，仍有提升空间"
+  },
+  "todayGoal": {
+    "title": "今日训练目标",
+    "hint": "解决至少 3 道题目来保持每日连胜！"
+  },
+  "progress": "进度",
+  "meloLabel": "M-Elo",
+  "solvedCount": "已解决 {{count}} 题",
+  "recommendMode": "推荐做题",
+  "problemListMode": "题目列表",
+  "changeProblem": "换一道",
+  "loadingProblem": "加载题目中...",
+  "noRecommendedProblem": "未找到适合当前水平的题目，请尝试切换到题目列表模式。",
+  "loadMore": "加载更多",
+  "loadingMore": "加载中...",
+  "noMoreProblems": "没有更多题目了",
+  "difficultyFilter": "难度筛选",
+  "minRating": "最低难度",
+  "maxRating": "最高难度",
+  "apply": "应用",
+  "infoPanel": {
+    "timer": "计时器",
+    "streak": "连胜",
+    "estTokens": "预计代币",
+    "problemInfo": "题目信息",
+    "rating": "难度",
+    "yourMelo": "你的 M-Elo",
+    "searchRange": "搜索范围"
   }
 }

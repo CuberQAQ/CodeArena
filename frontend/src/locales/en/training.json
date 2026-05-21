@@ -42,5 +42,39 @@
   "radar": {
     "title": "Skill Radar",
     "empty": "No M-Elo data yet. Start training to build your skill profile!"
+  },
+  "recommendedTopics": {
+    "title": "Recommended Training",
+    "meloLowest": "Your {{topic}} M-Elo is the lowest, prioritize this topic",
+    "notStarted": "You haven't started {{topic}} yet, give it a try",
+    "improve": "Your {{topic}} M-Elo is {{melo}}, room for improvement"
+  },
+  "todayGoal": {
+    "title": "Today's Training Goal",
+    "hint": "Solve at least 3 problems to maintain your daily streak!"
+  },
+  "progress": "Progress",
+  "meloLabel": "M-Elo",
+  "solvedCount": "{{count}} solved",
+  "recommendMode": "Recommended",
+  "problemListMode": "Problem List",
+  "changeProblem": "Change Problem",
+  "loadingProblem": "Loading problem...",
+  "noRecommendedProblem": "No suitable problem found for your current level. Try switching to Problem List mode.",
+  "loadMore": "Load More",
+  "loadingMore": "Loading...",
+  "noMoreProblems": "No more problems",
+  "difficultyFilter": "Difficulty Filter",
+  "minRating": "Min Rating",
+  "maxRating": "Max Rating",
+  "apply": "Apply",
+  "infoPanel": {
+    "timer": "Timer",
+    "streak": "Streak",
+    "estTokens": "Est. Tokens",
+    "problemInfo": "Problem Info",
+    "rating": "Rating",
+    "yourMelo": "Your M-Elo",
+    "searchRange": "Search Range"
   }
 }
