@@ -100,7 +100,7 @@ export default function TrainingPage() {
                     </div>
                     <div className="min-w-0">
                       <h3 className="text-sm font-semibold text-foreground group-hover:text-primary">
-                        {topic.name}
+                        {t(`topic.${topic.slug}`, topic.name)}
                       </h3>
                       {topic.description && (
                         <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">

@@ -9,8 +9,11 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, params?: Record<string, unknown>) => {
-      if (params) {
+    t: (key: string, params?: Record<string, unknown> | string) => {
+      if (typeof params === "string") {
+        return params;
+      }
+      if (params && typeof params === "object") {
         return Object.entries(params).reduce(
           (acc, [k, v]) => acc.replace(`{{${k}}}`, String(v)),
           key,

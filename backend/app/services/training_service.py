@@ -56,6 +56,7 @@ logger = logging.getLogger("code_arena.training")
 PREDEFINED_TOPICS: list[dict] = [
     {
         "name": "Dynamic Programming",
+        "name_zh": "动态规划",
         "slug": "dp",
         "cf_tags": ["dp"],
         "description": "Dynamic programming problems",
@@ -63,6 +64,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Greedy",
+        "name_zh": "贪心",
         "slug": "greedy",
         "cf_tags": ["greedy"],
         "description": "Greedy algorithm problems",
@@ -70,6 +72,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Math",
+        "name_zh": "数学",
         "slug": "math",
         "cf_tags": ["math"],
         "description": "Mathematical problems",
@@ -77,6 +80,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Graphs",
+        "name_zh": "图论",
         "slug": "graphs",
         "cf_tags": ["graphs"],
         "description": "Graph theory problems",
@@ -84,6 +88,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Strings",
+        "name_zh": "字符串",
         "slug": "strings",
         "cf_tags": ["strings"],
         "description": "String manipulation problems",
@@ -91,6 +96,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Data Structures",
+        "name_zh": "数据结构",
         "slug": "data_structures",
         "cf_tags": ["data structures"],
         "description": "Data structure problems",
@@ -98,6 +104,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Binary Search",
+        "name_zh": "二分搜索",
         "slug": "binary_search",
         "cf_tags": ["binary search"],
         "description": "Binary search problems",
@@ -105,6 +112,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Sorting",
+        "name_zh": "排序",
         "slug": "sorting",
         "cf_tags": ["sortings"],
         "description": "Sorting problems",
@@ -112,6 +120,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Constructive",
+        "name_zh": "构造",
         "slug": "constructive",
         "cf_tags": ["constructive algorithms"],
         "description": "Constructive algorithm problems",
@@ -119,6 +128,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Number Theory",
+        "name_zh": "数论",
         "slug": "number_theory",
         "cf_tags": ["number theory"],
         "description": "Number theory problems",
@@ -126,6 +136,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Trees",
+        "name_zh": "树",
         "slug": "trees",
         "cf_tags": ["trees"],
         "description": "Tree problems",
@@ -133,6 +144,7 @@ PREDEFINED_TOPICS: list[dict] = [
     },
     {
         "name": "Geometry",
+        "name_zh": "几何",
         "slug": "geometry",
         "cf_tags": ["geometry"],
         "description": "Computational geometry problems",
@@ -269,6 +281,14 @@ class TrainingService:
                 db.add(topic)
         await db.flush()
 
+    @staticmethod
+    def _get_name_zh(slug: str) -> str:
+        """Look up the Chinese name for a topic by its slug."""
+        for topic_def in PREDEFINED_TOPICS:
+            if topic_def["slug"] == slug:
+                return topic_def.get("name_zh", "")
+        return ""
+
     # ------------------------------------------------------------------
     # 2. List all topics
     # ------------------------------------------------------------------
@@ -341,6 +361,7 @@ class TrainingService:
                 TopicInfo(
                     id=topic.id,
                     name=topic.name,
+                    name_zh=TrainingService._get_name_zh(topic.slug),
                     slug=topic.slug,
                     description=topic.description,
                     cf_tags=cf_tags,
@@ -441,6 +462,7 @@ class TrainingService:
         return TopicDetail(
             id=topic.id,
             name=topic.name,
+            name_zh=TrainingService._get_name_zh(topic.slug),
             slug=topic.slug,
             description=topic.description,
             cf_tags=cf_tags,

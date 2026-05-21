@@ -50,6 +50,7 @@ class TopicInfo(BaseModel):
 
     id: UUID
     name: str
+    name_zh: str = ""
     slug: str
     description: str | None = None
     cf_tags: list[str] = []

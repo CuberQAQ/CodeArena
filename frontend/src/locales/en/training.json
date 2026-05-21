@@ -24,5 +24,23 @@
   "notStarted": "Not Started",
   "waitingForCFResult": "Waiting for Codeforces result...",
   "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result.",
-  "trackingTimedOut": "Submission tracking timed out. Please try quitting the current session."
+  "trackingTimedOut": "Submission tracking timed out. Please try quitting the current session.",
+  "topic": {
+    "dp": "Dynamic Programming",
+    "greedy": "Greedy",
+    "math": "Math",
+    "graphs": "Graphs",
+    "strings": "Strings",
+    "data_structures": "Data Structures",
+    "binary_search": "Binary Search",
+    "sorting": "Sorting",
+    "constructive": "Constructive",
+    "number_theory": "Number Theory",
+    "trees": "Trees",
+    "geometry": "Geometry"
+  },
+  "radar": {
+    "title": "Skill Radar",
+    "empty": "No M-Elo data yet. Start training to build your skill profile!"
+  }
 }

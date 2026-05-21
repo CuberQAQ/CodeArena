@@ -164,6 +164,7 @@ export interface TopicProblemInfo {
 export interface TopicInfo {
   id: string;
   name: string;
+  name_zh: string;
   slug: string;
   description: string | null;
   cf_tags: string[];

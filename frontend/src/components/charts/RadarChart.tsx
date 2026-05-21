@@ -7,6 +7,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
+import { useTranslation } from "react-i18next";
 import type { RadarDataPoint } from "@/types";
 
 interface RadarChartProps {
@@ -33,12 +34,14 @@ function CustomTooltip({
 }
 
 export function RadarChart({ data }: RadarChartProps) {
+  const { t } = useTranslation("training");
+
   if (data.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card p-5">
-        <h3 className="mb-4 text-sm font-semibold text-foreground">Skill Radar</h3>
+        <h3 className="mb-4 text-sm font-semibold text-foreground">{t("radar.title")}</h3>
         <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
-          No M-Elo data yet. Start training to build your skill profile!
+          {t("radar.empty")}
         </div>
       </div>
     );
@@ -49,7 +52,7 @@ export function RadarChart({ data }: RadarChartProps) {
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <h3 className="mb-4 text-sm font-semibold text-foreground">Skill Radar</h3>
+      <h3 className="mb-4 text-sm font-semibold text-foreground">{t("radar.title")}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <RechartsRadar cx="50%" cy="50%" outerRadius="70%" data={data}>
           <PolarGrid stroke="rgba(255,255,255,0.08)" />

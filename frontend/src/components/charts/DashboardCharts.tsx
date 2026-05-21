@@ -24,17 +24,38 @@ import { StatsPanel } from "./StatsPanel";
 // Data transformation helpers
 // ---------------------------------------------------------------------------
 
+/** Map CF tag names to training locale topic keys. */
+const CF_TAG_TO_SLUG: Record<string, string> = {
+  dp: "dp",
+  greedy: "greedy",
+  math: "math",
+  graphs: "graphs",
+  strings: "strings",
+  "data structures": "data_structures",
+  "binary search": "binary_search",
+  sortings: "sorting",
+  "constructive algorithms": "constructive",
+  "number theory": "number_theory",
+  trees: "trees",
+  geometry: "geometry",
+};
+
 function buildRadarDataFromMElo(
   melos: { tag: string; elo: number; shield_active: boolean }[],
   globalElo: number,
+  t: (key: string, fallback?: string) => string,
 ): RadarDataPoint[] {
   if (melos.length === 0) return [];
 
-  const raw = melos.map((m) => ({
-    topic: m.tag.length > 8 ? m.tag.slice(0, 7) + "." : m.tag,
-    value: m.shield_active ? globalElo : m.elo,
-    fullMark: 0, // placeholder, computed below
-  }));
+  const raw = melos.map((m) => {
+    const slug = CF_TAG_TO_SLUG[m.tag];
+    const label = slug ? t(`training:topic.${slug}`, m.tag) : m.tag;
+    return {
+      topic: label.length > 8 ? label.slice(0, 7) + "." : label,
+      value: m.shield_active ? globalElo : m.elo,
+      fullMark: 0, // placeholder, computed below
+    };
+  });
 
   const maxVal = Math.max(...raw.map((r) => r.value), 0.1);
   const fullMark = Math.max(maxVal * 1.3, maxVal + 0.1);
@@ -113,7 +134,7 @@ function buildStatsFromData(
 
 export function DashboardCharts({ transactions }: { transactions: TransactionItem[] }) {
   const { user } = useAuthStore();
-  const { t } = useTranslation("dashboard");
+  const { t } = useTranslation(["dashboard", "training"]);
   const [loading, setLoading] = useState(true);
   const [eloData, setEloData] = useState<EloHistoryPoint[]>([]);
   const [radarData, setRadarData] = useState<RadarDataPoint[]>([]);
@@ -140,7 +161,7 @@ export function DashboardCharts({ transactions }: { transactions: TransactionIte
       let radar: RadarDataPoint[] = [];
       let totalSolved = 0;
       if (meloResult && meloResult.melos.length > 0) {
-        radar = buildRadarDataFromMElo(meloResult.melos, meloResult.global_elo);
+        radar = buildRadarDataFromMElo(meloResult.melos, meloResult.global_elo, t);
         totalSolved = meloResult.melos.reduce((sum, m) => sum + m.total_submissions, 0);
       }
       setRadarData(radar);

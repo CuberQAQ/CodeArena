@@ -7,6 +7,25 @@ import { getRatingColor, getDifficultyLabelKey } from "@/utils";
 import type { MedalInfo, SkillMedalItem } from "@/types";
 
 // ---------------------------------------------------------------------------
+// CF tag -> topic slug mapping for i18n
+// ---------------------------------------------------------------------------
+
+const CF_TAG_TO_SLUG: Record<string, string> = {
+  dp: "dp",
+  greedy: "greedy",
+  math: "math",
+  graphs: "graphs",
+  strings: "strings",
+  "data structures": "data_structures",
+  "binary search": "binary_search",
+  sortings: "sorting",
+  "constructive algorithms": "constructive",
+  "number theory": "number_theory",
+  trees: "trees",
+  geometry: "geometry",
+};
+
+// ---------------------------------------------------------------------------
 // Medal color constants
 // ---------------------------------------------------------------------------
 
@@ -49,7 +68,7 @@ export interface ProfileCardProps {
 // ---------------------------------------------------------------------------
 
 function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skillMedals, totalSolved, streakDays, ppRank }: ProfileCardProps) {
-  const { t } = useTranslation(["profile", "medal", "common", "rating"]);
+  const { t } = useTranslation(["profile", "medal", "common", "rating", "training"]);
 
   const eloColor = getRatingColor(user.elo);
 
@@ -290,6 +309,7 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
               {skillMedals.map((skill) => {
                 const mType = skill.type;
                 if (!mType) {
+                  const slug = CF_TAG_TO_SLUG[skill.tag];
                   return (
                     <span
                       key={skill.tag}
@@ -303,11 +323,12 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
                         color: "#64748b",
                       }}
                     >
-                      {skill.tag}
+                      {slug ? t(`training:topic.${slug}`) : skill.tag}
                     </span>
                   );
                 }
                 const color = MEDAL_COLORS[mType] ?? "#9CA3AF";
+                const slug = CF_TAG_TO_SLUG[skill.tag];
                 return (
                   <span
                     key={skill.tag}
@@ -325,7 +346,7 @@ function ProfileCardContent({ user, displayMode, overallMedal, totalMedals, skil
                     }}
                   >
                     <span style={{ fontSize: 8 }}>{MEDAL_TYPE_SYMBOLS[mType]}</span>
-                    {skill.tag}
+                    {slug ? t(`training:topic.${slug}`) : skill.tag}
                   </span>
                 );
               })}

@@ -222,7 +222,7 @@ export default function TrainingDetailPage() {
 
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{topic.name}</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("training:topic." + topic.slug, topic.name)}</h1>
             {topic.description && (
               <p className="mt-1 text-sm text-muted-foreground">{topic.description}</p>
             )}

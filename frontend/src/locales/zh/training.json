@@ -24,5 +24,23 @@
   "notStarted": "未开始",
   "waitingForCFResult": "等待 Codeforces 结果...",
   "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。",
-  "trackingTimedOut": "提交追踪已超时，请尝试退出当前会话。"
+  "trackingTimedOut": "提交追踪已超时，请尝试退出当前会话。",
+  "topic": {
+    "dp": "动态规划",
+    "greedy": "贪心",
+    "math": "数学",
+    "graphs": "图论",
+    "strings": "字符串",
+    "data_structures": "数据结构",
+    "binary_search": "二分搜索",
+    "sorting": "排序",
+    "constructive": "构造",
+    "number_theory": "数论",
+    "trees": "树",
+    "geometry": "几何"
+  },
+  "radar": {
+    "title": "技能雷达",
+    "empty": "暂无 M-Elo 数据，开始训练来构建你的技能画像！"
+  }
 }

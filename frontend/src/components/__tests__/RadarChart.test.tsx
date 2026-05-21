@@ -15,6 +15,18 @@ vi.mock("recharts", async () => {
   };
 });
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { language: "en" },
+  }),
+  initReactI18next: { type: "3rdParty", init: () => {} },
+}));
+
+vi.mock("@/i18n", () => ({
+  default: { t: (key: string) => key, language: "en" },
+}));
+
 // ---------------------------------------------------------------------------
 // Import SUT
 // ---------------------------------------------------------------------------
@@ -40,13 +52,13 @@ describe("RadarChart", () => {
   it("shows empty state when no data", () => {
     render(<RadarChart data={[]} />);
     expect(
-      screen.getByText("No M-Elo data yet. Start training to build your skill profile!"),
+      screen.getByText("radar.empty"),
     ).toBeInTheDocument();
   });
 
   it("renders chart title when data present", () => {
     render(<RadarChart data={sampleData} />);
-    expect(screen.getByText("Skill Radar")).toBeInTheDocument();
+    expect(screen.getByText("radar.title")).toBeInTheDocument();
   });
 
   it("renders ResponsiveContainer when data present", () => {
@@ -61,19 +73,19 @@ describe("RadarChart", () => {
       { topic: "Graphs", value: 1800, fullMark: 3000 },
     ];
     render(<RadarChart data={highData} />);
-    expect(screen.getByText("Skill Radar")).toBeInTheDocument();
+    expect(screen.getByText("radar.title")).toBeInTheDocument();
     expect(screen.getByTestId("responsive-container")).toBeInTheDocument();
   });
 
   // Covers single data point edge case
   it("renders chart with single data point", () => {
     render(<RadarChart data={[{ topic: "DP", value: 1000, fullMark: 2000 }]} />);
-    expect(screen.getByText("Skill Radar")).toBeInTheDocument();
+    expect(screen.getByText("radar.title")).toBeInTheDocument();
   });
 
   // Covers zero-value data point
   it("renders chart with zero value data point", () => {
     render(<RadarChart data={[{ topic: "DP", value: 0, fullMark: 2000 }]} />);
-    expect(screen.getByText("Skill Radar")).toBeInTheDocument();
+    expect(screen.getByText("radar.title")).toBeInTheDocument();
   });
 });
