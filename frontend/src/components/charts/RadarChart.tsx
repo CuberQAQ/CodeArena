@@ -45,7 +45,7 @@ export function RadarChart({ data }: RadarChartProps) {
   }
 
   const maxValue = Math.max(...data.map((d) => d.value), 0.1);
-  const fullMark = Math.max(2400, maxValue * 1.2);
+  const fullMark = Math.max(2000, maxValue * 1.2);
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
@@ -59,7 +59,7 @@ export function RadarChart({ data }: RadarChartProps) {
           />
           <PolarRadiusAxis
             angle={90}
-            domain={[0, fullMark]}
+            domain={[800, fullMark]}
             tick={{ fontSize: 9, fill: "rgba(255,255,255,0.4)" }}
             axisLine={false}
           />
