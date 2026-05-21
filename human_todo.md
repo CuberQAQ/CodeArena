@@ -59,26 +59,20 @@ MEDAL_TIERS 常量保留 EC Final 定义（供前端展示用），但 `_rating_
 - 如果不惩罚，需要在 requirements.md 中明确豁免
 - 如果要惩罚，需要修改 quit_session 接受 submissions 参数并计算惩罚
 
-**当前决策**：暂不修改，等待用户决策。
+**当前状态**：已修复 (commit f5aeb7a)。quit_session 实现与 PvE 一致的阶梯惩罚。
 
 ---
 
 ## 6. 比赛模式缺少成就事件 (审计节点 C 发现)
 
-**问题**：审计发现比赛模式（contest_service）没有触发越级成就事件和个人最高 PP 成就事件。其他 4 个模式（PvE/PvP/自由选题/训练）都有。
+**问题**：审计发现比赛模式（contest_service）没有触发越级成就事件和个人最高 PP 成就事件。
 
-**影响**：FR-3.5 规定"触发越级奖励时需触发成就事件"，比赛模式应同样触发。
-
-**建议修复**：在 `contest_service.py` 的 `_settle_with_pr` 中添加越级成就检测。
-
-**当前状态**：暂未修复，等待用户确认是否需要。
+**当前状态**：已修复 (commit c9071ab)。`_settle_with_pr` 添加越级+个人最高 PP 成就检测。
 
 ---
 
 ## 7. Training/Contest 页面未集成 ProblemViewer iframe (审计节点 C 发现)
 
-**问题**：FR-14.1 要求非盲盒模式通过 iframe 嵌入 CF 题目页。ProblemViewer 组件已实现且集成到 FreePlay，但 TrainingDetailPage 和 ContestDetailPage 仍仅提供外部链接。
+**问题**：FR-14.1 要求非盲盒模式通过 iframe 嵌入 CF 题目页。
 
-**影响**：训练和比赛模式下用户需要切换到 CF 网站看题，体验不一致。
-
-**当前状态**：暂未修复，等待用户确认是否需要。
+**当前状态**：已修复 (commit c9071ab)。TrainingDetailPage 和 ContestDetailPage 均已集成 ProblemViewer。
