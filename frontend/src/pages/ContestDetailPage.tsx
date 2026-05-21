@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { AchievementPopup } from "@/components/animations";
+import { ProblemViewer } from "@/components/ProblemViewer";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import { Avatar } from "@/components/Avatar";
 import api from "@/services/api";
@@ -156,6 +157,8 @@ export default function ContestDetailPage() {
   const hasFetchedRef = useRef(false);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
   const [showAchievements, setShowAchievements] = useState(false);
+  const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
+  const hasAutoSelected = useRef(false);
 
   // Live leaderboard state from Zustand store
   const {
@@ -370,6 +373,21 @@ export default function ContestDetailPage() {
     }
   }, [result?.achievements]);
 
+  // Auto-select first unsolved problem when entering active contest
+  useEffect(() => {
+    if (phase === "active" && contest && !hasAutoSelected.current) {
+      hasAutoSelected.current = true;
+      const firstUnsolved = contest.problems.find(
+        (p) => !p.solved && p.contest_id && p.index,
+      );
+      if (firstUnsolved) {
+        // Use setTimeout to avoid synchronous setState in effect
+        const timer = setTimeout(() => setSelectedProblemId(firstUnsolved.problem_id), 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [phase, contest]);
+
   // -- LOADING --
   if (phase === "loading") {
     return <LoadingSpinner text={t("loadingContest")} className="py-20" />;
@@ -502,10 +520,18 @@ export default function ContestDetailPage() {
               </div>
               <div className="divide-y divide-border">
                 {contest.problems.map((problem) => {
+                  const isSelected = selectedProblemId === problem.problem_id;
                   return (
                     <div
                       key={problem.problem_id}
-                      className="flex items-center gap-4 px-5 py-3"
+                      className={`flex items-center gap-4 px-5 py-3 cursor-pointer transition-colors ${
+                        isSelected ? "bg-primary/5" : "hover:bg-muted/30"
+                      }`}
+                      onClick={() => {
+                        if (problem.contest_id && problem.index) {
+                          setSelectedProblemId(problem.problem_id);
+                        }
+                      }}
                     >
                       {problem.solved ? (
                         <CheckCircle2 className="size-4 shrink-0 text-green-400" />
@@ -529,6 +555,7 @@ export default function ContestDetailPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-muted-foreground hover:text-foreground"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <ExternalLink className="size-4" />
                         </a>
@@ -541,6 +568,23 @@ export default function ContestDetailPage() {
                 })}
               </div>
             </div>
+
+            {/* ProblemViewer for selected problem */}
+            {(() => {
+              const selectedProblem = contest.problems.find(
+                (p) => p.problem_id === selectedProblemId,
+              );
+              if (!selectedProblem || !selectedProblem.contest_id || !selectedProblem.index) {
+                return null;
+              }
+              return (
+                <ProblemViewer
+                  contestId={selectedProblem.contest_id}
+                  index={selectedProblem.index}
+                  blindBox={false}
+                />
+              );
+            })()}
           </div>
 
           {/* Right: Live Leaderboard */}

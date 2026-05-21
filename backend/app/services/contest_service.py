@@ -574,6 +574,7 @@ class ContestService:
         session.status = "completed"
 
         # Determine Elo change based on submission count
+        pr_achievements: list[dict] = []
         if session.submissions == 0:
             # 0 submissions: Elo unchanged
             elo_change = 0
@@ -596,7 +597,7 @@ class ContestService:
             db.add(history)
         else:
             # 3+ submissions: PR (Performance Rating) based settlement
-            elo_change = await ContestService._settle_with_pr(
+            elo_change, pr_achievements = await ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=session,
@@ -618,7 +619,7 @@ class ContestService:
         )
 
         # --- Achievement event detection ---
-        achievements: list[dict] = []
+        achievements: list[dict] = list(pr_achievements) if session.submissions > 2 else []
 
         try:
             # Check contest win (rank 1 among all participants including bots)
@@ -826,7 +827,7 @@ class ContestService:
             db.add(history)
         else:
             # 3+ submissions: PR (Performance Rating) based settlement
-            elo_change = await ContestService._settle_with_pr(
+            elo_change, _achievements = await ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=session,
@@ -834,6 +835,8 @@ class ContestService:
                 cf_service=cf_service,
             )
             session.elo_change = elo_change
+            # Achievements from auto-end are not returned to user (no active WS),
+            # but the settlement logic (medal, Elo, PP) is preserved.
 
         await db.flush()
 
@@ -1054,7 +1057,7 @@ class ContestService:
         session: ContestSession,
         contest_id: uuid.UUID,
         cf_service: CFApiService | None = None,
-    ) -> int:
+    ) -> tuple[int, list[dict]]:
         """Settle contest Elo using PR (Performance Rating) calculation.
 
         Uses binary search to find the PR that matches the player's actual
@@ -1062,8 +1065,8 @@ class ContestService:
 
         Returns
         -------
-        int
-            The Elo change applied.
+        tuple[int, list[dict]]
+            The Elo change applied and a list of achievement event dicts.
         """
         # Calculate PR via binary search against bot field
         pr = await ContestSimulationService.calculate_performance_rating(
@@ -1168,4 +1171,58 @@ class ContestService:
                 "Failed to award contest medal for contest %s", contest_id, exc_info=True
             )
 
-        return elo_change
+        # --- Achievement event detection (overkill + personal best PP) ---
+        achievements: list[dict] = []
+
+        try:
+            # Collect solved problem ratings for overkill check
+            solved_stmt = select(ContestProblemRecord).where(
+                ContestProblemRecord.contest_id == contest_id,
+                ContestProblemRecord.solved.is_(True),
+            ).order_by(ContestProblemRecord.problem_rating.desc())
+            solved_result = await db.execute(solved_stmt)
+            solved_records = solved_result.scalars().all()
+
+            # Check overkill achievement for each solved problem
+            for record in solved_records:
+                overkill_multiplier = PPService.calculate_overkill_multiplier(
+                    elo_before, record.problem_rating,
+                )
+                overkill_event = AchievementService.check_overkill(
+                    user_elo=elo_before,
+                    problem_rating=record.problem_rating,
+                    multiplier=overkill_multiplier,
+                )
+                if overkill_event is not None:
+                    achievements.append(overkill_event.to_dict())
+                    break  # Only report the first (highest) overkill
+
+            # Check personal best PP (PP was already updated in submit_problem)
+            if solved_records and user.pp > 0:
+                # Calculate PP before this contest by subtracting PP gained
+                # from contest problems during this session.
+                from app.models.pp_record import PPRecord
+
+                contest_problem_ids = [r.problem_id for r in solved_records]
+                pp_gained_stmt = select(PPRecord).where(
+                    PPRecord.user_id == user.id,
+                    PPRecord.cf_problem_id.in_(contest_problem_ids),
+                )
+                pp_gained_result = await db.execute(pp_gained_stmt)
+                pp_gained_total = sum(r.final_pp for r in pp_gained_result.scalars().all())
+
+                pp_before_contest = user.pp - pp_gained_total
+                pp_event = AchievementService.check_personal_best_pp(
+                    new_pp=user.pp,
+                    old_pp=pp_before_contest,
+                )
+                if pp_event is not None:
+                    achievements.append(pp_event.to_dict())
+        except Exception:
+            # Achievement detection is best-effort and must not break settlement.
+            logger.debug(
+                "Achievement detection (overkill/PP) skipped for contest %s",
+                contest_id, exc_info=True,
+            )
+
+        return elo_change, achievements

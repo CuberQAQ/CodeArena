@@ -17,6 +17,7 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { StreakEffect } from "@/components/animations/StreakEffect";
 import { CoinAnimation } from "@/components/animations/CoinAnimation";
 import { AchievementPopup } from "@/components/animations";
+import { ProblemViewer } from "@/components/ProblemViewer";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
 import type {
@@ -44,6 +45,8 @@ export default function TrainingDetailPage() {
   const [tokenTriggerKey, setTokenTriggerKey] = useState(0);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
   const [showAchievements, setShowAchievements] = useState(false);
+  const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
+  const hasAutoSelected = useRef(false);
 
   useEffect(() => {
     if (!topicId) return;
@@ -115,6 +118,20 @@ export default function TrainingDetailPage() {
     };
   }, [session, phase, topicId]);
 
+  // Auto-select first unsolved problem when entering session phase
+  useEffect(() => {
+    if (phase === "session" && topic && !hasAutoSelected.current) {
+      hasAutoSelected.current = true;
+      const firstUnsolved = topic.problems?.find(
+        (p) => !p.solved && p.contest_id && p.index,
+      );
+      if (firstUnsolved) {
+        const timer = setTimeout(() => setSelectedProblemId(firstUnsolved.problem_id), 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [phase, topic]);
+
   const startSession = async () => {
     if (!topicId) return;
     setError("");
@@ -156,6 +173,7 @@ export default function TrainingDetailPage() {
     setError("");
     setAchievements([]);
     setShowAchievements(false);
+    setSelectedProblemId(null);
   };
 
   // -- LOADING --
@@ -336,8 +354,19 @@ export default function TrainingDetailPage() {
           </div>
           <div className="divide-y divide-border">
             {topic.problems?.map((problem) => {
+              const isSelected = selectedProblemId === problem.problem_id;
               return (
-                <div key={problem.problem_id}>
+                <div
+                  key={problem.problem_id}
+                  className={`cursor-pointer transition-colors ${
+                    isSelected ? "bg-primary/5" : "hover:bg-muted/30"
+                  }`}
+                  onClick={() => {
+                    if (problem.contest_id && problem.index) {
+                      setSelectedProblemId(problem.problem_id);
+                    }
+                  }}
+                >
                   <div className="flex items-center gap-4 px-5 py-3">
                     {problem.solved ? (
                       <CheckCircle2 className="size-4 shrink-0 text-green-400" />
@@ -369,6 +398,7 @@ export default function TrainingDetailPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-muted-foreground hover:text-foreground"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         <ExternalLink className="size-4" />
                       </a>
@@ -382,6 +412,23 @@ export default function TrainingDetailPage() {
             })}
           </div>
         </div>
+
+        {/* ProblemViewer for selected problem */}
+        {(() => {
+          const selectedProblem = topic.problems?.find(
+            (p) => p.problem_id === selectedProblemId,
+          );
+          if (!selectedProblem || !selectedProblem.contest_id || !selectedProblem.index) {
+            return null;
+          }
+          return (
+            <ProblemViewer
+              contestId={selectedProblem.contest_id}
+              index={selectedProblem.index}
+              blindBox={false}
+            />
+          );
+        })()}
       </div>
     );
   }
