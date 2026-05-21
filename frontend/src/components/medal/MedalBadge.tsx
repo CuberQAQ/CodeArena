@@ -15,9 +15,9 @@ const MEDAL_COLORS: Record<string, string> = {
 };
 
 const SIZE_MAP = {
-  sm: { circle: "size-5", text: "text-[10px]", icon: "text-[8px]" },
-  md: { circle: "size-8", text: "text-xs", icon: "text-[10px]" },
-  lg: { circle: "size-12", text: "text-sm", icon: "text-xs" },
+  sm: { circle: "size-4", text: "text-[10px]", icon: "text-[9px]" },
+  md: { circle: "size-6", text: "text-xs", icon: "text-[11px]" },
+  lg: { circle: "size-9", text: "text-sm", icon: "text-sm" },
 };
 
 const LEVEL_I18N_KEY: Record<string, string> = {

@@ -322,12 +322,6 @@ export default function FreePlaySessionPage() {
       return;
     }
 
-    // We don't have a GET endpoint for session detail.
-    // The problem info was displayed before starting; reconstruct minimal info
-    // from what we can. For now we show the ProblemViewer based on a stored
-    // state or navigate back.
-    // Since the start response contains problem info, we pass it via
-    // navigate state from FreePlayPage.
     const state = location.state as {
       problem?: FreePlayProblemInfo;
     } | undefined;
@@ -336,9 +330,18 @@ export default function FreePlaySessionPage() {
       setProblem(state.problem);
       setPhase("active");
     } else {
-      // No problem info available -- the session was probably started in a
-      // different tab or refreshed. Redirect back to free play page.
-      navigate("/free-play", { replace: true });
+      // No problem info in navigation state (refresh / direct URL).
+      // Try to recover from backend.
+      freePlayApi.freePlayGetActive().then((active) => {
+        if (active?.problem) {
+          setProblem(active.problem);
+          setPhase("active");
+        } else {
+          navigate("/free-play", { replace: true });
+        }
+      }).catch(() => {
+        navigate("/free-play", { replace: true });
+      });
     }
   }, [sessionId, navigate, location.state]);
 

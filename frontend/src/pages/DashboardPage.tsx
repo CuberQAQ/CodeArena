@@ -22,7 +22,8 @@ import { MedalBadge } from "@/components/medal";
 import { Avatar } from "@/components/Avatar";
 import { CheckInCard } from "@/components/CheckInCard";
 import api from "@/services/api";
-import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo, UserSettingsData, MedalInfo } from "@/types";
+import { freePlayGetActive } from "@/services/freePlayApi";
+import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo, UserSettingsData, MedalInfo, FreePlayStartResponse } from "@/types";
 
 interface QuickAction {
   to: string;
@@ -71,6 +72,7 @@ export default function DashboardPage() {
   const [loadingTx, setLoadingTx] = useState(true);
   const [activeContest, setActiveContest] = useState<ContestSessionInfo | null>(null);
   const [activeChallenge, setActiveChallenge] = useState<ActiveChallengeInfo | null>(null);
+  const [activeFreePlay, setActiveFreePlay] = useState<FreePlayStartResponse | null>(null);
   const [displayMode, setDisplayMode] = useState<"medal" | "cf_tier">("medal");
   const [overallMedal, setOverallMedal] = useState<MedalInfo | null>(null);
 
@@ -97,6 +99,9 @@ export default function DashboardPage() {
     api
       .get<ApiResponse<ActiveChallengeInfo | null>>("/challenge/active")
       .then((res) => setActiveChallenge((res.data.data as ActiveChallengeInfo | null) ?? null))
+      .catch(() => {});
+    freePlayGetActive()
+      .then((data) => setActiveFreePlay(data))
       .catch(() => {});
   }, []);
 
@@ -228,6 +233,30 @@ export default function DashboardPage() {
           </div>
           <Button onClick={() => navigate(`/challenge/${activeChallenge.id}`)}>
             {t("dashboard:resumeChallenge")}
+          </Button>
+        </div>
+      )}
+
+      {/* Active Free Play Banner */}
+      {activeFreePlay && (
+        <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/10">
+              <Dumbbell className="size-5 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {t("dashboard:activeFreePlay")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {activeFreePlay.problem.rating
+                  ? `${activeFreePlay.problem.contest_id}${activeFreePlay.problem.index} (${activeFreePlay.problem.rating})`
+                  : `${activeFreePlay.problem.contest_id}${activeFreePlay.problem.index}`}
+              </p>
+            </div>
+          </div>
+          <Button onClick={() => navigate(`/free-play/session/${activeFreePlay.session_id}`)}>
+            {t("dashboard:resumeFreePlay")}
           </Button>
         </div>
       )}

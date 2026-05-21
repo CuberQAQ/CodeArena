@@ -100,9 +100,9 @@ export function StatsPanel({ stats }: StatsPanelProps) {
       </div>
 
       {/* Difficulty distribution chart */}
-      {hasDistribution && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">{t("charts.difficultyDistribution")}</h3>
+      <div className="rounded-xl border border-border bg-card p-5">
+        <h3 className="mb-4 text-sm font-semibold text-foreground">{t("charts.difficultyDistribution")}</h3>
+        {hasDistribution ? (
           <div className="flex flex-col items-center gap-4 sm:flex-row">
             <div className="w-full sm:w-1/2">
               <ResponsiveContainer width="100%" height={180}>
@@ -141,15 +141,12 @@ export function StatsPanel({ stats }: StatsPanelProps) {
               ))}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Empty state when no data at all */}
-      {!hasDistribution && !hasChallenges && stats.total_solved === 0 && (
-        <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          {t("charts.noStats")}
-        </div>
-      )}
+        ) : (
+          <div className="flex h-[120px] items-center justify-center text-sm text-muted-foreground">
+            {t("charts.noStats")}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

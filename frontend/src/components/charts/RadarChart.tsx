@@ -45,7 +45,7 @@ export function RadarChart({ data }: RadarChartProps) {
   }
 
   const maxValue = Math.max(...data.map((d) => d.value), 0.1);
-  const fullMark = Math.max(maxValue * 1.3, maxValue + 0.1);
+  const fullMark = Math.max(2000, maxValue * 1.3);
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">

@@ -87,6 +87,21 @@ async def recommend_problem(
     )
 
 
+@router.get("/active")
+async def get_active_session(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the user's current active Free Play session, if any."""
+    result = await FreePlayService.get_active_session(db=db, user=current_user)
+    if result is None:
+        return success_response(data=None, message="No active session")
+    return success_response(
+        data=result.model_dump(mode="json"),
+        message="Active session found",
+    )
+
+
 @router.post("/start")
 async def start_session(
     body: FreePlayStartRequest,

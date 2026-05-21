@@ -40,6 +40,15 @@ export async function freePlayRecommend(): Promise<FreePlayRecommendResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// Get active session
+// ---------------------------------------------------------------------------
+
+export async function freePlayGetActive(): Promise<FreePlayStartResponse | null> {
+  const res = await api.get<ApiResponse<FreePlayStartResponse | null>>("/free-play/active");
+  return res.data.data;
+}
+
+// ---------------------------------------------------------------------------
 // Start a free play session
 // ---------------------------------------------------------------------------
 

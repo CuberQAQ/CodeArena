@@ -342,7 +342,15 @@ export function ProfileCardExport(props: ProfileCardProps) {
     setError(null);
 
     try {
-      const canvas = await html2canvas(cardRef.current, {
+      const el = cardRef.current;
+      // Temporarily make visible for html2canvas measurement
+      el.style.visibility = "visible";
+      el.style.position = "absolute";
+      el.style.left = "0";
+      el.style.top = "0";
+      el.style.zIndex = "-1";
+
+      const canvas = await html2canvas(el, {
         backgroundColor: null,
         scale: 2,
         useCORS: true,
@@ -350,12 +358,20 @@ export function ProfileCardExport(props: ProfileCardProps) {
         logging: false,
       });
 
+      // Restore hidden state
+      el.style.visibility = "hidden";
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      el.style.top = "0";
+      el.style.zIndex = "-1";
+
       const dataUrl = canvas.toDataURL("image/png");
       const link = document.createElement("a");
       link.download = `code-arena-${props.user.username}.png`;
       link.href = dataUrl;
       link.click();
-    } catch {
+    } catch (err) {
+      console.error("Profile card export failed:", err);
       setError(t("exportFailed"));
     } finally {
       setExporting(false);
@@ -366,11 +382,13 @@ export function ProfileCardExport(props: ProfileCardProps) {
     <div>
       {/* Hidden render target for html2canvas */}
       <div
+        aria-hidden
         style={{
           position: "fixed",
           left: "-9999px",
           top: 0,
           zIndex: -1,
+          visibility: "hidden",
         }}
       >
         <div ref={cardRef}>

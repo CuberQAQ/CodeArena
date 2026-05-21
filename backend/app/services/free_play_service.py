@@ -649,6 +649,36 @@ class FreePlayService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    async def get_active_session(db: AsyncSession, user: User) -> FreePlayStartResponse | None:
+        """Return the user's active Free Play session with problem info, or None."""
+        stmt = (
+            select(FreePlaySession)
+            .where(
+                FreePlaySession.user_id == user.id,
+                FreePlaySession.status == "active",
+            )
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        session = result.scalar_one_or_none()
+        if session is None:
+            return None
+
+        problem = FreePlayProblemInfo(
+            contest_id=session.problem_contest_id,
+            index=session.problem_index,
+            name="",
+            rating=session.problem_rating,
+            tags=session.problem_tags if session.problem_tags else [],
+            url=f"https://codeforces.com/problemset/problem/{session.problem_contest_id}/{session.problem_index}",
+        )
+        return FreePlayStartResponse(
+            session_id=session.id,
+            problem=problem,
+            status="active",
+        )
+
+    @staticmethod
     async def _assert_no_active_session(db: AsyncSession, user_id: uuid.UUID) -> None:
         """Raise BadRequestException if user has an active Free Play session."""
         stmt = (
