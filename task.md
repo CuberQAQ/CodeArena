@@ -919,3 +919,157 @@ ProblemStatementViewer 组件：KaTeX 渲染 LaTeX、样例复制、加载/错�
 **优先级**: P0
 **依赖**: Task 35.3
 5 个模式全部接入。PvP 替换 window.open 为 ProblemViewer。PvE 重构盲盒 UI 为 ProblemViewer blindBox 状态控制。训练/比赛/自由练习确认兼容。
+
+---
+
+## 阶段 36: 测试补全 — 后端高价值服务测试
+
+> 目标：以发现和修复 bug 为最高优先级，补充后端关键服务缺失的测试。当前后端整体覆盖率 86%，但多个 API 路由层和高复杂度服务覆盖严重不足。
+
+### Task 36.1: 修复前端 ProblemStatementViewer 失败测试
+**状态**: ⬜ 待开发
+**优先级**: P0
+**依赖**: 无
+
+#### 问题分析
+ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
+- `renders problem title and index after loading` — waitFor 超时
+- LaTeX 渲染测试 (3个) — KaTeX 脚本替换在 jsdom 中不工作
+- `retries fetching when retry button is clicked` — 超时
+- `copies sample input to clipboard on click` — navigator.clipboard mock 问题
+- `shows copied feedback after copying` — 同上
+- `applies custom className` / `does not render samples section when no samples` — 超时
+
+这些失败可能暴露了组件在边界条件下的实际 bug（如：KaTeX 渲染降级、clipboard API 兼容性、异步状态管理）。
+
+#### 需要修改的文件
+- `frontend/src/components/__tests__/ProblemStatementViewer.test.tsx` — 修复测试 mock 和等待逻辑
+- `frontend/src/components/ProblemStatementViewer.tsx` — 如果测试发现实际 bug 则修复组件
+
+#### 测试要点
+- [ ] 所有 28 个 ProblemStatementViewer 测试通过
+- [ ] KaTeX 渲染测试正确验证数学公式渲染降级行为
+- [ ] clipboard mock 正确模拟用户交互
+- [ ] 异步加载状态转换在 jsdom 中稳定通过
+
+---
+
+### Task 36.2: 后端 API 路由层测试 — auth / training / challenge
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: 无
+
+#### 问题分析
+多个 API 路由文件覆盖率极低：
+- `app/api/v1/auth.py` — 44% (108行中60行未覆盖)：注册/登录/密码重置/token刷新等核心认证流程
+- `app/api/v1/training.py` — 44% (78行中44行未覆盖)：训练 CRUD / 开始/结束 session
+- `app/api/v1/challenge.py` — 49% (61行中31行未覆盖)：PvP 挑战创建/接受/拒绝/取消
+- `app/api/v1/contest.py` — 56% (55行中24行未覆盖)：比赛创建/加入/排行榜
+- `app/api/v1/free_play.py` — 56% (45行中20行未覆盖)：自由练习 CRUD
+- `app/api/v1/medal.py` — 44% (39行中22行未覆盖)：奖牌查看/展示设置
+- `app/api/v1/submission_tracking.py` — 53% (32行中15行未覆盖)：提交状态追踪
+
+#### 需要修改的文件
+- `backend/tests/test_auth_api.py` — auth 路由端到端测试
+- `backend/tests/test_training_api.py` — training 路由测试
+- `backend/tests/test_challenge_api.py` — challenge 路由测试
+- `backend/tests/test_contest_api.py` — contest 路由测试
+- `backend/tests/test_free_play_api.py` — free_play 路由测试
+- `backend/tests/test_medal_api.py` — medal 路由测试
+- `backend/tests/test_submission_tracking_api.py` — submission tracking 路由测试
+
+#### 测试要点
+- [ ] auth：注册→登录→token刷新→密码修改完整流程，含参数校验、重复注册、错误密码
+- [ ] training：创建 topic / 开始 session / 提交解题 / 结束 session，含权限校验
+- [ ] challenge：创建→接受→拒绝→取消完整生命周期，含并发冲突
+- [ ] contest：创建→加入→实时状态→结束完整流程，含边界条件（人数上限、重复加入）
+- [ ] free_play：创建 session / 提交解题 / 结束，含 Elo/PP 结算验证
+- [ ] medal：查看奖牌柜 / 设置展示模式 / PP 排名查询
+- [ ] submission_tracking：开始追踪 / 查询状态 / 超时处理
+- [ ] 重点发现业务逻辑 bug：错误的 HTTP 状态码、缺失的权限校验、不一致的数据状态
+
+---
+
+### Task 36.3: 后端关键服务测试 — match_service / problem_scraper / rate_limiter
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: 无
+
+#### 问题分析
+高复杂度服务覆盖不足：
+- `app/services/match_service.py` — 89%（172行中19行未覆盖）：Redis 匹配队列 + 概率权重匹配算法，未覆盖的是错误路径和边界条件
+- `app/services/problem_scraper_service.py` — 69%（143行中44行未覆盖）：Playwright 爬取服务，核心爬取路径未测试
+- `app/utils/rate_limiter.py` — 34%（35行中23行未覆盖）：限流中间件几乎未测试
+- `app/api/v1/contest_ws.py` — 23%（64行中49行未覆盖）：WebSocket 实时比赛更新
+- `app/services/cf_handle_service.py` — 15%（97行中82行未覆盖）：CF 账号绑定核心逻辑
+- `app/core/database.py` — 43%（14行中8行未覆盖）：数据库连接管理
+- `app/core/redis.py` — 73%（30行中8行未覆盖）：Redis 连接管理
+
+#### 需要修改的文件
+- `backend/tests/test_match_service_extra.py` — match_service 边界条件和错误路径
+- `backend/tests/test_problem_scraper.py` — 爬取服务 mock 测试
+- `backend/tests/test_rate_limiter.py` — 限流中间件完整测试
+- `backend/tests/test_contest_ws.py` — WebSocket 端点测试
+- `backend/tests/test_cf_handle_service.py` — CF 账号绑定逻辑
+- `backend/tests/test_db_redis.py` — 数据库/Redis 连接管理
+
+#### 测试要点
+- [ ] match_service：Redis 断连恢复、匹配概率计算边界（Elo 差异极大/极小）、并发匹配竞态
+- [ ] problem_scraper：爬取超时、HTML 解析失败、缓存命中/过期、Playwright 进程异常
+- [ ] rate_limiter：正常请求通过、超限返回 429、滑动窗口重置、不同限流策略
+- [ ] contest_ws：连接建立/断开、实时更新推送、多客户端广播
+- [ ] cf_handle_service：绑定/解绑/验证流程、CF API 调用失败、重复绑定
+- [ ] 重点发现：并发安全 bug、资源泄漏、错误处理遗漏
+
+---
+
+## 阶段 37: 测试补全 — 前端 E2E + CI 集成
+
+### Task 37.1: 前端 E2E 测试补全
+**状态**: ⬜ 待开发
+**优先级**: P2
+**依赖**: 无
+
+#### 问题分析
+现有 E2E 覆盖：auth / dashboard / training / admin / PvP challenge / contest (integration)
+缺失的关键用户流程：
+- 自由练习模式 (FreePlay) 完整流程
+- 设置页面 / 个人资料页面
+- CF 账号绑定流程
+- 排行榜页面
+- 导航栏交互
+- 比赛模式完整 E2E（非 integration 层 mock）
+
+#### 需要修改的文件
+- `frontend/e2e/freeplay.spec.ts` — 自由练习 E2E
+- `frontend/e2e/settings-profile.spec.ts` — 设置/个人资料 E2E
+- `frontend/e2e/cf-bind.spec.ts` — CF 绑定 E2E
+- `frontend/e2e/leaderboard.spec.ts` — 排行榜 E2E
+
+#### 测试要点
+- [ ] FreePlay：选择题目→查看题面→提交代码→查看结果→Elo/PP 更新
+- [ ] 设置页面：修改个人信息、头像、CF handle 绑定/解绑
+- [ ] 排行榜：查看 Elo/PP 排名、翻页、搜索用户
+- [ ] 导航一致性：每个页面导航栏正确、面包屑可用
+
+---
+
+### Task 37.2: CI 集成测试配置
+**状态**: ⬜ 待开发
+**优先级**: P2
+**依赖**: Task 36.2, 36.3
+
+#### 问题分析
+当前 CI 只跑单元测试（pytest / vitest），缺少：
+1. 后端 testcontainers 测试需要 PostgreSQL Docker 服务 → CI 上 pytest 默认跳过
+2. 前端 E2E 测试（Playwright）未在 CI 中运行
+3. backend-test job 缺少 `--cov` → 无法检查覆盖率门禁
+
+#### 需要修改的文件
+- `.github/workflows/ci.yml` — 添加 PostgreSQL service、Playwright E2E job、后端覆盖率门禁
+
+#### 测试要点
+- [ ] CI backend-test job 使用 PostgreSQL service container
+- [ ] CI backend-test job 添加 `--cov` 覆盖率门禁
+- [ ] CI 新增 frontend-e2e job，安装 Playwright + 浏览器，运行 E2E
+- [ ] E2E 测试需要后端 API server → 使用 docker-compose service 或 mock server

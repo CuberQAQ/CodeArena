@@ -84,7 +84,7 @@ const mockStatementNoSamples = {
 
 const mockStatementWithLatex = {
   ...mockStatement,
-  full_html:
+  body_html:
     '<p>Inline: <script type="math/tex">x^2 + y^2 = z^2</script></p>' +
     '<p>Display: <script type="math/tex; mode=display">\\sum_{i=1}^n i = \\frac{n(n+1)}{2}</script></p>',
   note_html:
@@ -210,7 +210,7 @@ describe("ProblemStatementViewer", () => {
       render(<ProblemStatementViewer contestId={1920} index="A" />);
 
       await waitFor(() => {
-        const container = document.querySelector(".problem-statement");
+        const container = document.querySelector(".cf-prose");
         expect(container).toBeTruthy();
         // Inline LaTeX should be rendered with .katex class (not .katex-display)
         const inlineKatex = container!.querySelector(".katex:not(.katex-display)");
@@ -224,7 +224,7 @@ describe("ProblemStatementViewer", () => {
       render(<ProblemStatementViewer contestId={1920} index="A" />);
 
       await waitFor(() => {
-        const container = document.querySelector(".problem-statement");
+        const container = document.querySelector(".cf-prose");
         expect(container).toBeTruthy();
         const displayKatex = container!.querySelector(".katex-display");
         expect(displayKatex).toBeTruthy();

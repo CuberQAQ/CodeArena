@@ -1,12 +1,12 @@
 /**
  * ProblemStatementViewer -- renders a Codeforces problem statement in-app.
  *
- * Features:
- * - Fetches statement from the backend API
- * - Renders LaTeX via KaTeX (inline + display mode)
- * - Formats sample input/output pairs with copy buttons
- * - Shows skeleton while loading, error fallback with CF external link
- * - Respects blindBox mode (no API call until opened)
+ * CF math appears in three formats depending on problem age:
+ * 1. `$$$...$$$` — newer CF problems (MathJax inline delimiter)
+ * 2. `<script type="math/tex">` — older CF problems
+ * 3. `<span class="tex-span">` — already MathJax-rendered (leave as-is)
+ *
+ * We handle (1) and (2) via KaTeX on the frontend.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,86 +24,24 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface ProblemStatementViewerProps {
-  /** Codeforces contest ID (e.g. 1920) */
   contestId: string | number;
-  /** Problem index within the contest (e.g. "A", "B1") */
   index: string;
-  /** Whether the problem is in blind-box mode */
   blindBox?: boolean;
-  /** Optional extra class name for the root container */
   className?: string;
-}
-
-// ---------------------------------------------------------------------------
-// LaTeX rendering helper
-// ---------------------------------------------------------------------------
-
-/**
- * Replace all `<script type="math/tex">` tags in CF HTML with KaTeX output.
- *
- * CF uses two script types:
- * - `<script type="math/tex">...</script>`        -> inline mode
- * - `<script type="math/tex; mode=display">`       -> display mode
- */
-function renderLatexInHtml(html: string): string {
-  // Replace display-mode LaTeX first (more specific pattern)
-  let result = html.replace(
-    /<script\s+type="math\/tex;\s*mode=display"[^>]*>([\s\S]*?)<\/script>/gi,
-    (_, tex) => {
-      try {
-        return katex.renderToString(tex.trim(), {
-          displayMode: true,
-          throwOnError: false,
-        });
-      } catch {
-        // Fallback: show raw LaTeX in a code block
-        return `<code class="katex-error">${escapeHtml(tex.trim())}</code>`;
-      }
-    },
-  );
-
-  // Replace inline LaTeX
-  result = result.replace(
-    /<script\s+type="math\/tex"[^>]*>([\s\S]*?)<\/script>/gi,
-    (_, tex) => {
-      try {
-        return katex.renderToString(tex.trim(), {
-          displayMode: false,
-          throwOnError: false,
-        });
-      } catch {
-        return `<code class="katex-error">${escapeHtml(tex.trim())}</code>`;
-      }
-    },
-  );
-
-  return result;
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-/** Skeleton placeholder while statement loads. */
 function StatementSkeleton() {
   return (
     <div className="space-y-4 p-6 animate-pulse" data-testid="statement-skeleton">
-      {/* Title */}
       <div className="h-7 w-3/5 rounded bg-muted" />
-      {/* Limits */}
       <div className="flex gap-4">
         <div className="h-4 w-28 rounded bg-muted" />
         <div className="h-4 w-28 rounded bg-muted" />
       </div>
-      {/* Body lines */}
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}
@@ -111,13 +49,11 @@ function StatementSkeleton() {
           style={{ width: `${60 + ((i * 37) % 35)}%` }}
         />
       ))}
-      {/* Sample block */}
       <div className="h-32 w-full rounded bg-muted" />
     </div>
   );
 }
 
-/** Copy button for sample blocks. */
 function CopyButton({ text }: { text: string }) {
   const { t } = useTranslation("common");
   const [copied, setCopied] = useState(false);
@@ -150,7 +86,6 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/** Single sample input/output pair. */
 function SampleBlock({
   sample,
   index: _index,
@@ -185,6 +120,65 @@ function SampleBlock({
 }
 
 // ---------------------------------------------------------------------------
+// CF HTML / LaTeX rendering
+// ---------------------------------------------------------------------------
+
+/**
+ * Render CF math in HTML to KaTeX output.
+ *
+ * Handles:
+ * - `$$$...$$$` — CF's newer MathJax inline delimiter
+ * - `<script type="math/tex; mode=display">` — display-mode LaTeX
+ * - `<script type="math/tex">` — inline LaTeX
+ * - `<span class="MathJax_Preview">` — MathJax preview spans (stripped)
+ * - `.property-title` labels are stripped (we show limits separately)
+ */
+function renderCfHtml(html: string): string {
+  let result = html;
+
+  // Strip MathJax preview spans (would duplicate KaTeX output)
+  result = result.replace(/<span class="MathJax_Preview"[^>]*>[\s\S]*?<\/span>/g, "");
+
+  // Replace $$$...$$$ (CF's newer inline math delimiter)
+  result = result.replace(/\$\$\$(.*?)\$\$\$/g, (_, tex) => {
+    try {
+      return katex.renderToString(tex.trim(), { throwOnError: false });
+    } catch {
+      return `<code>${tex.trim()}</code>`;
+    }
+  });
+
+  // Replace <script type="math/tex; mode=display">
+  result = result.replace(
+    /<script\s+type="math\/tex;\s*mode=display"[^>]*>([\s\S]*?)<\/script>/gi,
+    (_, tex) => {
+      try {
+        return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false });
+      } catch {
+        return `<code>${tex.trim()}</code>`;
+      }
+    },
+  );
+
+  // Replace <script type="math/tex"> (inline)
+  result = result.replace(
+    /<script\s+type="math\/tex"[^>]*>([\s\S]*?)<\/script>/gi,
+    (_, tex) => {
+      try {
+        return katex.renderToString(tex.trim(), { throwOnError: false });
+      } catch {
+        return `<code>${tex.trim()}</code>`;
+      }
+    },
+  );
+
+  // Strip .property-title divs (CF labels like "time limit per test")
+  result = result.replace(/<div class="property-title"[^>]*>[\s\S]*?<\/div>/g, "");
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -215,14 +209,12 @@ export function ProblemStatementViewer({
     }
   }, [problemId]);
 
-  // Fetch on mount when not in blind-box mode
   useEffect(() => {
     if (!blindBox) {
       void fetchStatement();
     }
   }, [blindBox, fetchStatement]);
 
-  // Auto-fetch when blindBox transitions from true to false
   useEffect(() => {
     if (prevBlindBoxRef.current && !blindBox) {
       void fetchStatement();
@@ -230,11 +222,22 @@ export function ProblemStatementViewer({
     prevBlindBoxRef.current = blindBox;
   }, [blindBox, fetchStatement]);
 
-  // Render the full_html with LaTeX processed
-  const renderedHtml = useMemo(() => {
-    if (!statement?.full_html) return "";
-    return renderLatexInHtml(statement.full_html);
-  }, [statement]);
+  const renderedBody = useMemo(
+    () => (statement?.body_html ? renderCfHtml(statement.body_html) : ""),
+    [statement],
+  );
+  const renderedInputSpec = useMemo(
+    () => (statement?.input_spec_html ? renderCfHtml(statement.input_spec_html) : ""),
+    [statement],
+  );
+  const renderedOutputSpec = useMemo(
+    () => (statement?.output_spec_html ? renderCfHtml(statement.output_spec_html) : ""),
+    [statement],
+  );
+  const renderedNote = useMemo(
+    () => (statement?.note_html ? renderCfHtml(statement.note_html) : ""),
+    [statement],
+  );
 
   // --- Blind-box mode ---
   if (blindBox) {
@@ -304,7 +307,7 @@ export function ProblemStatementViewer({
     );
   }
 
-  // --- Success: render statement ---
+  // --- Success ---
   const problemUrl = `https://codeforces.com/problemset/problem/${contestId}/${index}`;
 
   return (
@@ -313,7 +316,7 @@ export function ProblemStatementViewer({
         {/* Header */}
         <div className="border-b border-border px-6 py-4">
           <h2 className="text-xl font-bold text-foreground">
-            {statement.index}. {statement.title}
+            {index}. {statement.title}
           </h2>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             {statement.time_limit && (
@@ -325,9 +328,15 @@ export function ProblemStatementViewer({
           </div>
         </div>
 
-        {/* Problem body */}
-        <div className="problem-statement prose prose-sm max-w-none px-6 py-4 dark:prose-invert">
-          <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+        {/* Problem body — styled via cf-prose class */}
+        <div className="cf-prose prose prose-sm max-w-none dark:prose-invert px-6 py-4">
+          {renderedBody && <div dangerouslySetInnerHTML={{ __html: renderedBody }} />}
+          {renderedInputSpec && (
+            <div className="mt-4" dangerouslySetInnerHTML={{ __html: renderedInputSpec }} />
+          )}
+          {renderedOutputSpec && (
+            <div className="mt-4" dangerouslySetInnerHTML={{ __html: renderedOutputSpec }} />
+          )}
         </div>
 
         {/* Samples */}
@@ -343,16 +352,13 @@ export function ProblemStatementViewer({
         )}
 
         {/* Note */}
-        {statement.note_html && (
+        {renderedNote && (
           <div className="border-t border-border px-6 py-4">
-            <div
-              className="prose prose-sm max-w-none dark:prose-invert"
-              dangerouslySetInnerHTML={{ __html: renderLatexInHtml(statement.note_html) }}
-            />
+            <div className="cf-prose prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: renderedNote }} />
           </div>
         )}
 
-        {/* Footer: CF external link */}
+        {/* Footer */}
         <div className="border-t border-border px-6 py-3">
           <a
             href={problemUrl}
