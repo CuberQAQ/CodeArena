@@ -356,6 +356,26 @@ export function ProfileCardExport(props: ProfileCardProps) {
         useCORS: true,
         allowTaint: true,
         logging: false,
+        onclone(doc) {
+          // html2canvas cannot parse oklch() (Tailwind v4 default).
+          // Strip all oklch from the cloned document's stylesheets.
+          for (const sheet of doc.styleSheets) {
+            try {
+              for (const rule of sheet.cssRules) {
+                if ("style" in rule) {
+                  const st = (rule as CSSStyleRule).style;
+                  for (let i = 0; i < st.length; i++) {
+                    if (st.getPropertyValue(st[i]).includes("oklch")) {
+                      st.removeProperty(st[i]);
+                    }
+                  }
+                }
+              }
+            } catch {
+              // Cross-origin stylesheet — skip
+            }
+          }
+        },
       });
 
       // Restore

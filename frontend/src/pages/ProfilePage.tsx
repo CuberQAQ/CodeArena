@@ -244,7 +244,7 @@ export default function ProfilePage() {
       .catch(() => {});
     // Fetch total solved from M-Elo API
     api
-      .get<ApiResponse<{ melos: { tag: string; elo: number; total_submissions: number }[] }>>("/melo/list")
+      .get<ApiResponse<{ melos: { tag: string; elo: number; total_submissions: number }[] }>>("/training/melo")
       .then((res) => {
         const solved = res.data.data.melos.reduce((sum, m) => sum + m.total_submissions, 0);
         setTotalSolved(solved);
