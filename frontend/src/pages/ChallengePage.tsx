@@ -43,6 +43,8 @@ export default function ChallengePage() {
   const [eloTriggerKey, setEloTriggerKey] = useState(0);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
   const [showAchievements, setShowAchievements] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const submitPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Resume logic on mount
   useEffect(() => {
@@ -114,6 +116,7 @@ export default function ChallengePage() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (submitPollRef.current) clearInterval(submitPollRef.current);
     };
   }, []);
 
@@ -300,19 +303,25 @@ export default function ChallengePage() {
         }
         setPhase("result");
       } else {
-        // Waiting for opponent
-        setPhase("result");
+        // Waiting for opponent -- stay in in_progress, show waiting state
+        setHasSubmitted(true);
         if (timerRef.current) clearInterval(timerRef.current);
         // Poll for final result
-        const pollResult = setInterval(async () => {
+        if (submitPollRef.current) clearInterval(submitPollRef.current);
+        submitPollRef.current = setInterval(async () => {
           try {
             const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
               `/challenge/${sessionId}`,
             );
             const detail = detailRes.data.data;
             if (detail.status === "completed" || detail.result) {
-              clearInterval(pollResult);
+              if (submitPollRef.current) clearInterval(submitPollRef.current);
               setChallenge(detail);
+              setEloTriggerKey((k) => k + 1);
+              if (detail.elo_change != null && detail.elo_change > 0) {
+                setShowCelebration(true);
+              }
+              setPhase("result");
             }
           } catch {
             // Continue polling
@@ -361,6 +370,11 @@ export default function ChallengePage() {
     setShowCelebration(false);
     setAchievements([]);
     setShowAchievements(false);
+    setHasSubmitted(false);
+    if (submitPollRef.current) {
+      clearInterval(submitPollRef.current);
+      submitPollRef.current = null;
+    }
     // Navigate to /challenge (no session ID) so URL is clean
     if (urlSessionId) {
       navigate("/challenge", { replace: true });
@@ -566,60 +580,78 @@ export default function ChallengePage() {
           </div>
         )}
 
-        {/* Submit result */}
-        <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">{t("reportYourResult")}</h3>
-
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-muted-foreground">{t("didYouSolve")}</label>
-            <Button
-              size="sm"
-              variant={solved ? "default" : "outline"}
-              onClick={() => setSolved(true)}
-            >
-              <CheckCircle2 className="mr-1.5 size-3.5" />
-              {t("common:yes", { ns: "common" })}
-            </Button>
-            <Button
-              size="sm"
-              variant={!solved ? "destructive" : "outline"}
-              onClick={() => setSolved(false)}
-            >
-              <XCircle className="mr-1.5 size-3.5" />
-              {t("common:no", { ns: "common" })}
-            </Button>
-          </div>
-
-          {solved && (
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-muted-foreground">{t("common:attempts", { ns: "common" })}:</label>
-              <input
-                type="number"
-                min={1}
-                value={attempts || ""}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value);
-                  setAttempts(isNaN(v) ? 0 : v);
-                }}
-                onBlur={() => {
-                  if (!attempts || attempts < 1) setAttempts(1);
-                }}
-                className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
-              />
+        {/* Submit result or waiting for opponent */}
+        {hasSubmitted ? (
+          <div className="rounded-xl border border-border bg-card p-5 text-center space-y-3">
+            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10">
+              <Loader2 className="size-6 animate-spin text-primary" />
             </div>
-          )}
-
-          <div className="flex gap-3">
-            <Button onClick={handleSubmit} disabled={loading}>
-              {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-              {t("submitResult")}
-            </Button>
-            <Button variant="destructive" onClick={handleQuit} disabled={loading}>
-              {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
-              {t("quit")}
-            </Button>
+            <p className="text-sm font-medium text-foreground">{t("waitingForOpponentResult")}</p>
+            {problem && (
+              <Button
+                variant="outline"
+                onClick={() => window.open(problem.url, "_blank")}
+              >
+                <ExternalLink className="mr-2 size-4" />
+                {t("openOnCodeforces")}
+              </Button>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-foreground">{t("reportYourResult")}</h3>
+
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted-foreground">{t("didYouSolve")}</label>
+              <Button
+                size="sm"
+                variant={solved ? "default" : "outline"}
+                onClick={() => setSolved(true)}
+              >
+                <CheckCircle2 className="mr-1.5 size-3.5" />
+                {t("common:yes", { ns: "common" })}
+              </Button>
+              <Button
+                size="sm"
+                variant={!solved ? "destructive" : "outline"}
+                onClick={() => setSolved(false)}
+              >
+                <XCircle className="mr-1.5 size-3.5" />
+                {t("common:no", { ns: "common" })}
+              </Button>
+            </div>
+
+            {solved && (
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground">{t("common:attempts", { ns: "common" })}:</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={attempts || ""}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value);
+                    setAttempts(isNaN(v) ? 0 : v);
+                  }}
+                  onBlur={() => {
+                    if (!attempts || attempts < 1) setAttempts(1);
+                  }}
+                  className="w-20 rounded-lg border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                />
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button onClick={handleSubmit} disabled={loading}>
+                {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                {t("submitResult")}
+              </Button>
+              <Button variant="destructive" onClick={handleQuit} disabled={loading}>
+                {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
+                {t("quit")}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

@@ -39,6 +39,7 @@
   "newChallenge": "New Challenge",
   "tokensEarned": "Tokens Earned",
   "backToDashboard": "Back to Dashboard",
+  "waitingForOpponentResult": "Result submitted, waiting for opponent...",
   "pve": {
     "title": "Random Challenge (Solo)",
     "description": "Face a mystery problem with hidden difficulty and tags. Solve it to earn Elo, PP, and tokens -- with bonus rewards for beating problems above your level!",
