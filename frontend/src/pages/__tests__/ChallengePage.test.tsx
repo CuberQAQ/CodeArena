@@ -33,6 +33,16 @@ vi.mock("@/stores/auth", () => ({
   })),
 }));
 
+vi.mock("@/components/SolvingTimeline", () => ({
+  SolvingTimeline: () => <div data-testid="solving-timeline" />,
+}));
+
+vi.mock("@/components/ProblemViewer", () => ({
+  ProblemViewer: ({ contestId, index }: { contestId: string | number; index: string }) => (
+    <div data-testid="problem-viewer">{contestId}{index}</div>
+  ),
+}));
+
 vi.mock("@/components/animations/MatchWaiting", () => ({
   MatchWaiting: ({ className }: { className?: string }) => (
     <div data-testid="match-waiting" className={className}>Finding opponent...</div>
@@ -314,7 +324,7 @@ describe("ChallengePage", () => {
     await waitFor(() => {
       expect(screen.getByText("challengeInProgress")).toBeInTheDocument();
     }, { timeout: 3000 });
-    expect(screen.getByText("Active Problem")).toBeInTheDocument();
+    expect(screen.getByTestId("problem-viewer")).toHaveTextContent("200B");
   });
 
   // --- PvE navigation ---
@@ -427,7 +437,7 @@ describe("ChallengePage", () => {
     await waitFor(() => {
       expect(screen.getByText("challengeInProgress")).toBeInTheDocument();
     }, { timeout: 10000 });
-    expect(screen.getByText("Polished Problem")).toBeInTheDocument();
+    expect(screen.getByTestId("problem-viewer")).toHaveTextContent("300C");
   });
 
   // 9. waiting_opponent: Cancel button returns to idle
@@ -654,7 +664,7 @@ describe("ChallengePage", () => {
     await waitFor(() => {
       expect(screen.getByText("challengeInProgress")).toBeInTheDocument();
     }, { timeout: 3000 });
-    expect(screen.getByText("Opponent Quit Detection")).toBeInTheDocument();
+    expect(screen.getByTestId("problem-viewer")).toHaveTextContent("400D");
 
     // in_progress polling should detect opponent quit and transition to result
     await waitFor(() => {
@@ -937,8 +947,8 @@ describe("ChallengePage", () => {
     const spinners = document.querySelectorAll(".animate-spin");
     expect(spinners.length).toBeGreaterThanOrEqual(1);
 
-    // Problem info should still be visible
-    expect(screen.getByText("First Submit Test")).toBeInTheDocument();
+    // Problem info should still be visible via ProblemViewer
+    expect(screen.getByTestId("problem-viewer")).toHaveTextContent("700G");
   });
 
   // 15. Submit first (settled=false), then poll detects completion -> shows result

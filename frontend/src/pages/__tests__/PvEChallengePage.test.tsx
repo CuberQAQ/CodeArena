@@ -52,8 +52,10 @@ vi.mock("@/components/SolvingTimeline", () => ({
 }));
 
 vi.mock("@/components/ProblemViewer", () => ({
-  ProblemViewer: ({ contestId, index }: { contestId: string; index: string }) => (
-    <div data-testid="problem-viewer">{contestId}{index}</div>
+  ProblemViewer: ({ contestId, index, blindBox }: { contestId: string | number; index: string; blindBox?: boolean }) => (
+    <div data-testid="problem-viewer">
+      {blindBox ? <span>blind-box</span> : <span>{contestId}{index}</span>}
+    </div>
   ),
 }));
 
@@ -204,8 +206,8 @@ describe("PvEChallengePage", () => {
     expect(screen.getByText("Something went wrong")).toBeInTheDocument();
   });
 
-  // 6. In-progress phase renders blind box
-  it("renders in-progress phase with problem and mystery elements", () => {
+  // 6. In-progress phase renders blind box ProblemViewer
+  it("renders in-progress phase with ProblemViewer in blind box mode", () => {
     mockPvEPhase = "in_progress";
     mockStartResponse = {
       session_id: "pve1",
@@ -220,8 +222,9 @@ describe("PvEChallengePage", () => {
     };
     renderPage();
 
-    expect(screen.getByText("Mystery Problem")).toBeInTheDocument();
-    expect(screen.getAllByText("???").length).toBeGreaterThanOrEqual(1);
+    // ProblemViewer should render in blind-box mode initially
+    expect(screen.getByTestId("problem-viewer")).toHaveTextContent("blind-box");
+    expect(screen.getByText("challenge:pve.openProblemInApp")).toBeInTheDocument();
     expect(screen.getByText("challenge:pve.quit")).toBeInTheDocument();
   });
 
