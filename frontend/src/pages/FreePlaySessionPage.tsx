@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { ProblemViewer } from "@/components/ProblemViewer";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EloChange, CoinAnimation, AcceptedCelebration, AchievementPopup } from "@/components/animations";
+import { SolvingTimeline } from "@/components/SolvingTimeline";
+import { useAuthStore } from "@/stores/auth";
 import { formatTime, getRatingColor } from "@/utils";
 import * as freePlayApi from "@/services/freePlayApi";
 import api from "@/services/api";
@@ -290,6 +292,7 @@ export default function FreePlaySessionPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation(["free_play", "common"]);
+  const user = useAuthStore((s) => s.user);
 
   const [phase, setPhase] = useState<SessionPhase>("loading");
   const [problem, setProblem] = useState<FreePlayProblemInfo | null>(null);
@@ -307,6 +310,9 @@ export default function FreePlaySessionPage() {
 
   // Auto-tracking poll
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Solving timeline start time
+  const startTimeRef = useRef<Date>(new Date());
 
   // Load session on mount
   useEffect(() => {
@@ -505,6 +511,16 @@ export default function FreePlaySessionPage() {
             </div>
           </div>
         </div>
+
+        {/* Solving Timeline */}
+        {problem && problem.rating != null && user?.elo != null && (
+          <SolvingTimeline
+            problemId={`${problem.contest_id}${problem.index}`}
+            problemRating={problem.rating}
+            userElo={user.elo}
+            startTime={startTimeRef.current}
+          />
+        )}
 
         {/* Error */}
         {error && (

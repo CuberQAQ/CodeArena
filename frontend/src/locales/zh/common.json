@@ -46,5 +46,11 @@
     "openOnCodeforces": "在 Codeforces 上打开题目",
     "openInNewTab": "在新标签页打开题目",
     "iframeNote": "如果题目无法正常显示，请在 Codeforces 上打开。"
+  },
+  "timeline": {
+    "title": "Elo 预测",
+    "expected": "期望",
+    "now": "现在",
+    "expectedTime": "期望用时：{{minutes}} 分钟"
   }
 }

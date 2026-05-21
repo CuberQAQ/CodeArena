@@ -25,6 +25,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EloChange, CoinAnimation, AcceptedCelebration, AchievementPopup } from "@/components/animations";
+import { SolvingTimeline } from "@/components/SolvingTimeline";
+import { useAuthStore } from "@/stores/auth";
 import { usePvEChallengeStore } from "@/stores/pveChallengeStore";
 import * as pveApi from "@/services/pveChallengeApi";
 import api from "@/services/api";
@@ -120,11 +122,13 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
   const error = usePvEChallengeStore((s) => s.error);
   const phase = usePvEChallengeStore((s) => s.phase);
   const sessionId = usePvEChallengeStore((s) => s.sessionId);
+  const user = useAuthStore((s) => s.user);
   const { t } = useTranslation(["challenge", "common"]);
 
   const elapsed = useElapsedTime(phase === "in_progress");
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<Date>(new Date());
 
   const problem = startResponse?.problem;
 
@@ -181,93 +185,108 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      {/* Timer bar */}
-      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-3">
-        <div className="flex items-center gap-2">
-          <Clock className="size-4 text-muted-foreground" />
-          <span className="font-mono text-lg font-bold text-foreground">
-            {formatTime(elapsed)}
-          </span>
-        </div>
-        <span className="flex items-center gap-1.5 text-sm font-medium text-purple-400">
-          <HelpCircle className="size-4" />
-          {t("challenge:pve.mysteryChallenge")}
-        </span>
-      </div>
-
-      {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      {/* Problem card -- blind box */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-xl border-2 border-purple-500/30 bg-card p-5"
-      >
-        {/* Mystery shimmer overlay */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-purple-500/5 via-transparent to-purple-500/5" />
-
-        <div className="relative space-y-3">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-foreground">{problem.name}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {problem.contest_id}
-                {problem.index}
-              </p>
-            </div>
-            {/* Hidden rating */}
-            <span className="shrink-0 rounded-lg bg-purple-500/20 px-3 py-1 text-sm font-bold text-purple-400">
-              ???
+    <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+      {/* Main area */}
+      <div className="flex-1 min-w-0 space-y-5">
+        {/* Timer bar */}
+        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-3">
+          <div className="flex items-center gap-2">
+            <Clock className="size-4 text-muted-foreground" />
+            <span className="font-mono text-lg font-bold text-foreground">
+              {formatTime(elapsed)}
             </span>
           </div>
+          <span className="flex items-center gap-1.5 text-sm font-medium text-purple-400">
+            <HelpCircle className="size-4" />
+            {t("challenge:pve.mysteryChallenge")}
+          </span>
+        </div>
 
-          {/* Hidden tags */}
-          <div className="flex flex-wrap gap-1.5">
-            {[1, 2, 3].map((i) => (
-              <span
-                key={i}
-                className="rounded-md bg-purple-500/10 px-2.5 py-0.5 text-xs font-medium text-purple-400"
-              >
+        {error && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        {/* Problem card -- blind box */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-xl border-2 border-purple-500/30 bg-card p-5"
+        >
+          {/* Mystery shimmer overlay */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-purple-500/5 via-transparent to-purple-500/5" />
+
+          <div className="relative space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">{problem.name}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {problem.contest_id}
+                  {problem.index}
+                </p>
+              </div>
+              {/* Hidden rating */}
+              <span className="shrink-0 rounded-lg bg-purple-500/20 px-3 py-1 text-sm font-bold text-purple-400">
                 ???
               </span>
-            ))}
+            </div>
+
+            {/* Hidden tags */}
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3].map((i) => (
+                <span
+                  key={i}
+                  className="rounded-md bg-purple-500/10 px-2.5 py-0.5 text-xs font-medium text-purple-400"
+                >
+                  ???
+                </span>
+              ))}
+            </div>
+
+            <Button
+              variant="outline"
+              className="mt-1"
+              onClick={() => window.open(problem.url, "_blank")}
+            >
+              <ExternalLink className="mr-2 size-4" />
+              {t("challenge:openOnCodeforces")}
+            </Button>
+          </div>
+        </motion.div>
+
+        {/* Auto-tracking panel */}
+        <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <Loader2 className="size-5 animate-spin text-primary" />
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">{t("challenge:waitingForCFResult")}</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("challenge:waitingForCFResultDesc")}
+              </p>
+            </div>
           </div>
 
-          <Button
-            variant="outline"
-            className="mt-1"
-            onClick={() => window.open(problem.url, "_blank")}
-          >
-            <ExternalLink className="mr-2 size-4" />
-            {t("challenge:openOnCodeforces")}
-          </Button>
-        </div>
-      </motion.div>
-
-      {/* Auto-tracking panel */}
-      <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
-        <div className="flex items-center gap-3">
-          <Loader2 className="size-5 animate-spin text-primary" />
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">{t("challenge:waitingForCFResult")}</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              {t("challenge:waitingForCFResultDesc")}
-            </p>
+          <div className="flex gap-3">
+            <Button variant="destructive" onClick={handleQuit} disabled={submitting}>
+              {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
+              {t("challenge:pve.quit")}
+            </Button>
           </div>
-        </div>
-
-        <div className="flex gap-3">
-          <Button variant="destructive" onClick={handleQuit} disabled={submitting}>
-            {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
-            {t("challenge:pve.quit")}
-          </Button>
         </div>
       </div>
+
+      {/* Side panel - Solving Timeline */}
+      {problem && problem.rating != null && user?.elo != null && (
+        <div className="w-full shrink-0 lg:w-72">
+          <SolvingTimeline
+            problemId={`${problem.contest_id}${problem.index}`}
+            problemRating={problem.rating}
+            userElo={user.elo}
+            startTime={startTimeRef.current}
+          />
+        </div>
+      )}
     </div>
   );
 }

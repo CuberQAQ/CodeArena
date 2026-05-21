@@ -46,5 +46,11 @@
     "openOnCodeforces": "Open problem on Codeforces",
     "openInNewTab": "Open problem in a new tab",
     "iframeNote": "If the problem does not display correctly, please open it on Codeforces."
+  },
+  "timeline": {
+    "title": "Elo Prediction",
+    "expected": "Expected",
+    "now": "Now",
+    "expectedTime": "Expected solve time: {{minutes}} min"
   }
 }

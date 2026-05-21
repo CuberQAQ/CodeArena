@@ -8,6 +8,8 @@ import { MatchWaiting } from "@/components/animations/MatchWaiting";
 import { EloChange } from "@/components/animations/EloChange";
 import { AcceptedCelebration } from "@/components/animations/AcceptedCelebration";
 import { AchievementPopup } from "@/components/animations";
+import { SolvingTimeline } from "@/components/SolvingTimeline";
+import { useAuthStore } from "@/stores/auth";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
 import api from "@/services/api";
 import type {
@@ -26,6 +28,7 @@ export default function ChallengePage() {
   const navigate = useNavigate();
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>();
   const { t } = useTranslation("challenge");
+  const user = useAuthStore((s) => s.user);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -40,6 +43,9 @@ export default function ChallengePage() {
   const [eloTriggerKey, setEloTriggerKey] = useState(0);
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
   const [showAchievements, setShowAchievements] = useState(false);
+
+  // Track when the in-progress phase started for the solving timeline
+  const challengeStartRef = useRef<Date>(new Date());
 
   // Resume logic on mount
   useEffect(() => {
@@ -69,6 +75,7 @@ export default function ChallengePage() {
           if (data.created_at) {
             const elapsedSec = Math.floor((Date.now() - new Date(data.created_at).getTime()) / 1000);
             setElapsed(Math.max(0, elapsedSec));
+            challengeStartRef.current = new Date(data.created_at);
           }
 
           setPhase("in_progress");
@@ -228,6 +235,7 @@ export default function ChallengePage() {
       }
       setSessionId(data.session_id);
       setPhase("in_progress");
+      challengeStartRef.current = new Date();
       startTimer();
       // Fetch full details
       const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
@@ -393,91 +401,106 @@ export default function ChallengePage() {
   if (phase === "in_progress") {
     const problem = challenge?.problem;
     return (
-      <div className="mx-auto max-w-3xl space-y-5">
-        {/* Timer bar */}
-        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-3">
-          <div className="flex items-center gap-2">
-            <Clock className="size-4 text-muted-foreground" />
-            <span className="font-mono text-lg font-bold text-foreground">
-              {formatTime(elapsed)}
-            </span>
+      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+        {/* Main area */}
+        <div className="flex-1 min-w-0 space-y-5">
+          {/* Timer bar */}
+          <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Clock className="size-4 text-muted-foreground" />
+              <span className="font-mono text-lg font-bold text-foreground">
+                {formatTime(elapsed)}
+              </span>
+            </div>
+            <span className="text-sm font-medium text-muted-foreground">{t("challengeInProgress")}</span>
           </div>
-          <span className="text-sm font-medium text-muted-foreground">{t("challengeInProgress")}</span>
-        </div>
 
-        {error && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+          {error && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
 
-        {/* Problem card */}
-        {problem && (
-          <div className="rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start justify-between gap-4">
+          {/* Problem card */}
+          {problem && (
+            <div className="rounded-xl border border-border bg-card p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">
+                    {problem.name}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {problem.contest_id}
+                    {problem.index}
+                  </p>
+                </div>
+                {problem.rating && (
+                  <span
+                    className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold"
+                    style={{
+                      color: getRatingColor(problem.rating),
+                      backgroundColor: `${getRatingColor(problem.rating)}20`,
+                    }}
+                  >
+                    {problem.rating}
+                  </span>
+                )}
+              </div>
+              {problem.tags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {problem.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={() => window.open(problem.url, "_blank")}
+              >
+                <ExternalLink className="mr-2 size-4" />
+                {t("openOnCodeforces")}
+              </Button>
+            </div>
+          )}
+
+          {/* Auto-tracking panel */}
+          <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="size-5 animate-spin text-primary" />
               <div>
-                <h2 className="text-lg font-bold text-foreground">
-                  {problem.name}
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {problem.contest_id}
-                  {problem.index}
+                <h3 className="text-sm font-semibold text-foreground">{t("waitingForCFResult")}</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t("waitingForCFResultDesc")}
                 </p>
               </div>
-              {problem.rating && (
-                <span
-                  className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold"
-                  style={{
-                    color: getRatingColor(problem.rating),
-                    backgroundColor: `${getRatingColor(problem.rating)}20`,
-                  }}
-                >
-                  {problem.rating}
-                </span>
-              )}
             </div>
-            {problem.tags.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {problem.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-            <Button
-              variant="outline"
-              className="mt-4"
-              onClick={() => window.open(problem.url, "_blank")}
-            >
-              <ExternalLink className="mr-2 size-4" />
-              {t("openOnCodeforces")}
-            </Button>
-          </div>
-        )}
 
-        {/* Auto-tracking panel */}
-        <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <Loader2 className="size-5 animate-spin text-primary" />
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">{t("waitingForCFResult")}</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("waitingForCFResultDesc")}
-              </p>
+            <div className="flex gap-3">
+              <Button variant="destructive" onClick={handleQuit} disabled={loading}>
+                {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
+                {t("quit")}
+              </Button>
             </div>
-          </div>
-
-          <div className="flex gap-3">
-            <Button variant="destructive" onClick={handleQuit} disabled={loading}>
-              {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
-              {t("quit")}
-            </Button>
           </div>
         </div>
+
+        {/* Side panel - Solving Timeline */}
+        {problem && problem.rating != null && user?.elo != null && (
+          <div className="w-full shrink-0 lg:w-72">
+            <SolvingTimeline
+              problemId={`${problem.contest_id}${problem.index}`}
+              problemRating={problem.rating}
+              userElo={user.elo}
+              startTime={challengeStartRef.current}
+            />
+          </div>
+        )}
       </div>
     );
   }
