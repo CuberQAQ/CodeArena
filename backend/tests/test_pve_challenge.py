@@ -18,13 +18,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.services import economy_service as economy_svc_module
 from app.services import pve_challenge_service as pve_svc_module
-from app.services.hint_service import HintService as _RealHintService
 from app.services.pp_service import PPService as _RealPPService
 from app.services.pve_challenge_service import PvEChallengeService
 
 
 class JSONText(TypeDecorator):
     """A SQLite-compatible JSON type that stores data as JSON text."""
+
     impl = String(500)
     cache_ok = True
 
@@ -37,6 +37,7 @@ class JSONText(TypeDecorator):
         if value is not None:
             return json.loads(value)
         return value
+
 
 # ---------------------------------------------------------------------------
 # Lightweight SQLite-compatible test models
@@ -155,6 +156,7 @@ async def db(async_engine):
     async def _mock_get_config(db, key):
         """Return default elo config for tests."""
         from app.core.default_config import DEFAULT_CONFIG
+
         return DEFAULT_CONFIG.get("elo", {})
 
     async def _mock_get_submission_count(db, user_id):
@@ -188,8 +190,7 @@ async def db(async_engine):
             mock_elo_cls.get_submission_count = _mock_get_submission_count
             mock_elo_cls.calculate_s_value = staticmethod(
                 lambda is_solved, is_first_ac, error_count: (
-                    1.0 if is_solved and is_first_ac
-                    else (max(0.7, 1.0 - 0.05 * error_count) if is_solved else 0.0)
+                    1.0 if is_solved and is_first_ac else (max(0.7, 1.0 - 0.05 * error_count) if is_solved else 0.0)
                 )
             )
             mock_elo_cls.calculate_expected_score = staticmethod(
@@ -197,13 +198,9 @@ async def db(async_engine):
             )
             mock_elo_cls.calculate_k_factor = staticmethod(lambda *args, **kwargs: 32.0)
             mock_elo_cls.record_elo_history = _mock_record_elo_history
-            mock_elo_cls.apply_hint_attenuation = staticmethod(
-                lambda elo_change, hint_level, config=None: elo_change
-            )
+            mock_elo_cls.apply_hint_attenuation = staticmethod(lambda elo_change, hint_level, config=None: elo_change)
             mock_pp_cls.record_pp = _mock_record_pp
-            mock_pp_cls.calculate_overkill_multiplier = staticmethod(
-                _RealPPService.calculate_overkill_multiplier
-            )
+            mock_pp_cls.calculate_overkill_multiplier = staticmethod(_RealPPService.calculate_overkill_multiplier)
             mock_hint_cls.get_max_hint_level = _mock_get_max_hint_level
 
             yield session
@@ -248,13 +245,15 @@ def _make_cf_problems_response(ratings=None):
         ]
     problems = []
     for contest_id, index, rating, tags in ratings:
-        problems.append({
-            "contestId": contest_id,
-            "index": index,
-            "name": f"Problem {index}",
-            "rating": rating,
-            "tags": tags,
-        })
+        problems.append(
+            {
+                "contestId": contest_id,
+                "index": index,
+                "name": f"Problem {index}",
+                "rating": rating,
+                "tags": tags,
+            }
+        )
     return {"problems": problems}
 
 
@@ -280,11 +279,15 @@ class TestProblemSelectionRanges:
         await db.flush()
 
         # Only one problem in [1100, 1400] range
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 1100, ["math"]),   # In range [1100, 1400]
-            (100, "B", 900, ["dp"]),       # Below range
-            (100, "C", 1500, ["greedy"]),  # Above range
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 1100, ["math"]),  # In range [1100, 1400]
+                    (100, "B", 900, ["dp"]),  # Below range
+                    (100, "C", 1500, ["greedy"]),  # Above range
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.problem.rating == 1100
@@ -295,11 +298,15 @@ class TestProblemSelectionRanges:
         db.add(user)
         await db.flush()
 
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 1250, ["math"]),
-            (100, "B", 1350, ["dp"]),
-            (100, "C", 1100, ["greedy"]),
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 1250, ["math"]),
+                    (100, "B", 1350, ["dp"]),
+                    (100, "C", 1100, ["greedy"]),
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.problem.rating in [1100, 1250, 1350]
@@ -310,11 +317,15 @@ class TestProblemSelectionRanges:
         db.add(user)
         await db.flush()
 
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 1900, ["math"]),   # In [1900, 2200]
-            (100, "B", 1200, ["dp"]),      # Below range
-            (100, "C", 2300, ["greedy"]),  # Above range
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 1900, ["math"]),  # In [1900, 2200]
+                    (100, "B", 1200, ["dp"]),  # Below range
+                    (100, "C", 2300, ["greedy"]),  # Above range
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.problem.rating == 1900
@@ -345,10 +356,14 @@ class TestUnsolvedFilter:
         db.add(pp_record)
         await db.flush()
 
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 1200, ["math"]),  # Solved - should be excluded
-            (100, "B", 1250, ["dp"]),    # Unsolved - should be selected
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 1200, ["math"]),  # Solved - should be excluded
+                    (100, "B", 1250, ["dp"]),  # Unsolved - should be selected
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.problem.rating == 1250
@@ -369,9 +384,13 @@ class TestFallbackStrategy:
         db.add(user)
         await db.flush()
 
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 1250, ["math"]),  # In [1100, 1400]
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 1250, ["math"]),  # In [1100, 1400]
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.problem is not None
@@ -384,10 +403,14 @@ class TestFallbackStrategy:
 
         # Round 1 range [1100, 1400]: no problems
         # Round 2 range [1000, 1500]: 1450 is in range
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 1450, ["math"]),  # Only in Round 2 range
-            (100, "B", 900, ["dp"]),      # Too low for any round
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 1450, ["math"]),  # Only in Round 2 range
+                    (100, "B", 900, ["dp"]),  # Too low for any round
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.problem.rating == 1450
@@ -401,10 +424,14 @@ class TestFallbackStrategy:
         # Round 1 [1100, 1400]: none
         # Round 2 [1000, 1500]: none
         # Round 3 [900, 1600]: 950 is in range
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 950, ["math"]),   # Only in Round 3 range
-            (100, "B", 1700, ["dp"]),     # Above all ranges
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 950, ["math"]),  # Only in Round 3 range
+                    (100, "B", 1700, ["dp"]),  # Above all ranges
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.problem.rating == 950
@@ -415,10 +442,14 @@ class TestFallbackStrategy:
         db.add(user)
         await db.flush()
 
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 500, ["math"]),    # Way too low
-            (100, "B", 3000, ["dp"]),     # Way too high
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 500, ["math"]),  # Way too low
+                    (100, "B", 3000, ["dp"]),  # Way too high
+                ]
+            )
+        )
 
         with pytest.raises(NotFoundException, match="No suitable problem found"):
             await PvEChallengeService.start_challenge(db, user, cf_mock)
@@ -659,7 +690,10 @@ class TestQuitPenalty:
         await db.flush()
 
         result = await PvEChallengeService.quit_challenge(
-            db=db, user=user, session_id=session.id, submissions=0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            submissions=0,
         )
 
         assert result["status"] == "quit"
@@ -683,7 +717,10 @@ class TestQuitPenalty:
         await db.flush()
 
         result = await PvEChallengeService.quit_challenge(
-            db=db, user=user, session_id=session.id, submissions=1,
+            db=db,
+            user=user,
+            session_id=session.id,
+            submissions=1,
         )
 
         assert result["status"] == "quit"
@@ -706,7 +743,10 @@ class TestQuitPenalty:
         await db.flush()
 
         result = await PvEChallengeService.quit_challenge(
-            db=db, user=user, session_id=session.id, submissions=2,
+            db=db,
+            user=user,
+            session_id=session.id,
+            submissions=2,
         )
 
         assert result["status"] == "quit"
@@ -728,7 +768,10 @@ class TestQuitPenalty:
         await db.flush()
 
         result = await PvEChallengeService.quit_challenge(
-            db=db, user=user, session_id=session.id, submissions=3,
+            db=db,
+            user=user,
+            session_id=session.id,
+            submissions=3,
         )
 
         assert result["status"] == "quit"
@@ -753,7 +796,10 @@ class TestQuitPenalty:
         await db.flush()
 
         await PvEChallengeService.quit_challenge(
-            db=db, user=user, session_id=session.id, submissions=0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            submissions=0,
         )
 
         await db.refresh(session)
@@ -786,8 +832,12 @@ class TestSessionStateMachine:
 
         with pytest.raises(BadRequestException, match="not active"):
             await PvEChallengeService.submit_result(
-                db=db, user=user, session_id=session.id,
-                solved=True, time_spent=300.0, attempts=1,
+                db=db,
+                user=user,
+                session_id=session.id,
+                solved=True,
+                time_spent=300.0,
+                attempts=1,
             )
 
     async def test_quit_on_completed_session_rejected(self, db):
@@ -807,7 +857,10 @@ class TestSessionStateMachine:
 
         with pytest.raises(BadRequestException, match="not active"):
             await PvEChallengeService.quit_challenge(
-                db=db, user=user, session_id=session.id, submissions=0,
+                db=db,
+                user=user,
+                session_id=session.id,
+                submissions=0,
             )
 
     async def test_submit_on_quit_session_rejected(self, db):
@@ -827,8 +880,12 @@ class TestSessionStateMachine:
 
         with pytest.raises(BadRequestException, match="not active"):
             await PvEChallengeService.submit_result(
-                db=db, user=user, session_id=session.id,
-                solved=True, time_spent=300.0, attempts=1,
+                db=db,
+                user=user,
+                session_id=session.id,
+                solved=True,
+                time_spent=300.0,
+                attempts=1,
             )
 
     async def test_session_not_found(self, db):
@@ -839,8 +896,12 @@ class TestSessionStateMachine:
 
         with pytest.raises(NotFoundException, match="not found"):
             await PvEChallengeService.submit_result(
-                db=db, user=user, session_id=uuid.uuid4(),
-                solved=True, time_spent=300.0, attempts=1,
+                db=db,
+                user=user,
+                session_id=uuid.uuid4(),
+                solved=True,
+                time_spent=300.0,
+                attempts=1,
             )
 
     async def test_session_not_owner(self, db):
@@ -861,8 +922,12 @@ class TestSessionStateMachine:
 
         with pytest.raises(ForbiddenException, match="Not the owner"):
             await PvEChallengeService.submit_result(
-                db=db, user=user_b, session_id=session.id,
-                solved=True, time_spent=300.0, attempts=1,
+                db=db,
+                user=user_b,
+                session_id=session.id,
+                solved=True,
+                time_spent=300.0,
+                attempts=1,
             )
 
     async def test_active_to_completed(self, db):
@@ -881,8 +946,12 @@ class TestSessionStateMachine:
         await db.flush()
 
         await PvEChallengeService.submit_result(
-            db=db, user=user, session_id=session.id,
-            solved=True, time_spent=300.0, attempts=1,
+            db=db,
+            user=user,
+            session_id=session.id,
+            solved=True,
+            time_spent=300.0,
+            attempts=1,
         )
 
         await db.refresh(session)
@@ -905,7 +974,10 @@ class TestSessionStateMachine:
         await db.flush()
 
         await PvEChallengeService.quit_challenge(
-            db=db, user=user, session_id=session.id, submissions=0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            submissions=0,
         )
 
         await db.refresh(session)
@@ -957,9 +1029,13 @@ class TestActiveSessionConstraint:
         db.add(completed_session)
         await db.flush()
 
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "B", 1300, ["dp"]),
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "B", 1300, ["dp"]),
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.status == "active"
@@ -980,9 +1056,13 @@ class TestActiveSessionConstraint:
         db.add(quit_session)
         await db.flush()
 
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "B", 1300, ["dp"]),
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "B", 1300, ["dp"]),
+                ]
+            )
+        )
 
         result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert result.status == "active"
@@ -1016,18 +1096,27 @@ class TestHistory:
 
         # Create multiple sessions
         s1 = _TestPvESession(
-            user_id=user.id, problem_id="800A", problem_rating=1200,
-            status="completed", elo_change=10,
+            user_id=user.id,
+            problem_id="800A",
+            problem_rating=1200,
+            status="completed",
+            elo_change=10,
             created_at=datetime(2026, 1, 1),
         )
         s2 = _TestPvESession(
-            user_id=user.id, problem_id="800B", problem_rating=1300,
-            status="quit", elo_change=-5,
+            user_id=user.id,
+            problem_id="800B",
+            problem_rating=1300,
+            status="quit",
+            elo_change=-5,
             created_at=datetime(2026, 1, 2),
         )
         s3 = _TestPvESession(
-            user_id=user.id, problem_id="800C", problem_rating=1400,
-            status="completed", elo_change=15,
+            user_id=user.id,
+            problem_id="800C",
+            problem_rating=1400,
+            status="completed",
+            elo_change=15,
             created_at=datetime(2026, 1, 3),
         )
         db.add_all([s1, s2, s3])
@@ -1084,11 +1173,15 @@ class TestHistory:
         await db.flush()
 
         s_a = _TestPvESession(
-            user_id=user_a.id, problem_id="800A", problem_rating=1200,
+            user_id=user_a.id,
+            problem_id="800A",
+            problem_rating=1200,
             status="completed",
         )
         s_b = _TestPvESession(
-            user_id=user_b.id, problem_id="800B", problem_rating=1300,
+            user_id=user_b.id,
+            problem_id="800B",
+            problem_rating=1300,
             status="completed",
         )
         db.add_all([s_a, s_b])
@@ -1176,9 +1269,13 @@ class TestFullPvEFlow:
         await db.flush()
 
         # Step 1: Start challenge
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 1200, ["math", "dp"]),
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 1200, ["math", "dp"]),
+                ]
+            )
+        )
         start_result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         assert start_result.status == "active"
         session_id = start_result.session_id
@@ -1191,8 +1288,13 @@ class TestFullPvEFlow:
 
         # Step 3: Submit result (AC)
         submit_result = await PvEChallengeService.submit_result(
-            db=db, user=user, session_id=session_id,
-            solved=True, time_spent=300.0, attempts=1, error_count=0,
+            db=db,
+            user=user,
+            session_id=session_id,
+            solved=True,
+            time_spent=300.0,
+            attempts=1,
+            error_count=0,
         )
         assert submit_result.solved is True
         assert submit_result.status == "completed"
@@ -1212,16 +1314,23 @@ class TestFullPvEFlow:
         await db.flush()
 
         # Step 1: Start challenge
-        cf_mock = _make_cf_mock(_make_cf_problems_response([
-            (100, "A", 1200, ["math"]),
-            (100, "B", 1300, ["dp"]),
-        ]))
+        cf_mock = _make_cf_mock(
+            _make_cf_problems_response(
+                [
+                    (100, "A", 1200, ["math"]),
+                    (100, "B", 1300, ["dp"]),
+                ]
+            )
+        )
         start_result = await PvEChallengeService.start_challenge(db, user, cf_mock)
         session_id = start_result.session_id
 
         # Step 2: Quit
         quit_result = await PvEChallengeService.quit_challenge(
-            db=db, user=user, session_id=session_id, submissions=0,
+            db=db,
+            user=user,
+            session_id=session_id,
+            submissions=0,
         )
         assert quit_result["status"] == "quit"
         assert quit_result["elo_change"] == 0
@@ -1261,14 +1370,12 @@ class TestOverkillBonusInPvE:
 
         captured_kwargs = {}
 
-        original_record_pp = pve_svc_module.PPService.record_pp
-
         async def _capturing_record_pp(*args, **kwargs):
             captured_kwargs.update(kwargs)
             # Call original mock (no-op)
 
         with patch.object(pve_svc_module.PPService, "record_pp", _capturing_record_pp):
-            result = await PvEChallengeService.submit_result(
+            await PvEChallengeService.submit_result(
                 db=db,
                 user=user,
                 session_id=session.id,

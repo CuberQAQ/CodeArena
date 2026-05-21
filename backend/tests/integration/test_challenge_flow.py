@@ -7,7 +7,6 @@ since matching requires two in-memory players interacting concurrently.
 import uuid
 
 import pytest
-from sqlalchemy import select
 
 from app.models.challenge_session import ChallengeSession
 
@@ -16,7 +15,6 @@ from .conftest import (
     make_cf_problems_response,
     mock_cf_service,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -32,8 +30,8 @@ class TestChallengeJoinQueue:
         user_b = await create_test_user(db_session, username="player_b", email="b@test.com", elo=1200)
         await db_session.commit()
 
-        from app.services.match_service import MatchService
         from app.services.challenge_service import ChallengeService
+        from app.services.match_service import MatchService
 
         match_svc = MatchService()
 
@@ -52,8 +50,8 @@ class TestChallengeJoinQueue:
         user = await create_test_user(db_session, username="q_user", email="q@test.com")
         await db_session.commit()
 
-        from app.services.match_service import MatchService
         from app.services.challenge_service import ChallengeService
+        from app.services.match_service import MatchService
 
         match_svc = MatchService()
         await ChallengeService.join_queue(db_session, user, match_svc)
@@ -66,8 +64,8 @@ class TestChallengeJoinQueue:
         user = await create_test_user(db_session, username="leave_user", email="leave@test.com")
         await db_session.commit()
 
-        from app.services.match_service import MatchService
         from app.services.challenge_service import ChallengeService
+        from app.services.match_service import MatchService
 
         match_svc = MatchService()
         await ChallengeService.join_queue(db_session, user, match_svc)
@@ -85,8 +83,8 @@ class TestChallengeStartAndSubmit:
         user_b = await create_test_user(db_session, username="start_b", email="sb@test.com", elo=1200)
         await db_session.commit()
 
-        from app.services.match_service import MatchService
         from app.services.challenge_service import ChallengeService
+        from app.services.match_service import MatchService
 
         match_svc = MatchService()
 
@@ -169,9 +167,7 @@ class TestChallengeStartAndSubmit:
         db_session.add(session)
         await db_session.flush()
 
-        await ChallengeService.submit_result(
-            db_session, user_a, session.id, solved=True, time_spent=200.0, attempts=1
-        )
+        await ChallengeService.submit_result(db_session, user_a, session.id, solved=True, time_spent=200.0, attempts=1)
         resp_b = await ChallengeService.submit_result(
             db_session, user_b, session.id, solved=False, time_spent=600.0, attempts=5
         )
@@ -199,9 +195,7 @@ class TestChallengeStartAndSubmit:
         db_session.add(session)
         await db_session.flush()
 
-        await ChallengeService.submit_result(
-            db_session, user_a, session.id, solved=False, time_spent=600.0, attempts=3
-        )
+        await ChallengeService.submit_result(db_session, user_a, session.id, solved=False, time_spent=600.0, attempts=3)
         resp_b = await ChallengeService.submit_result(
             db_session, user_b, session.id, solved=False, time_spent=600.0, attempts=3
         )
@@ -225,9 +219,7 @@ class TestChallengeStartAndSubmit:
         db_session.add(session)
         await db_session.flush()
 
-        result = await ChallengeService.quit_challenge(
-            db_session, user_a, session.id, submissions=1
-        )
+        result = await ChallengeService.quit_challenge(db_session, user_a, session.id, submissions=1)
         assert result["status"] == "quit"
         assert result["elo_change"] is not None
         assert result["elo_change"] < 0  # penalty is negative
@@ -253,9 +245,7 @@ class TestChallengeStartAndSubmit:
         db_session.add(session)
         await db_session.flush()
 
-        await ChallengeService.submit_result(
-            db_session, user_a, session.id, solved=True, time_spent=200.0, attempts=1
-        )
+        await ChallengeService.submit_result(db_session, user_a, session.id, solved=True, time_spent=200.0, attempts=1)
         resp_b = await ChallengeService.submit_result(
             db_session, user_b, session.id, solved=False, time_spent=600.0, attempts=3
         )
@@ -283,12 +273,8 @@ class TestChallengeStartAndSubmit:
         db_session.add(session)
         await db_session.flush()
 
-        await ChallengeService.submit_result(
-            db_session, user_a, session.id, solved=True, time_spent=300.0, attempts=1
-        )
-        await ChallengeService.submit_result(
-            db_session, user_b, session.id, solved=False, time_spent=600.0, attempts=3
-        )
+        await ChallengeService.submit_result(db_session, user_a, session.id, solved=True, time_spent=300.0, attempts=1)
+        await ChallengeService.submit_result(db_session, user_b, session.id, solved=False, time_spent=600.0, attempts=3)
 
         await db_session.refresh(user_a)
         assert user_a.pp > 0
@@ -311,9 +297,7 @@ class TestChallengeStartAndSubmit:
         db_session.add(session)
         await db_session.flush()
 
-        await ChallengeService.submit_result(
-            db_session, user_a, session.id, solved=True, time_spent=200.0, attempts=1
-        )
+        await ChallengeService.submit_result(db_session, user_a, session.id, solved=True, time_spent=200.0, attempts=1)
 
         with pytest.raises(Exception, match="Already submitted"):
             await ChallengeService.submit_result(

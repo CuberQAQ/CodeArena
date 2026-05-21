@@ -7,16 +7,12 @@ challenges and contests, and the interplay between PP and Elo.
 import math
 import uuid
 
-import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.models.elo_history import EloHistory
 from app.models.pp_record import PPRecord
 
 from .conftest import (
     create_test_user,
 )
-
 
 # ---------------------------------------------------------------------------
 # PP Tests
@@ -28,7 +24,7 @@ class TestPPBaseCalculation:
 
     def test_below_offset_gives_zero(self):
         """Problems below the offset rating (800) give 0 PP."""
-        from app.services.pp_service import PPService, PPConfig
+        from app.services.pp_service import PPService
 
         assert PPService.calculate_base_pp(500) == 0.0
         assert PPService.calculate_base_pp(799) == 0.0
@@ -36,6 +32,7 @@ class TestPPBaseCalculation:
     def test_exactly_offset_gives_zero(self):
         """A problem exactly at the offset (800) gives 0 PP."""
         from app.services.pp_service import PPService
+
         assert PPService.calculate_base_pp(800) == 0.0
 
     def test_above_offset_gives_positive(self):
@@ -59,7 +56,7 @@ class TestPPBaseCalculation:
 
     def test_base_pp_formula(self):
         """Verify the exact formula: sqrt((rating - offset) / 100) * coefficient."""
-        from app.services.pp_service import PPService, PPConfig
+        from app.services.pp_service import PPConfig, PPService
 
         config = PPConfig()
         rating = 1800
@@ -73,25 +70,23 @@ class TestPPTotalAggregation:
     def test_empty_list_gives_zero(self):
         """Empty PP list gives total 0."""
         from app.services.pp_service import PPService
+
         assert PPService.aggregate_total_pp([]) == 0.0
 
     def test_single_problem_no_decay(self):
         """Single problem: total equals base PP (no decay on first item)."""
         from app.services.pp_service import PPService
+
         pp = PPService.aggregate_total_pp([30.0])
         assert pp == 30.0
 
     def test_multiple_problems_with_decay(self):
         """Multiple problems are weighted with decreasing decay factor."""
-        from app.services.pp_service import PPService, PPConfig
+        from app.services.pp_service import PPConfig, PPService
 
         values = [40.0, 30.0, 20.0]
         config = PPConfig()
-        expected = (
-            40.0 * (config.decay_factor ** 0)
-            + 30.0 * (config.decay_factor ** 1)
-            + 20.0 * (config.decay_factor ** 2)
-        )
+        expected = 40.0 * (config.decay_factor**0) + 30.0 * (config.decay_factor**1) + 20.0 * (config.decay_factor**2)
         result = PPService.aggregate_total_pp(values, config)
         assert abs(result - round(expected, 2)) < 0.01
 
@@ -105,12 +100,12 @@ class TestPPTotalAggregation:
 
     def test_max_problems_cap(self):
         """Only max_problems entries are considered."""
-        from app.services.pp_service import PPService, PPConfig
+        from app.services.pp_service import PPConfig, PPService
 
         config = PPConfig(max_problems=3)
         many_values = [50.0] * 10
         result = PPService.aggregate_total_pp(many_values, config)
-        expected = 50.0 * (0.95 ** 0 + 0.95 ** 1 + 0.95 ** 2)
+        expected = 50.0 * (0.95**0 + 0.95**1 + 0.95**2)
         assert abs(result - round(expected, 2)) < 0.01
 
 
@@ -124,9 +119,7 @@ class TestPPRecording:
         user = await create_test_user(db_session)
         await db_session.commit()
 
-        record = await PPService.record_pp(
-            db_session, user.id, cf_problem_id="1000A", problem_rating=1200
-        )
+        record = await PPService.record_pp(db_session, user.id, cf_problem_id="1000A", problem_rating=1200)
         assert record.cf_problem_id == "1000A"
         assert record.problem_rating == 1200
         assert record.base_pp > 0
@@ -138,16 +131,14 @@ class TestPPRecording:
         user = await create_test_user(db_session)
         await db_session.commit()
 
-        await PPService.record_pp(
-            db_session, user.id, cf_problem_id="1000A", problem_rating=1200
-        )
+        await PPService.record_pp(db_session, user.id, cf_problem_id="1000A", problem_rating=1200)
 
         await db_session.refresh(user)
         assert user.pp > 0
 
     async def test_record_pp_multiple_problems_aggregates(self, db_session):
         """Solving multiple problems aggregates PP correctly."""
-        from app.services.pp_service import PPService, PPConfig
+        from app.services.pp_service import PPConfig, PPService
 
         user = await create_test_user(db_session)
         await db_session.commit()
@@ -158,9 +149,7 @@ class TestPPRecording:
         # Solve 3 problems at different ratings
         for i, rating in enumerate([1000, 1200, 1500]):
             pid = f"100{i}A"
-            await PPService.record_pp(
-                db_session, user.id, cf_problem_id=pid, problem_rating=rating
-            )
+            await PPService.record_pp(db_session, user.id, cf_problem_id=pid, problem_rating=rating)
             pp_values.append(PPService.calculate_base_pp(rating, config))
 
         # Verify user PP matches aggregation
@@ -175,15 +164,12 @@ class TestPPRecording:
         user = await create_test_user(db_session)
         await db_session.commit()
 
-        await PPService.record_pp(
-            db_session, user.id, cf_problem_id="1000A", problem_rating=1000
-        )
-        await PPService.record_pp(
-            db_session, user.id, cf_problem_id="1000A", problem_rating=1500
-        )
+        await PPService.record_pp(db_session, user.id, cf_problem_id="1000A", problem_rating=1000)
+        await PPService.record_pp(db_session, user.id, cf_problem_id="1000A", problem_rating=1500)
 
         # Should have only one PP record, with the higher rating
         from sqlalchemy import select
+
         stmt = select(PPRecord).where(
             PPRecord.user_id == user.id,
             PPRecord.cf_problem_id == "1000A",
@@ -205,35 +191,41 @@ class TestEloCalculation:
     def test_expected_score_equal_ratings(self):
         """Equal ratings give expected score 0.5."""
         from app.services.elo_service import EloService
+
         assert abs(EloService.calculate_expected_score(1200, 1200) - 0.5) < 0.001
 
     def test_expected_score_higher_rating(self):
         """Higher-rated player has expected score > 0.5."""
         from app.services.elo_service import EloService
+
         e = EloService.calculate_expected_score(1500, 1200)
         assert e > 0.5
 
     def test_expected_score_lower_rating(self):
         """Lower-rated player has expected score < 0.5."""
         from app.services.elo_service import EloService
+
         e = EloService.calculate_expected_score(1000, 1500)
         assert e < 0.5
 
     def test_new_rating_win(self):
         """Winning increases rating."""
         from app.services.elo_service import EloService
+
         new = EloService.calculate_new_rating(1200, 0.5, 1.0)
         assert new > 1200
 
     def test_new_rating_loss(self):
         """Losing decreases rating."""
         from app.services.elo_service import EloService
+
         new = EloService.calculate_new_rating(1200, 0.5, 0.0)
         assert new < 1200
 
     def test_new_rating_draw(self):
         """Draw with equal expected keeps rating roughly same."""
         from app.services.elo_service import EloService
+
         new = EloService.calculate_new_rating(1200, 0.5, 0.5)
         assert new == 1200
 
@@ -241,9 +233,7 @@ class TestEloCalculation:
         """Challenge Elo updates both players' ratings."""
         from app.services.elo_service import EloService
 
-        new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            rating_a=1200, rating_b=1200, actual_score_a=1.0
-        )
+        new_a, new_b, change_a = EloService.calculate_challenge_elo(rating_a=1200, rating_b=1200, actual_score_a=1.0)
         assert new_a > 1200  # winner gains
         assert new_b < 1200  # loser loses
         assert change_a > 0
@@ -281,11 +271,13 @@ class TestEloQuitPenalty:
     def test_zero_submissions_no_penalty(self):
         """0 submissions = no penalty."""
         from app.services.elo_service import EloService
+
         assert EloService.calculate_quit_penalty(0) == 0
 
     def test_one_two_submissions_small_penalty(self):
         """1-2 submissions = small random penalty."""
         from app.services.elo_service import EloService
+
         for _ in range(10):
             penalty = EloService.calculate_quit_penalty(1)
             assert -10 <= penalty <= -5
@@ -296,6 +288,7 @@ class TestEloQuitPenalty:
     def test_three_plus_submissions_sentinel(self):
         """3+ submissions returns -1 (use normal loss)."""
         from app.services.elo_service import EloService
+
         assert EloService.calculate_quit_penalty(3) == -1
         assert EloService.calculate_quit_penalty(10) == -1
 
@@ -306,18 +299,21 @@ class TestEloContest:
     def test_contest_score_all_solved(self):
         """Solving all problems gives base_score 1.0."""
         from app.services.elo_service import EloService
+
         score = EloService.calculate_contest_score(4, 4, 1800.0, 5400.0)
         assert score > 0.5  # base_score = 1.0 + some time bonus
 
     def test_contest_score_none_solved(self):
         """Solving no problems gives base_score 0.0."""
         from app.services.elo_service import EloService
+
         score = EloService.calculate_contest_score(0, 4, 1800.0, 5400.0)
         assert score < 0.3  # base_score = 0.0 + small time bonus
 
     def test_contest_elo_gain_on_good_performance(self):
         """Good contest performance increases Elo."""
         from app.services.elo_service import EloService
+
         new_rating, elo_change = EloService.calculate_contest_elo(
             current_rating=1200,
             solved_problems=4,
@@ -331,6 +327,7 @@ class TestEloContest:
     def test_contest_elo_loss_on_poor_performance(self):
         """Poor contest performance decreases Elo."""
         from app.services.elo_service import EloService
+
         new_rating, elo_change = EloService.calculate_contest_elo(
             current_rating=1200,
             solved_problems=0,
@@ -347,14 +344,16 @@ class TestEloHistoryRecording:
 
     async def test_record_elo_history(self, db_session):
         """Elo history is recorded correctly."""
-        from app.services.elo_service import EloService, EloReason
+        from app.services.elo_service import EloReason, EloService
 
         user = await create_test_user(db_session)
         await db_session.commit()
 
         record = await EloService.record_elo_history(
-            db_session, user.id,
-            elo_before=1200, elo_after=1232,
+            db_session,
+            user.id,
+            elo_before=1200,
+            elo_after=1232,
             reason=EloReason.CHALLENGE_WIN,
             reference_id=uuid.uuid4(),
         )
@@ -382,6 +381,7 @@ class TestEloHistoryRecording:
         )
 
         from sqlalchemy import select
+
         stmt = select(EloHistory).where(EloHistory.reference_id == session_id)
         result = await db_session.execute(stmt)
         records = list(result.scalars().all())
@@ -411,9 +411,7 @@ class TestPPAndEloIntegration:
             session_id=uuid.uuid4(),
         )
         user_a.elo = new_a
-        await PPService.record_pp(
-            db_session, user_a.id, cf_problem_id="1000A", problem_rating=1500
-        )
+        await PPService.record_pp(db_session, user_a.id, cf_problem_id="1000A", problem_rating=1500)
 
         await db_session.refresh(user_a)
         assert user_a.elo > 1200  # Elo increased
@@ -421,7 +419,7 @@ class TestPPAndEloIntegration:
 
     async def test_multiple_solves_build_pp_progressively(self, db_session):
         """Solving multiple problems builds PP progressively with decay."""
-        from app.services.pp_service import PPService, PPConfig
+        from app.services.pp_service import PPConfig, PPService
 
         user = await create_test_user(db_session)
         await db_session.commit()
@@ -433,17 +431,13 @@ class TestPPAndEloIntegration:
         ratings = [1200, 1400, 1600, 1800, 2000]
         for i, rating in enumerate(ratings):
             pid = f"prob_{i}"
-            await PPService.record_pp(
-                db_session, user.id, cf_problem_id=pid, problem_rating=rating
-            )
+            await PPService.record_pp(db_session, user.id, cf_problem_id=pid, problem_rating=rating)
             pp_values.append(PPService.calculate_base_pp(rating, config))
 
         await db_session.refresh(user)
 
         # Verify PP is the aggregated total
-        expected_total = PPService.aggregate_total_pp(
-            sorted(pp_values, reverse=True), config
-        )
+        expected_total = PPService.aggregate_total_pp(sorted(pp_values, reverse=True), config)
         assert abs(user.pp - expected_total) < 0.1
 
         # Verify PP is positive
@@ -462,14 +456,10 @@ class TestPPAndEloIntegration:
         await db_session.commit()
 
         # User A solves a harder problem -> higher PP
-        await PPService.record_pp(
-            db_session, user_a.id, cf_problem_id="2000A", problem_rating=2000
-        )
+        await PPService.record_pp(db_session, user_a.id, cf_problem_id="2000A", problem_rating=2000)
 
         # User B solves an easier problem -> lower PP
-        await PPService.record_pp(
-            db_session, user_b.id, cf_problem_id="1000A", problem_rating=1000
-        )
+        await PPService.record_pp(db_session, user_b.id, cf_problem_id="1000A", problem_rating=1000)
 
         ranking, total = await PPService.get_pp_ranking(db_session)
         assert total >= 2

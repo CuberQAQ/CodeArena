@@ -143,13 +143,13 @@ PREDEFINED_TOPICS: list[dict] = [
 # ---------------------------------------------------------------------------
 
 _TOKEN_TIERS: list[tuple[int, int]] = [
-    (1200, 10),   # gray (800-1199)
-    (1400, 20),   # green (1200-1399)
-    (1600, 25),   # cyan (1400-1599)
-    (1900, 35),   # blue (1600-1899)
-    (2100, 45),   # purple (1900-2099)
-    (2400, 55),   # orange (2100-2399)
-    (9999, 65),   # red (2400+)
+    (1200, 10),  # gray (800-1199)
+    (1400, 20),  # green (1200-1399)
+    (1600, 25),  # cyan (1400-1599)
+    (1900, 35),  # blue (1600-1899)
+    (2100, 45),  # purple (1900-2099)
+    (2400, 55),  # orange (2100-2399)
+    (9999, 65),  # red (2400+)
 ]
 
 _STREAK_BONUS_PER_COUNT = 5
@@ -313,13 +313,10 @@ class TrainingService:
                     total_problems = len(problems)
 
                 # Count distinct solved problems for this user and topic
-                solved_stmt = (
-                    select(func.count(TrainingProblemRecord.id))
-                    .where(
-                        TrainingProblemRecord.user_id == user_id,
-                        TrainingProblemRecord.topic_id == topic.id,
-                        TrainingProblemRecord.solved.is_(True),
-                    )
+                solved_stmt = select(func.count(TrainingProblemRecord.id)).where(
+                    TrainingProblemRecord.user_id == user_id,
+                    TrainingProblemRecord.topic_id == topic.id,
+                    TrainingProblemRecord.solved.is_(True),
                 )
                 solved_result = await db.execute(solved_stmt)
                 solved_count = solved_result.scalar_one()
@@ -338,19 +335,21 @@ class TrainingService:
                 # Calculate stars based on M-Elo
                 stars = calculate_stars_from_melo(melo)
 
-            topic_infos.append(TopicInfo(
-                id=topic.id,
-                name=topic.name,
-                slug=topic.slug,
-                description=topic.description,
-                cf_tags=cf_tags,
-                display_order=topic.display_order,
-                total_problems=total_problems,
-                solved_count=solved_count,
-                stars=stars,
-                melo=melo,
-                shield_active=shield_active,
-            ))
+            topic_infos.append(
+                TopicInfo(
+                    id=topic.id,
+                    name=topic.name,
+                    slug=topic.slug,
+                    description=topic.description,
+                    cf_tags=cf_tags,
+                    display_order=topic.display_order,
+                    total_problems=total_problems,
+                    solved_count=solved_count,
+                    stars=stars,
+                    melo=melo,
+                    shield_active=shield_active,
+                )
+            )
 
         return topic_infos
 
@@ -408,18 +407,20 @@ class TrainingService:
             solved_info = solved_map.get(pid, {})
             contest_id = p.get("contestId", 0)
             index = p.get("index", "")
-            problem_infos.append(TopicProblemInfo(
-                problem_id=pid,
-                contest_id=contest_id,
-                index=index,
-                name=p.get("name", ""),
-                rating=p.get("rating"),
-                tags=p.get("tags", []),
-                url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
-                solved=solved_info.get("solved", False),
-                attempts=solved_info.get("attempts", 0),
-                time_spent=solved_info.get("time_spent"),
-            ))
+            problem_infos.append(
+                TopicProblemInfo(
+                    problem_id=pid,
+                    contest_id=contest_id,
+                    index=index,
+                    name=p.get("name", ""),
+                    rating=p.get("rating"),
+                    tags=p.get("tags", []),
+                    url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
+                    solved=solved_info.get("solved", False),
+                    attempts=solved_info.get("attempts", 0),
+                    time_spent=solved_info.get("time_spent"),
+                )
+            )
 
         solved_count = sum(1 for pi in problem_infos if pi.solved)
         total_problems = len(problem_infos)
@@ -500,22 +501,19 @@ class TrainingService:
             return None
 
         # 3. Build set of solved problem IDs for this user under this topic
-        solved_stmt = (
-            select(TrainingProblemRecord.problem_id)
-            .where(
-                TrainingProblemRecord.user_id == user.id,
-                TrainingProblemRecord.topic_id == topic_id,
-                TrainingProblemRecord.solved.is_(True),
-            )
+        solved_stmt = select(TrainingProblemRecord.problem_id).where(
+            TrainingProblemRecord.user_id == user.id,
+            TrainingProblemRecord.topic_id == topic_id,
+            TrainingProblemRecord.solved.is_(True),
         )
         solved_result = await db.execute(solved_stmt)
         solved_ids = set(solved_result.scalars().all())
 
         # 4. Filter to unsolved problems with a valid rating
         candidates = [
-            p for p in problems
-            if p.get("rating") is not None
-            and f"{p.get('contestId', '')}{p.get('index', '')}" not in solved_ids
+            p
+            for p in problems
+            if p.get("rating") is not None and f"{p.get('contestId', '')}{p.get('index', '')}" not in solved_ids
         ]
 
         if not candidates:
@@ -523,9 +521,9 @@ class TrainingService:
 
         # 5. Progressive range search with fallback
         range_rounds = [
-            (100, 200),   # base: [M-Elo - 100, M-Elo + 200]
-            (200, 300),   # round 1: [M-Elo - 200, M-Elo + 300]
-            (300, 400),   # round 2: [M-Elo - 300, M-Elo + 400]
+            (100, 200),  # base: [M-Elo - 100, M-Elo + 200]
+            (200, 300),  # round 1: [M-Elo - 200, M-Elo + 300]
+            (300, 400),  # round 2: [M-Elo - 300, M-Elo + 400]
         ]
 
         for low_offset, high_offset in range_rounds:
@@ -569,13 +567,10 @@ class TrainingService:
             raise NotFoundException(message="Topic not found")
 
         # Check for existing active session
-        active_stmt = (
-            select(TrainingSession)
-            .where(
-                TrainingSession.user_id == user.id,
-                TrainingSession.topic_id == topic_id,
-                TrainingSession.status == "active",
-            )
+        active_stmt = select(TrainingSession).where(
+            TrainingSession.user_id == user.id,
+            TrainingSession.topic_id == topic_id,
+            TrainingSession.status == "active",
         )
         active_result = await db.execute(active_stmt)
         active_session = active_result.scalar_one_or_none()
@@ -699,9 +694,7 @@ class TrainingService:
             raise BadRequestException(message="Training session is not active")
 
         # Get problem rating -- try from CF API or fallback
-        problem_rating = await TrainingService._get_problem_rating(
-            db, session.topic_id, problem_id, cf_service
-        )
+        problem_rating = await TrainingService._get_problem_rating(db, session.topic_id, problem_id, cf_service)
 
         # Check for existing record of this problem in this session
         existing_stmt = select(TrainingProblemRecord).where(
@@ -759,9 +752,7 @@ class TrainingService:
             # Calculate new streak bonus
             # Streak bonus = streak_count * 5, but capped at 50 per session
             # We need to check how much streak bonus has already been given
-            streak_tokens_stmt = select(
-                func.coalesce(func.sum(TokenTransaction.amount), 0)
-            ).where(
+            streak_tokens_stmt = select(func.coalesce(func.sum(TokenTransaction.amount), 0)).where(
                 TokenTransaction.user_id == user.id,
                 TokenTransaction.type == "streak_bonus",
                 TokenTransaction.reference_id == session_id,
@@ -794,8 +785,13 @@ class TrainingService:
 
             # Elo calculation with shield and polarization
             elo_result = await TrainingService._calculate_training_elo(
-                db, user, problem_rating, session_id,
-                topic_id=session.topic_id, solved=True, attempts=attempts,
+                db,
+                user,
+                problem_rating,
+                session_id,
+                topic_id=session.topic_id,
+                solved=True,
+                attempts=attempts,
                 problem_id=problem_id,
             )
             elo_change = elo_result["global_elo_change"]
@@ -810,8 +806,13 @@ class TrainingService:
 
             # Check shield for failure -- no Elo deduction if shield is active
             elo_result = await TrainingService._calculate_training_elo(
-                db, user, problem_rating, session_id,
-                topic_id=session.topic_id, solved=False, attempts=attempts,
+                db,
+                user,
+                problem_rating,
+                session_id,
+                topic_id=session.topic_id,
+                solved=False,
+                attempts=attempts,
                 problem_id=problem_id,
             )
             elo_change = elo_result["global_elo_change"]
@@ -824,20 +825,26 @@ class TrainingService:
                 ac_tokens_only = tokens_earned - streak_tokens
                 if ac_tokens_only > 0:
                     await economy_svc.award_tokens(
-                        db, user, ac_tokens_only,
+                        db,
+                        user,
+                        ac_tokens_only,
                         tx_type=token_type,
                         reference_type="training",
                         reference_id=session_id,
                     )
                 await economy_svc.award_tokens(
-                    db, user, streak_tokens,
+                    db,
+                    user,
+                    streak_tokens,
                     tx_type="streak_bonus",
                     reference_type="training",
                     reference_id=session_id,
                 )
             else:
                 await economy_svc.award_tokens(
-                    db, user, tokens_earned,
+                    db,
+                    user,
+                    tokens_earned,
                     tx_type=token_type,
                     reference_type="training",
                     reference_id=session_id,
@@ -848,7 +855,9 @@ class TrainingService:
                 time_bonus = economy_svc.time_bonus_for_rating(problem_rating)
                 if time_bonus > 0:
                     await economy_svc.award_tokens(
-                        db, user, time_bonus,
+                        db,
+                        user,
+                        time_bonus,
                         tx_type="time_bonus",
                         reference_type="training",
                         reference_id=session_id,
@@ -862,7 +871,8 @@ class TrainingService:
 
         if solved and problem_rating > 0:
             overkill_multiplier = PPService.calculate_overkill_multiplier(
-                user.elo, problem_rating,
+                user.elo,
+                problem_rating,
             )
             overkill_event = AchievementService.check_overkill(
                 user_elo=user.elo,
@@ -937,13 +947,15 @@ class TrainingService:
             # Shield active: no Elo deduction on abandon
             logger.info(
                 "Shield active for user=%s tag=%s -- skipping Elo deduction on abandon",
-                user.id, primary_tag,
+                user.id,
+                primary_tag,
             )
         else:
             # Apply quit penalty via _calculate_training_elo with solved=False
             # This uses the standard failure calculation with polarization coefficients
             elo_result = await TrainingService._calculate_training_elo(
-                db, user,
+                db,
+                user,
                 problem_rating=user.elo,  # Use user's Elo as baseline for quit penalty
                 session_id=session_id,
                 topic_id=session.topic_id,
@@ -1000,27 +1012,21 @@ class TrainingService:
             topic_total = len(problems)
 
             # Get solved count
-            solved_stmt = (
-                select(func.count(TrainingProblemRecord.id))
-                .where(
-                    TrainingProblemRecord.user_id == user_id,
-                    TrainingProblemRecord.topic_id == topic.id,
-                    TrainingProblemRecord.solved.is_(True),
-                )
+            solved_stmt = select(func.count(TrainingProblemRecord.id)).where(
+                TrainingProblemRecord.user_id == user_id,
+                TrainingProblemRecord.topic_id == topic.id,
+                TrainingProblemRecord.solved.is_(True),
             )
             solved_result = await db.execute(solved_stmt)
             solved_count = solved_result.scalar_one()
 
             # Get total attempts and time
-            agg_stmt = (
-                select(
-                    func.coalesce(func.sum(TrainingProblemRecord.attempts), 0),
-                    func.coalesce(func.sum(TrainingProblemRecord.time_spent), 0),
-                )
-                .where(
-                    TrainingProblemRecord.user_id == user_id,
-                    TrainingProblemRecord.topic_id == topic.id,
-                )
+            agg_stmt = select(
+                func.coalesce(func.sum(TrainingProblemRecord.attempts), 0),
+                func.coalesce(func.sum(TrainingProblemRecord.time_spent), 0),
+            ).where(
+                TrainingProblemRecord.user_id == user_id,
+                TrainingProblemRecord.topic_id == topic.id,
             )
             agg_result = await db.execute(agg_stmt)
             agg_row = agg_result.one()
@@ -1041,19 +1047,21 @@ class TrainingService:
                     melo = float(melo_rec.elo)
                     shield_active = melo_rec.first_ac_at is None
 
-            topic_progress_list.append(TopicProgress(
-                topic_id=topic.id,
-                topic_name=topic.name,
-                slug=topic.slug,
-                total_problems=topic_total,
-                solved_count=solved_count,
-                completion_rate=round(completion_rate, 2),
-                stars=calculate_stars_from_melo(melo),
-                total_attempts=total_attempts,
-                total_time_spent=total_time_spent or 0.0,
-                melo=melo,
-                shield_active=shield_active,
-            ))
+            topic_progress_list.append(
+                TopicProgress(
+                    topic_id=topic.id,
+                    topic_name=topic.name,
+                    slug=topic.slug,
+                    total_problems=topic_total,
+                    solved_count=solved_count,
+                    completion_rate=round(completion_rate, 2),
+                    stars=calculate_stars_from_melo(melo),
+                    total_attempts=total_attempts,
+                    total_time_spent=total_time_spent or 0.0,
+                    melo=melo,
+                    shield_active=shield_active,
+                )
+            )
 
             total_solved += solved_count
             total_problems += topic_total
@@ -1088,27 +1096,21 @@ class TrainingService:
         topic_total = len(problems)
 
         # Get solved count
-        solved_stmt = (
-            select(func.count(TrainingProblemRecord.id))
-            .where(
-                TrainingProblemRecord.user_id == user_id,
-                TrainingProblemRecord.topic_id == topic_id,
-                TrainingProblemRecord.solved.is_(True),
-            )
+        solved_stmt = select(func.count(TrainingProblemRecord.id)).where(
+            TrainingProblemRecord.user_id == user_id,
+            TrainingProblemRecord.topic_id == topic_id,
+            TrainingProblemRecord.solved.is_(True),
         )
         solved_result = await db.execute(solved_stmt)
         solved_count = solved_result.scalar_one()
 
         # Get total attempts and time
-        agg_stmt = (
-            select(
-                func.coalesce(func.sum(TrainingProblemRecord.attempts), 0),
-                func.coalesce(func.sum(TrainingProblemRecord.time_spent), 0),
-            )
-            .where(
-                TrainingProblemRecord.user_id == user_id,
-                TrainingProblemRecord.topic_id == topic_id,
-            )
+        agg_stmt = select(
+            func.coalesce(func.sum(TrainingProblemRecord.attempts), 0),
+            func.coalesce(func.sum(TrainingProblemRecord.time_spent), 0),
+        ).where(
+            TrainingProblemRecord.user_id == user_id,
+            TrainingProblemRecord.topic_id == topic_id,
         )
         agg_result = await db.execute(agg_stmt)
         agg_row = agg_result.one()
@@ -1238,9 +1240,7 @@ class TrainingService:
         """
         # Check existing records
         stmt = (
-            select(TrainingProblemRecord.problem_rating)
-            .where(TrainingProblemRecord.problem_id == problem_id)
-            .limit(1)
+            select(TrainingProblemRecord.problem_rating).where(TrainingProblemRecord.problem_id == problem_id).limit(1)
         )
         result = await db.execute(stmt)
         existing_rating = result.scalar_one_or_none()
@@ -1319,7 +1319,8 @@ class TrainingService:
         if not solved and shield_active:
             logger.info(
                 "Shield active for user=%s tag=%s -- skipping Elo deduction on failure",
-                user.id, primary_tag,
+                user.id,
+                primary_tag,
             )
             return {
                 "global_elo_change": None,
@@ -1332,7 +1333,8 @@ class TrainingService:
             await MEloService.deactivate_shield(db, user.id, primary_tag)
             logger.info(
                 "Shield deactivated for user=%s tag=%s on first AC",
-                user.id, primary_tag,
+                user.id,
+                primary_tag,
             )
 
         # --- Load configurable coefficients ---
@@ -1375,13 +1377,9 @@ class TrainingService:
             hint_level = await HintService.get_max_hint_level(db, user.id, problem_id)
             if hint_level > 0:
                 if global_elo_change > 0:
-                    global_elo_change = round(
-                        EloService.apply_hint_attenuation(float(global_elo_change), hint_level)
-                    )
+                    global_elo_change = round(EloService.apply_hint_attenuation(float(global_elo_change), hint_level))
                 if melo_change is not None and melo_change > 0:
-                    melo_change = round(
-                        EloService.apply_hint_attenuation(float(melo_change), hint_level)
-                    )
+                    melo_change = round(EloService.apply_hint_attenuation(float(melo_change), hint_level))
 
         # --- Apply Global Elo change ---
         if global_elo_change != 0:

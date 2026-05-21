@@ -107,7 +107,9 @@ async def db(async_engine):
     from app.services import contest_simulation_service as sim_svc_module
 
     session_factory = async_sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False,
+        async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
     )
 
     async with session_factory() as session:
@@ -208,7 +210,9 @@ class TestBotGeneration:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500,
+            db,
+            contest.id,
+            user_elo=1500,
         )
         assert len(bots) == 50
 
@@ -220,7 +224,10 @@ class TestBotGeneration:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=10,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=10,
         )
         assert len(bots) == 10
 
@@ -232,7 +239,10 @@ class TestBotGeneration:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=0,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=0,
         )
         assert bots == []
 
@@ -244,7 +254,11 @@ class TestBotGeneration:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=100, sigma=200,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=100,
+            sigma=200,
         )
         elos = [b.bot_elo for b in bots]
 
@@ -265,7 +279,10 @@ class TestBotGeneration:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=50,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=50,
         )
         names = [b.bot_name for b in bots]
         assert len(names) == len(set(names))
@@ -278,7 +295,10 @@ class TestBotGeneration:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=5,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=5,
         )
         for bot in bots:
             assert bot.problems_solved == 0
@@ -294,7 +314,11 @@ class TestBotGeneration:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=50, count=20, sigma=100,
+            db,
+            contest.id,
+            user_elo=50,
+            count=20,
+            sigma=100,
         )
         for bot in bots:
             assert bot.bot_elo >= 0
@@ -307,7 +331,10 @@ class TestBotGeneration:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=1,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=1,
         )
         assert len(bots) == 1
         assert bots[0].bot_elo > 0
@@ -329,7 +356,10 @@ class TestTickSimulation:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=20,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=20,
         )
         await db.commit()
 
@@ -351,7 +381,10 @@ class TestTickSimulation:
 
         # Generate many bots to increase chance of solves
         await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=100,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=100,
         )
         await db.commit()
 
@@ -384,7 +417,10 @@ class TestTickSimulation:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=2000, count=50,
+            db,
+            contest.id,
+            user_elo=2000,
+            count=50,
         )
         await db.commit()
 
@@ -407,7 +443,10 @@ class TestTickSimulation:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1800, count=30,
+            db,
+            contest.id,
+            user_elo=1800,
+            count=30,
         )
         await db.commit()
 
@@ -428,7 +467,10 @@ class TestTickSimulation:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=5,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=5,
         )
         await db.commit()
 
@@ -483,6 +525,7 @@ class TestDifficultyTiming:
     def test_zero_jitter(self):
         """Zero jitter means exact range values."""
         import random
+
         random.seed(42)
         ticks_values = set()
         for _ in range(100):
@@ -521,8 +564,12 @@ class TestSimulateBotTickSequential:
         # Run many ticks -- each should solve at most 1
         for _ in range(20):
             solved = ContestSimulationService._simulate_bot_tick(
-                bot, problems, time_factor=1.0, bot_state=bot_state,
-                difficulty_ticks=diff_ticks, jitter=0.0,
+                bot,
+                problems,
+                time_factor=1.0,
+                bot_state=bot_state,
+                difficulty_ticks=diff_ticks,
+                jitter=0.0,
             )
             assert len(solved) <= 1
 
@@ -540,8 +587,12 @@ class TestSimulateBotTickSequential:
         diff_ticks = {"easy": [1, 1], "medium": [1, 1], "hard": [1, 1]}
 
         ContestSimulationService._simulate_bot_tick(
-            bot, problems, time_factor=1.0, bot_state=bot_state,
-            difficulty_ticks=diff_ticks, jitter=0.0,
+            bot,
+            problems,
+            time_factor=1.0,
+            bot_state=bot_state,
+            difficulty_ticks=diff_ticks,
+            jitter=0.0,
         )
 
         # Bot should have selected the easiest problem
@@ -558,8 +609,12 @@ class TestSimulateBotTickSequential:
 
         # First tick: bot picks problem, starts working
         ContestSimulationService._simulate_bot_tick(
-            bot, problems, time_factor=1.0, bot_state=bot_state,
-            difficulty_ticks=diff_ticks, jitter=0.0,
+            bot,
+            problems,
+            time_factor=1.0,
+            bot_state=bot_state,
+            difficulty_ticks=diff_ticks,
+            jitter=0.0,
         )
         # Should be working on the hard problem, 2 ticks remaining
         assert bot_state["current_problem"] == "hard"
@@ -567,16 +622,24 @@ class TestSimulateBotTickSequential:
 
         # Second tick: still working
         solved = ContestSimulationService._simulate_bot_tick(
-            bot, problems, time_factor=1.0, bot_state=bot_state,
-            difficulty_ticks=diff_ticks, jitter=0.0,
+            bot,
+            problems,
+            time_factor=1.0,
+            bot_state=bot_state,
+            difficulty_ticks=diff_ticks,
+            jitter=0.0,
         )
         assert len(solved) == 0
         assert bot_state["ticks_remaining"] == 1
 
         # Third tick: P(AC) roll happens
         solved = ContestSimulationService._simulate_bot_tick(
-            bot, problems, time_factor=1.0, bot_state=bot_state,
-            difficulty_ticks=diff_ticks, jitter=0.0,
+            bot,
+            problems,
+            time_factor=1.0,
+            bot_state=bot_state,
+            difficulty_ticks=diff_ticks,
+            jitter=0.0,
         )
         # Either solved or not (depends on random), but no more ticks remaining
         assert bot_state["ticks_remaining"] == 0
@@ -593,16 +656,24 @@ class TestSimulateBotTickSequential:
 
         # Tick 1: solve p1
         ContestSimulationService._simulate_bot_tick(
-            bot, problems, time_factor=1.0, bot_state=bot_state,
-            difficulty_ticks=diff_ticks, jitter=0.0,
+            bot,
+            problems,
+            time_factor=1.0,
+            bot_state=bot_state,
+            difficulty_ticks=diff_ticks,
+            jitter=0.0,
         )
         # p1 may or may not be solved (depends on random), but bot should move on
 
         # Run enough ticks to potentially solve both
         for _ in range(5):
             ContestSimulationService._simulate_bot_tick(
-                bot, problems, time_factor=1.0, bot_state=bot_state,
-                difficulty_ticks=diff_ticks, jitter=0.0,
+                bot,
+                problems,
+                time_factor=1.0,
+                bot_state=bot_state,
+                difficulty_ticks=diff_ticks,
+                jitter=0.0,
             )
 
         # Bot should have solved at most 2 problems
@@ -618,7 +689,10 @@ class TestSimulateBotTickSequential:
         bot_state: dict = {"current_problem": None, "ticks_remaining": 0}
 
         solved = ContestSimulationService._simulate_bot_tick(
-            bot, problems, time_factor=1.0, bot_state=bot_state,
+            bot,
+            problems,
+            time_factor=1.0,
+            bot_state=bot_state,
         )
         assert solved == []
 
@@ -633,8 +707,12 @@ class TestSimulateBotTickSequential:
 
         # First tick: bot picks problem, starts working
         solved = ContestSimulationService._simulate_bot_tick(
-            bot, problems, time_factor=1.0, bot_state=bot_state,
-            difficulty_ticks=diff_ticks, jitter=0.0,
+            bot,
+            problems,
+            time_factor=1.0,
+            bot_state=bot_state,
+            difficulty_ticks=diff_ticks,
+            jitter=0.0,
         )
         assert len(solved) == 0  # Not enough ticks yet
         assert bot_state["ticks_remaining"] == 4  # 5 - 1 = 4
@@ -703,7 +781,9 @@ class TestLeaderboard:
         await db.flush()
 
         leaderboard = await ContestSimulationService.build_leaderboard(
-            db, contest.id, user,
+            db,
+            contest.id,
+            user,
         )
         human_entries = [e for e in leaderboard.leaderboard if not e.is_bot]
         assert len(human_entries) == 1
@@ -721,12 +801,17 @@ class TestLeaderboard:
         await db.flush()
 
         await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=10,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=10,
         )
         await db.commit()
 
         leaderboard = await ContestSimulationService.build_leaderboard(
-            db, contest.id, user,
+            db,
+            contest.id,
+            user,
         )
         bot_entries = [e for e in leaderboard.leaderboard if e.is_bot]
         assert len(bot_entries) == 10
@@ -741,7 +826,10 @@ class TestLeaderboard:
         await db.flush()
 
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=5,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=5,
         )
         # Manually set some bots to have solved problems
         bots[0].problems_solved = 5
@@ -753,7 +841,9 @@ class TestLeaderboard:
         await db.flush()
 
         leaderboard = await ContestSimulationService.build_leaderboard(
-            db, contest.id, user,
+            db,
+            contest.id,
+            user,
         )
 
         # First entry should have most solved
@@ -776,7 +866,9 @@ class TestLeaderboard:
         await db.flush()
 
         leaderboard = await ContestSimulationService.build_leaderboard(
-            db, contest.id, user,
+            db,
+            contest.id,
+            user,
         )
         assert leaderboard.time_total == 90
         assert leaderboard.time_elapsed >= 0
@@ -789,7 +881,9 @@ class TestLeaderboard:
         await db.flush()
 
         leaderboard = await ContestSimulationService.build_leaderboard(
-            db, uuid.uuid4(), user,
+            db,
+            uuid.uuid4(),
+            user,
         )
         assert leaderboard.leaderboard == []
 
@@ -865,7 +959,10 @@ class TestSimulationIntegration:
 
         # Generate bots
         bots = await ContestSimulationService.generate_bots(
-            db, contest.id, user_elo=1500, count=20,
+            db,
+            contest.id,
+            user_elo=1500,
+            count=20,
         )
         await db.commit()
         assert len(bots) == 20
@@ -881,7 +978,9 @@ class TestSimulationIntegration:
 
         # Build leaderboard
         leaderboard = await ContestSimulationService.build_leaderboard(
-            db, contest.id, user,
+            db,
+            contest.id,
+            user,
         )
 
         # Should have 21 entries (1 human + 20 bots)
@@ -950,7 +1049,9 @@ class TestActualRankSmooth:
         problem_ratings = [1500, 1500, 1500, 1500, 1500]
         # Bot expected solved: ~2.5 each at 1500 vs 1500 -> all < 5
         rank = ContestSimulationService.calculate_actual_rank_smooth(
-            5, bot_elos, problem_ratings,
+            5,
+            bot_elos,
+            problem_ratings,
         )
         assert rank == 1.0
 
@@ -960,7 +1061,9 @@ class TestActualRankSmooth:
         problem_ratings = [1000, 1000, 1000]
         # Bot expected solved: ~3 each (P(AC)~1 for 2000 vs 1000) -> all > 0
         rank = ContestSimulationService.calculate_actual_rank_smooth(
-            0, bot_elos, problem_ratings,
+            0,
+            bot_elos,
+            problem_ratings,
         )
         assert rank == 4.0  # 3 bots ahead + 1
 
@@ -970,7 +1073,9 @@ class TestActualRankSmooth:
         problem_ratings = [1500, 1500, 1500]
         for ps in range(6):
             rank = ContestSimulationService.calculate_actual_rank_smooth(
-                ps, bot_elos, problem_ratings,
+                ps,
+                bot_elos,
+                problem_ratings,
             )
             assert 1.0 <= rank <= 5.0
 
@@ -982,7 +1087,10 @@ class TestExpectedRank:
         """High Elo player should have low expected rank (close to 1)."""
         problem_ratings = [800, 800, 800, 800, 800]
         rank = ContestSimulationService.calculate_expected_rank(
-            3000, [1000, 1000, 1000], problem_ratings, 5,
+            3000,
+            [1000, 1000, 1000],
+            problem_ratings,
+            5,
         )
         # Player at 3000 expects ~5, bots at 1000 expect ~3.8 each
         # No bot beats player -> rank = 1
@@ -992,7 +1100,10 @@ class TestExpectedRank:
         """Low Elo player should have high expected rank."""
         problem_ratings = [2000, 2000, 2000, 2000, 2000]
         rank = ContestSimulationService.calculate_expected_rank(
-            500, [2000, 2000, 2000], problem_ratings, 0,
+            500,
+            [2000, 2000, 2000],
+            problem_ratings,
+            0,
         )
         # Player at 500 expects very little, bots at 2000 expect ~2.5 each
         # All bots beat player -> rank = 4
@@ -1002,7 +1113,10 @@ class TestExpectedRank:
         """Player and bots at same level -> rank around middle."""
         problem_ratings = [1500, 1500, 1500, 1500, 1500]
         rank = ContestSimulationService.calculate_expected_rank(
-            1500, [1500, 1500, 1500, 1500], problem_ratings, 2,
+            1500,
+            [1500, 1500, 1500, 1500],
+            problem_ratings,
+            2,
         )
         # At elo=1500, player expects 2.5, each bot also 2.5 -> tied
         # No bot has strictly more -> rank = 1
@@ -1011,14 +1125,20 @@ class TestExpectedRank:
     def test_no_problems(self):
         """No problems -> expected rank is 1."""
         rank = ContestSimulationService.calculate_expected_rank(
-            1500, [1500, 1500], [], 0,
+            1500,
+            [1500, 1500],
+            [],
+            0,
         )
         assert rank == 1.0
 
     def test_no_bots(self):
         """No bots -> expected rank is 1."""
         rank = ContestSimulationService.calculate_expected_rank(
-            1500, [], [1500, 1500], 2,
+            1500,
+            [],
+            [1500, 1500],
+            2,
         )
         assert rank == 1.0
 
@@ -1049,7 +1169,9 @@ class TestPerformanceRating:
         await db.flush()
 
         pr = await ContestSimulationService.calculate_performance_rating(
-            db, contest.id, player_solved=5,
+            db,
+            contest.id,
+            player_solved=5,
         )
         # Player solved 5 (all), no bot expects > 5 solves at these Elo levels
         # PR should be near or above the highest bot Elo (1650)
@@ -1078,7 +1200,9 @@ class TestPerformanceRating:
         await db.flush()
 
         pr = await ContestSimulationService.calculate_performance_rating(
-            db, contest.id, player_solved=0,
+            db,
+            contest.id,
+            player_solved=0,
         )
         # Player solved 0 -> all bots expected to have more solves -> very low PR
         assert pr < 1200
@@ -1094,9 +1218,14 @@ class TestPerformanceRating:
 
         # Create bots with varied Elo and solved counts
         bot_data = [
-            (1500, 5), (1600, 4), (1400, 4),
-            (1550, 3), (1450, 3),
-            (1500, 2), (1350, 1), (1600, 0),
+            (1500, 5),
+            (1600, 4),
+            (1400, 4),
+            (1550, 3),
+            (1450, 3),
+            (1500, 2),
+            (1350, 1),
+            (1600, 0),
         ]
         for i, (elo, solved) in enumerate(bot_data):
             bot = _TestContestBot(
@@ -1111,7 +1240,9 @@ class TestPerformanceRating:
         await db.flush()
 
         pr = await ContestSimulationService.calculate_performance_rating(
-            db, contest.id, player_solved=3,
+            db,
+            contest.id,
+            player_solved=3,
         )
         # Player solved 3, which is middle of pack
         # PR should be somewhere in the reasonable range [1000, 2000]
@@ -1139,7 +1270,9 @@ class TestPerformanceRating:
         await db.flush()
 
         pr = await ContestSimulationService.calculate_performance_rating(
-            db, contest.id, player_solved=0,
+            db,
+            contest.id,
+            player_solved=0,
         )
         assert 0 <= pr <= 4000
 
@@ -1153,7 +1286,9 @@ class TestPerformanceRating:
         await db.flush()
 
         pr = await ContestSimulationService.calculate_performance_rating(
-            db, contest.id, player_solved=3,
+            db,
+            contest.id,
+            player_solved=3,
         )
         # Should still return a valid PR
         assert 0 <= pr <= 4000
@@ -1181,7 +1316,9 @@ class TestPerformanceRating:
         await db.flush()
 
         pr = await ContestSimulationService.calculate_performance_rating(
-            db, contest.id, player_solved=3,
+            db,
+            contest.id,
+            player_solved=3,
         )
         # Player solved more than bot -> PR should be reasonable
         assert pr > 0
@@ -1198,7 +1335,9 @@ class TestPerformanceRatingConvergence:
         player_solved = 3
 
         actual_rank = ContestSimulationService.calculate_actual_rank_smooth(
-            player_solved, bot_elos, problem_ratings,
+            player_solved,
+            bot_elos,
+            problem_ratings,
         )
 
         lo, hi = 0, 4000
@@ -1206,7 +1345,10 @@ class TestPerformanceRatingConvergence:
         while hi - lo > 1:
             mid = (lo + hi) // 2
             expected_rank = ContestSimulationService.calculate_expected_rank(
-                mid, bot_elos, problem_ratings, player_solved,
+                mid,
+                bot_elos,
+                problem_ratings,
+                player_solved,
             )
             if expected_rank <= actual_rank:
                 hi = mid
@@ -1225,8 +1367,10 @@ class TestEstimatePrNoBots:
     def test_full_solve(self):
         """Full solve -> PR higher than average rating."""
         problems = [
-            {"rating": 1000}, {"rating": 1200},
-            {"rating": 1400}, {"rating": 1600},
+            {"rating": 1000},
+            {"rating": 1200},
+            {"rating": 1400},
+            {"rating": 1600},
             {"rating": 1800},
         ]
         pr = ContestSimulationService._estimate_pr_no_bots(5, problems)
@@ -1249,8 +1393,10 @@ class TestEstimatePrNoBots:
     def test_half_solve(self):
         """Half solve -> PR at average rating."""
         problems = [
-            {"rating": 1000}, {"rating": 1500},
-            {"rating": 2000}, {"rating": 2500},
+            {"rating": 1000},
+            {"rating": 1500},
+            {"rating": 2000},
+            {"rating": 2500},
         ]
         pr = ContestSimulationService._estimate_pr_no_bots(2, problems)
         # avg = 1750, solve_ratio = 0.5 -> PR = 1750 * (0.5 + 0.5) = 1750
@@ -1363,7 +1509,9 @@ class TestPrEloSettlement:
         await db.flush()
 
         pr = await ContestSimulationService.calculate_performance_rating(
-            db, contest.id, player_solved=4,
+            db,
+            contest.id,
+            player_solved=4,
         )
 
         # PR should be reasonable for 4/5 solved

@@ -121,9 +121,7 @@ async def get_elo_history(
 ):
     """Return the authenticated user's Elo rating history."""
     result = await db.execute(
-        select(EloHistory)
-        .where(EloHistory.user_id == current_user.id)
-        .order_by(EloHistory.created_at.asc())
+        select(EloHistory).where(EloHistory.user_id == current_user.id).order_by(EloHistory.created_at.asc())
     )
     records = result.scalars().all()
     return success_response(
@@ -157,15 +155,17 @@ async def get_global_leaderboard(
 
     leaderboard = []
     for i, user in enumerate(users, 1):
-        leaderboard.append({
-            "id": str(user.id),
-            "username": user.username,
-            "cf_handle": user.cf_handle,
-            "elo": user.elo,
-            "pp": user.pp,
-            "tokens": user.tokens,
-            "rank": i,
-        })
+        leaderboard.append(
+            {
+                "id": str(user.id),
+                "username": user.username,
+                "cf_handle": user.cf_handle,
+                "elo": user.elo,
+                "pp": user.pp,
+                "tokens": user.tokens,
+                "rank": i,
+            }
+        )
 
     return success_response(
         data=leaderboard,
@@ -181,10 +181,7 @@ async def get_pp_contributions(
 ):
     """Return the authenticated user's top PP contributions."""
     result = await db.execute(
-        select(PPRecord)
-        .where(PPRecord.user_id == current_user.id)
-        .order_by(PPRecord.base_pp.desc())
-        .limit(limit)
+        select(PPRecord).where(PPRecord.user_id == current_user.id).order_by(PPRecord.base_pp.desc()).limit(limit)
     )
     records = result.scalars().all()
     return success_response(

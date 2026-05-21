@@ -8,14 +8,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.token_transaction import TokenTransaction
 
 from .conftest import (
     create_test_user,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -32,9 +30,7 @@ class TestTokenAward:
         user = await create_test_user(db_session, tokens=0)
         await db_session.commit()
 
-        awarded = await economy_service.award_tokens(
-            db_session, user, amount=10, tx_type="test_reward"
-        )
+        awarded = await economy_service.award_tokens(db_session, user, amount=10, tx_type="test_reward")
         assert awarded == 10
         assert user.tokens == 10
         assert user.daily_tokens_earned == 10
@@ -47,11 +43,16 @@ class TestTokenAward:
         await db_session.commit()
 
         await economy_service.award_tokens(
-            db_session, user, amount=20, tx_type="challenge_reward",
-            reference_type="challenge_session", reference_id=uuid.uuid4(),
+            db_session,
+            user,
+            amount=20,
+            tx_type="challenge_reward",
+            reference_type="challenge_session",
+            reference_id=uuid.uuid4(),
         )
 
         from sqlalchemy import select as sel
+
         stmt = sel(TokenTransaction).where(TokenTransaction.user_id == user.id)
         result = await db_session.execute(stmt)
         txns = list(result.scalars().all())
@@ -69,15 +70,11 @@ class TestTokenAward:
 
         # Award up to the cap
         cap = economy_service.DAILY_TOKEN_CAP
-        awarded_first = await economy_service.award_tokens(
-            db_session, user, amount=cap, tx_type="test_reward"
-        )
+        awarded_first = await economy_service.award_tokens(db_session, user, amount=cap, tx_type="test_reward")
         assert awarded_first == cap
 
         # Try to award more -- should get 0
-        awarded_second = await economy_service.award_tokens(
-            db_session, user, amount=10, tx_type="test_reward"
-        )
+        awarded_second = await economy_service.award_tokens(db_session, user, amount=10, tx_type="test_reward")
         assert awarded_second == 0
         assert user.tokens == cap
 
@@ -91,14 +88,10 @@ class TestTokenAward:
         cap = economy_service.DAILY_TOKEN_CAP
 
         # Award most of the cap
-        await economy_service.award_tokens(
-            db_session, user, amount=cap - 5, tx_type="test_reward"
-        )
+        await economy_service.award_tokens(db_session, user, amount=cap - 5, tx_type="test_reward")
 
         # Try to award 10 more -- only 5 should be awarded
-        awarded = await economy_service.award_tokens(
-            db_session, user, amount=10, tx_type="test_reward"
-        )
+        awarded = await economy_service.award_tokens(db_session, user, amount=10, tx_type="test_reward")
         assert awarded == 5
         assert user.tokens == cap
 
@@ -126,9 +119,7 @@ class TestTokenSpend:
         user = await create_test_user(db_session, tokens=50)
         await db_session.commit()
 
-        spent = await economy_service.spend_tokens(
-            db_session, user, amount=10, tx_type="hint_purchase"
-        )
+        spent = await economy_service.spend_tokens(db_session, user, amount=10, tx_type="hint_purchase")
         assert spent == 10
         assert user.tokens == 40
 
@@ -139,11 +130,10 @@ class TestTokenSpend:
         user = await create_test_user(db_session, tokens=50)
         await db_session.commit()
 
-        await economy_service.spend_tokens(
-            db_session, user, amount=15, tx_type="hint_purchase"
-        )
+        await economy_service.spend_tokens(db_session, user, amount=15, tx_type="hint_purchase")
 
         from sqlalchemy import select as sel
+
         stmt = sel(TokenTransaction).where(TokenTransaction.user_id == user.id)
         result = await db_session.execute(stmt)
         txns = list(result.scalars().all())
@@ -159,9 +149,7 @@ class TestTokenSpend:
         await db_session.commit()
 
         with pytest.raises(Exception, match="Insufficient tokens"):
-            await economy_service.spend_tokens(
-                db_session, user, amount=10, tx_type="hint_purchase"
-            )
+            await economy_service.spend_tokens(db_session, user, amount=10, tx_type="hint_purchase")
 
     async def test_spend_zero_or_negative_fails(self, db_session):
         """Spending 0 or negative tokens raises BadRequestException."""
@@ -188,9 +176,7 @@ class TestDailyReset:
         await db_session.commit()
 
         # Award some tokens
-        await economy_service.award_tokens(
-            db_session, user, amount=50, tx_type="test_reward"
-        )
+        await economy_service.award_tokens(db_session, user, amount=50, tx_type="test_reward")
         assert user.daily_tokens_earned == 50
 
         # Simulate next day by setting reset_at to yesterday
@@ -211,9 +197,7 @@ class TestDailyReset:
         cap = economy_service.DAILY_TOKEN_CAP
 
         # Fill the cap
-        await economy_service.award_tokens(
-            db_session, user, amount=cap, tx_type="test_reward"
-        )
+        await economy_service.award_tokens(db_session, user, amount=cap, tx_type="test_reward")
         assert user.daily_tokens_earned == cap
 
         # Simulate next day
@@ -221,9 +205,7 @@ class TestDailyReset:
         await db_session.flush()
 
         # Award again -- should work after reset
-        awarded = await economy_service.award_tokens(
-            db_session, user, amount=10, tx_type="test_reward"
-        )
+        awarded = await economy_service.award_tokens(db_session, user, amount=10, tx_type="test_reward")
         assert awarded == 10
 
 
@@ -256,20 +238,14 @@ class TestGetTransactions:
 
         # Create several transactions
         for i in range(5):
-            await economy_service.award_tokens(
-                db_session, user, amount=10, tx_type=f"test_type_{i}"
-            )
+            await economy_service.award_tokens(db_session, user, amount=10, tx_type=f"test_type_{i}")
 
-        items, total = await economy_service.get_transactions(
-            db_session, user.id, limit=3, offset=0
-        )
+        items, total = await economy_service.get_transactions(db_session, user.id, limit=3, offset=0)
         assert total == 5
         assert len(items) == 3
 
         # Second page
-        items2, _ = await economy_service.get_transactions(
-            db_session, user.id, limit=3, offset=3
-        )
+        items2, _ = await economy_service.get_transactions(db_session, user.id, limit=3, offset=3)
         assert len(items2) == 2
 
 
@@ -283,12 +259,8 @@ class TestGetDailyStatus:
         user = await create_test_user(db_session, tokens=0)
         await db_session.commit()
 
-        await economy_service.award_tokens(
-            db_session, user, amount=10, tx_type="challenge_reward"
-        )
-        await economy_service.award_tokens(
-            db_session, user, amount=5, tx_type="training_reward"
-        )
+        await economy_service.award_tokens(db_session, user, amount=10, tx_type="challenge_reward")
+        await economy_service.award_tokens(db_session, user, amount=5, tx_type="training_reward")
 
         status = await economy_service.get_daily_status(db_session, user)
         assert status["daily_tokens_earned"] == 15
@@ -303,41 +275,48 @@ class TestTokenTiers:
     def test_tokens_for_rating_gray(self):
         """Rating 800-1199 gives gray tier (10 tokens)."""
         from app.services.economy_service import tokens_for_rating
+
         assert tokens_for_rating(800) == 10
         assert tokens_for_rating(1000) == 10
 
     def test_tokens_for_rating_green(self):
         """Rating 1200-1399 gives green tier (20 tokens)."""
         from app.services.economy_service import tokens_for_rating
+
         assert tokens_for_rating(1200) == 20
         assert tokens_for_rating(1300) == 20
 
     def test_tokens_for_rating_cyan(self):
         """Rating 1400-1599 gives cyan tier (25 tokens)."""
         from app.services.economy_service import tokens_for_rating
+
         assert tokens_for_rating(1400) == 25
         assert tokens_for_rating(1500) == 25
 
     def test_tokens_for_rating_blue(self):
         """Rating 1600-1899 gives blue tier (35 tokens)."""
         from app.services.economy_service import tokens_for_rating
+
         assert tokens_for_rating(1600) == 35
         assert tokens_for_rating(1800) == 35
 
     def test_tokens_for_rating_purple(self):
         """Rating 1900-2099 gives purple tier (45 tokens)."""
         from app.services.economy_service import tokens_for_rating
+
         assert tokens_for_rating(1900) == 45
         assert tokens_for_rating(2000) == 45
 
     def test_tokens_for_rating_orange(self):
         """Rating 2100-2399 gives orange tier (55 tokens)."""
         from app.services.economy_service import tokens_for_rating
+
         assert tokens_for_rating(2100) == 55
         assert tokens_for_rating(2250) == 55
 
     def test_tokens_for_rating_red(self):
         """Rating 2400+ gives red tier (65 tokens)."""
         from app.services.economy_service import tokens_for_rating
+
         assert tokens_for_rating(2400) == 65
         assert tokens_for_rating(3000) == 65

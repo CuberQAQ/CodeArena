@@ -141,7 +141,11 @@ class SubmissionTracker:
 
         logger.info(
             "Registered pending submission: id=%s user=%s session=%s/%s problem=%s",
-            record.id, user_id, session_type, session_id, problem_id,
+            record.id,
+            user_id,
+            session_type,
+            session_id,
+            problem_id,
         )
         return record
 
@@ -172,11 +176,7 @@ class SubmissionTracker:
             Number of records that were matched and are ready for settlement.
         """
         # Find all users with pending records.
-        user_stmt = (
-            select(SubmissionTracking.user_id)
-            .where(SubmissionTracking.status == "pending")
-            .distinct()
-        )
+        user_stmt = select(SubmissionTracking.user_id).where(SubmissionTracking.status == "pending").distinct()
         result = await db.execute(user_stmt)
         user_ids = [row[0] for row in result.all()]
 
@@ -188,12 +188,15 @@ class SubmissionTracker:
         for user_id in user_ids:
             try:
                 matched = await SubmissionTracker._poll_for_user(
-                    db, cf_service, user_id,
+                    db,
+                    cf_service,
+                    user_id,
                 )
                 matched_count += matched
             except Exception:
                 logger.exception(
-                    "Error polling submissions for user %s", user_id,
+                    "Error polling submissions for user %s",
+                    user_id,
                 )
 
         return matched_count
@@ -242,14 +245,18 @@ class SubmissionTracker:
             label = _VERDICT_LABEL.get(verdict, verdict)
             logger.info(
                 "Matched submission %d for tracking %s: verdict=%s",
-                submission_id, tracking.id, label,
+                submission_id,
+                tracking.id,
+                label,
             )
             return True
 
         # Non-final verdict -- record the CF submission ID but keep pending.
         logger.debug(
             "Partial match for tracking %s: cf_submission=%d verdict=%s (not final)",
-            tracking.id, submission_id, verdict,
+            tracking.id,
+            submission_id,
+            verdict,
         )
         await db.flush()
         return False
@@ -274,10 +281,7 @@ class SubmissionTracker:
         int
             Number of records settled.
         """
-        stmt = (
-            select(SubmissionTracking)
-            .where(SubmissionTracking.status == "matched")
-        )
+        stmt = select(SubmissionTracking).where(SubmissionTracking.status == "matched")
         result = await db.execute(stmt)
         matched_records = list(result.scalars().all())
 
@@ -291,7 +295,8 @@ class SubmissionTracker:
                 settled_count += 1
             except Exception:
                 logger.exception(
-                    "Error settling tracking record %s", record.id,
+                    "Error settling tracking record %s",
+                    record.id,
                 )
 
         return settled_count
@@ -380,13 +385,10 @@ class SubmissionTracker:
             return 0
 
         # Fetch pending records for this user.
-        pending_stmt = (
-            select(SubmissionTracking)
-            .where(
-                and_(
-                    SubmissionTracking.user_id == user_id,
-                    SubmissionTracking.status == "pending",
-                )
+        pending_stmt = select(SubmissionTracking).where(
+            and_(
+                SubmissionTracking.user_id == user_id,
+                SubmissionTracking.status == "pending",
             )
         )
         pending_result = await db.execute(pending_stmt)
@@ -403,7 +405,8 @@ class SubmissionTracker:
             )
         except Exception:
             logger.warning(
-                "CF API error fetching submissions for %s", user.cf_handle,
+                "CF API error fetching submissions for %s",
+                user.cf_handle,
             )
             return 0
 
@@ -414,11 +417,14 @@ class SubmissionTracker:
 
         for tracking in pending_records:
             cf_sub = SubmissionTracker._find_matching_submission(
-                tracking, cf_submissions,
+                tracking,
+                cf_submissions,
             )
             if cf_sub is not None:
                 did_match = await SubmissionTracker.match_and_update(
-                    db, tracking, cf_sub,
+                    db,
+                    tracking,
+                    cf_sub,
                 )
                 if did_match:
                     matched_count += 1
@@ -495,8 +501,11 @@ class SubmissionTracker:
 
         logger.info(
             "Settling tracking %s: session=%s/%s verdict=%s solved=%s",
-            tracking.id, tracking.session_type, tracking.session_id,
-            verdict, is_solved,
+            tracking.id,
+            tracking.session_type,
+            tracking.session_id,
+            verdict,
+            is_solved,
         )
 
         # For now, settlement dispatches based on session_type.
@@ -506,24 +515,37 @@ class SubmissionTracker:
         try:
             if tracking.session_type == "pve":
                 await SubmissionTracker._settle_pve(
-                    db, tracking, is_solved, verdict,
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
                 )
             elif tracking.session_type == "training":
                 await SubmissionTracker._settle_training(
-                    db, tracking, is_solved, verdict,
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
                 )
             elif tracking.session_type == "contest":
                 await SubmissionTracker._settle_contest(
-                    db, tracking, is_solved, verdict,
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
                 )
             elif tracking.session_type == "pvp":
                 await SubmissionTracker._settle_pvp(
-                    db, tracking, is_solved, verdict,
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
                 )
             else:
                 logger.warning(
                     "Unknown session type %s for tracking %s",
-                    tracking.session_type, tracking.id,
+                    tracking.session_type,
+                    tracking.id,
                 )
         except Exception:
             logger.exception(

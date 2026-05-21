@@ -531,12 +531,7 @@ class TestAggregateTotalPP:
         """Various ratings produce correct weighted sum."""
         # base_pp for ratings: 900=>10, 1200=>20, 1500=>~26.46, 2000=>~34.64
         values = [34.64, 26.46, 20.0, 10.0]
-        expected = (
-            34.64 * 0.95**0
-            + 26.46 * 0.95**1
-            + 20.0 * 0.95**2
-            + 10.0 * 0.95**3
-        )
+        expected = 34.64 * 0.95**0 + 26.46 * 0.95**1 + 20.0 * 0.95**2 + 10.0 * 0.95**3
         result = PPService.aggregate_total_pp(values)
         assert result == pytest.approx(round(expected, 2), abs=0.01)
 
@@ -566,9 +561,7 @@ class TestRecordPP:
     async def test_create_record_with_performance_data(self, db: AsyncSession):
         uid = await _create_user(db, "alice")
 
-        record = await PPService.record_pp(
-            db, uid, "1234A", 1500, wa_count=5, time_spent=30.0
-        )
+        record = await PPService.record_pp(db, uid, "1234A", 1500, wa_count=5, time_spent=30.0)
         await db.flush()
 
         base_pp = PPService.calculate_base_pp(1500)
@@ -712,7 +705,7 @@ class TestCalculateUserTotalPP:
         uid = await _create_user(db, "alice")
         await _create_pp_record(db, uid, "1234A", 1200)  # 20 PP
         await _create_pp_record(db, uid, "5678B", 1500)  # ~26.46 PP
-        await _create_pp_record(db, uid, "9012C", 900)   # 10 PP
+        await _create_pp_record(db, uid, "9012C", 900)  # 10 PP
 
         result = await PPService.calculate_user_total_pp(db, uid)
 
@@ -732,8 +725,12 @@ class TestCalculateUserTotalPP:
         pf = PPService.calculate_performance_factor(5, 30.0)  # 0.595
         final_pp = base_pp * pf  # 11.9
         await _create_pp_record(
-            db, uid, "1234A", 1200,
-            wa_count=5, time_spent_minutes=30.0,
+            db,
+            uid,
+            "1234A",
+            1200,
+            wa_count=5,
+            time_spent_minutes=30.0,
             performance_factor=pf,
         )
 
@@ -746,7 +743,10 @@ class TestCalculateUserTotalPP:
 
         # Problem A: rating 1200, perfect => final_pp = 20.0
         await _create_pp_record(
-            db, uid, "1234A", 1200,
+            db,
+            uid,
+            "1234A",
+            1200,
             performance_factor=1.0,
         )
 
@@ -754,7 +754,10 @@ class TestCalculateUserTotalPP:
         pf_b = 0.7
         base_pp_b = PPService.calculate_base_pp(1500)
         await _create_pp_record(
-            db, uid, "5678B", 1500,
+            db,
+            uid,
+            "5678B",
+            1500,
             performance_factor=pf_b,
         )
 
@@ -1061,9 +1064,7 @@ class TestPerformanceFactorIntegration:
     async def test_perfect_solve_full_pp(self, db: AsyncSession):
         """Perfect solve (wa=0, t=0) gives full base_pp as final_pp."""
         uid = await _create_user(db, "alice", pp=0.0)
-        record = await PPService.record_pp(
-            db, uid, "1234A", 1200, wa_count=0, time_spent=0.0
-        )
+        record = await PPService.record_pp(db, uid, "1234A", 1200, wa_count=0, time_spent=0.0)
         await db.flush()
 
         base_pp = PPService.calculate_base_pp(1200)
@@ -1074,9 +1075,7 @@ class TestPerformanceFactorIntegration:
     async def test_poor_solve_reduced_pp(self, db: AsyncSession):
         """Poor solve (wa=5, t=30) gives reduced final_pp."""
         uid = await _create_user(db, "alice", pp=0.0)
-        record = await PPService.record_pp(
-            db, uid, "1234A", 1200, wa_count=5, time_spent=30.0
-        )
+        record = await PPService.record_pp(db, uid, "1234A", 1200, wa_count=5, time_spent=30.0)
         await db.flush()
 
         base_pp = PPService.calculate_base_pp(1200)  # 20.0
@@ -1092,8 +1091,12 @@ class TestPerformanceFactorIntegration:
 
         # Simulate an old record (created before performance factor feature)
         await _create_pp_record(
-            db, uid, "1234A", 1200,
-            wa_count=0, time_spent_minutes=0.0,
+            db,
+            uid,
+            "1234A",
+            1200,
+            wa_count=0,
+            time_spent_minutes=0.0,
             performance_factor=1.0,
         )
 
@@ -1108,8 +1111,12 @@ class TestPerformanceFactorIntegration:
         # Problem A: rating 1500, perfect => pf=1.0, final=26.46
         base_1500 = PPService.calculate_base_pp(1500)
         await _create_pp_record(
-            db, uid, "1234A", 1500,
-            wa_count=0, time_spent_minutes=0.0,
+            db,
+            uid,
+            "1234A",
+            1500,
+            wa_count=0,
+            time_spent_minutes=0.0,
             performance_factor=1.0,
         )
 
@@ -1117,8 +1124,12 @@ class TestPerformanceFactorIntegration:
         base_1200 = PPService.calculate_base_pp(1200)
         pf_b = PPService.calculate_performance_factor(5, 30.0)
         await _create_pp_record(
-            db, uid, "5678B", 1200,
-            wa_count=5, time_spent_minutes=30.0,
+            db,
+            uid,
+            "5678B",
+            1200,
+            wa_count=5,
+            time_spent_minutes=30.0,
             performance_factor=pf_b,
         )
 
@@ -1134,17 +1145,13 @@ class TestPerformanceFactorIntegration:
         uid = await _create_user(db, "alice", pp=0.0)
 
         # First solve at 1200
-        record1 = await PPService.record_pp(
-            db, uid, "1234A", 1200, wa_count=2, time_spent=10.0
-        )
+        record1 = await PPService.record_pp(db, uid, "1234A", 1200, wa_count=2, time_spent=10.0)
         await db.flush()
         assert record1.wa_count == 2
         assert record1.time_spent_minutes == pytest.approx(10.0, abs=1e-6)
 
         # Re-solve at 1500 with different performance
-        record2 = await PPService.record_pp(
-            db, uid, "1234A", 1500, wa_count=0, time_spent=5.0
-        )
+        record2 = await PPService.record_pp(db, uid, "1234A", 1500, wa_count=0, time_spent=5.0)
         await db.flush()
         assert record2.wa_count == 0
         assert record2.time_spent_minutes == pytest.approx(5.0, abs=1e-6)
@@ -1155,15 +1162,11 @@ class TestPerformanceFactorIntegration:
         uid = await _create_user(db, "alice", pp=0.0)
 
         # First solve at 1500
-        await PPService.record_pp(
-            db, uid, "1234A", 1500, wa_count=1, time_spent=15.0
-        )
+        await PPService.record_pp(db, uid, "1234A", 1500, wa_count=1, time_spent=15.0)
         await db.flush()
 
         # Re-solve at 1200 (lower, should not update)
-        record2 = await PPService.record_pp(
-            db, uid, "1234A", 1200, wa_count=3, time_spent=25.0
-        )
+        record2 = await PPService.record_pp(db, uid, "1234A", 1200, wa_count=3, time_spent=25.0)
         await db.flush()
 
         # Should keep the original higher rating data

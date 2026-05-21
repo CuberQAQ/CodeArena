@@ -16,10 +16,7 @@ Test scenarios:
 10. to_dict() serialization
 """
 
-import pytest
-
 from app.services.achievement_service import AchievementService, AchievementType
-
 
 # ---------------------------------------------------------------------------
 # Overkill bonus achievement tests
@@ -32,7 +29,9 @@ class TestCheckOverkill:
     def test_triggered_when_multiplier_above_1(self):
         """Multiplier > 1.0 should produce an OVERKILL_BONUS event."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1400, multiplier=1.2,
+            user_elo=1200,
+            problem_rating=1400,
+            multiplier=1.2,
         )
         assert event is not None
         assert event.type == AchievementType.OVERKILL_BONUS
@@ -41,21 +40,27 @@ class TestCheckOverkill:
     def test_not_triggered_when_multiplier_is_1(self):
         """Multiplier == 1.0 should produce no event."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1200, multiplier=1.0,
+            user_elo=1200,
+            problem_rating=1200,
+            multiplier=1.0,
         )
         assert event is None
 
     def test_not_triggered_when_multiplier_below_1(self):
         """Multiplier < 1.0 should produce no event."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1200, multiplier=0.9,
+            user_elo=1200,
+            problem_rating=1200,
+            multiplier=0.9,
         )
         assert event is None
 
     def test_description_contains_elo_and_rating(self):
         """Event description should mention both Elo and problem rating."""
         event = AchievementService.check_overkill(
-            user_elo=1000, problem_rating=1500, multiplier=2.0,
+            user_elo=1000,
+            problem_rating=1500,
+            multiplier=2.0,
         )
         assert event is not None
         assert "1000" in event.description
@@ -64,7 +69,9 @@ class TestCheckOverkill:
     def test_tier_label_for_1_2_multiplier(self):
         """x1.2 multiplier should show 'x1.2' in description."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1400, multiplier=1.2,
+            user_elo=1200,
+            problem_rating=1400,
+            multiplier=1.2,
         )
         assert event is not None
         assert "x1.2" in event.description
@@ -72,7 +79,9 @@ class TestCheckOverkill:
     def test_tier_label_for_1_5_multiplier(self):
         """x1.5 multiplier should show 'x1.5' in description."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1500, multiplier=1.5,
+            user_elo=1200,
+            problem_rating=1500,
+            multiplier=1.5,
         )
         assert event is not None
         assert "x1.5" in event.description
@@ -80,7 +89,9 @@ class TestCheckOverkill:
     def test_tier_label_for_2_0_multiplier(self):
         """x2.0 multiplier should show 'x2.0' in description."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1600, multiplier=2.0,
+            user_elo=1200,
+            problem_rating=1600,
+            multiplier=2.0,
         )
         assert event is not None
         assert "x2.0" in event.description
@@ -88,14 +99,18 @@ class TestCheckOverkill:
     def test_boundary_multiplier_exactly_1(self):
         """Multiplier exactly 1.0 should not trigger."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1200, multiplier=1.0,
+            user_elo=1200,
+            problem_rating=1200,
+            multiplier=1.0,
         )
         assert event is None
 
     def test_title_is_chinese(self):
         """Title should be in Chinese as per project locale."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1400, multiplier=1.2,
+            user_elo=1200,
+            problem_rating=1400,
+            multiplier=1.2,
         )
         assert event is not None
         assert len(event.title) > 0
@@ -202,7 +217,9 @@ class TestToDict:
     def test_to_dict_has_all_fields(self):
         """to_dict() should include type, title, description, icon."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1500, multiplier=1.5,
+            user_elo=1200,
+            problem_rating=1500,
+            multiplier=1.5,
         )
         assert event is not None
         d = event.to_dict()
@@ -214,7 +231,9 @@ class TestToDict:
     def test_to_dict_type_is_string(self):
         """The 'type' value should be a plain string (the enum value)."""
         event = AchievementService.check_overkill(
-            user_elo=1200, problem_rating=1500, multiplier=1.5,
+            user_elo=1200,
+            problem_rating=1500,
+            multiplier=1.5,
         )
         assert event is not None
         d = event.to_dict()

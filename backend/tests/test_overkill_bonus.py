@@ -112,9 +112,7 @@ async def db(async_engine):
 
         overkill_multiplier = 1.0
         if user_elo is not None:
-            overkill_multiplier = PPService.calculate_overkill_multiplier(
-                user_elo, problem_rating, overkill_config
-            )
+            overkill_multiplier = PPService.calculate_overkill_multiplier(user_elo, problem_rating, overkill_config)
 
         final_pp = base_pp * performance_factor * overkill_multiplier
 
@@ -332,7 +330,11 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1360, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1360,
+            user_elo=1200,
         )
         await db.flush()
 
@@ -347,7 +349,11 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1500, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1500,
+            user_elo=1200,
         )
         await db.flush()
 
@@ -362,7 +368,11 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1600, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1600,
+            user_elo=1200,
         )
         await db.flush()
 
@@ -377,7 +387,11 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1350, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1350,
+            user_elo=1200,
         )
         await db.flush()
 
@@ -392,7 +406,11 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1450, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1450,
+            user_elo=1200,
         )
         await db.flush()
 
@@ -407,7 +425,11 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1300, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1300,
+            user_elo=1200,
         )
         await db.flush()
 
@@ -422,7 +444,10 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1600,
+            db,
+            uid,
+            "1234A",
+            1600,
         )
         await db.flush()
 
@@ -436,8 +461,12 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1500,
-            wa_count=5, time_spent=30.0,
+            db,
+            uid,
+            "1234A",
+            1500,
+            wa_count=5,
+            time_spent=30.0,
             user_elo=1200,
         )
         await db.flush()
@@ -455,7 +484,11 @@ class TestRecordPPWithOverkill:
         uid = await _create_user(db, "alice", elo=1200, pp=0.0)
 
         await PPService.record_pp(
-            db, uid, "1234A", 1500, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1500,
+            user_elo=1200,
         )
         await db.flush()
 
@@ -476,14 +509,22 @@ class TestRecordPPWithOverkill:
 
         # First solve: gap=100, no overkill
         record1 = await PPService.record_pp(
-            db, uid, "1234A", 1300, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1300,
+            user_elo=1200,
         )
         await db.flush()
         assert record1.overkill_multiplier == pytest.approx(1.0, abs=1e-6)
 
         # Second solve with higher rating: gap=300, overkill x1.5
         record2 = await PPService.record_pp(
-            db, uid, "1234A", 1500, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1500,
+            user_elo=1200,
         )
         await db.flush()
         assert record2.overkill_multiplier == pytest.approx(1.5, abs=1e-6)
@@ -496,13 +537,21 @@ class TestRecordPPWithOverkill:
 
         # First solve: gap=300, overkill x1.5
         await PPService.record_pp(
-            db, uid, "1234A", 1500, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1500,
+            user_elo=1200,
         )
         await db.flush()
 
         # Second solve with lower rating: should not update PP fields
         record2 = await PPService.record_pp(
-            db, uid, "1234A", 1300, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1300,
+            user_elo=1200,
         )
         await db.flush()
 
@@ -523,7 +572,10 @@ class TestRecordPPWithOverkill:
         }
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1500,
+            db,
+            uid,
+            "1234A",
+            1500,
             user_elo=1200,
             overkill_config=custom_config,
         )
@@ -553,8 +605,12 @@ class TestOverkillInServices:
 
         # We call PPService.record_pp directly with user_elo to verify the path
         record = await PPService.record_pp(
-            db, uid, "1234A", 1500,
-            wa_count=0, time_spent=0.0,
+            db,
+            uid,
+            "1234A",
+            1500,
+            wa_count=0,
+            time_spent=0.0,
             user_elo=1200,
         )
         await db.flush()
@@ -571,8 +627,12 @@ class TestOverkillInServices:
 
         # Simulate challenge: user with elo=1000 solves a 1500-rated problem
         record = await PPService.record_pp(
-            db, uid, "5678B", 1500,
-            wa_count=0, time_spent=0.0,
+            db,
+            uid,
+            "5678B",
+            1500,
+            wa_count=0,
+            time_spent=0.0,
             user_elo=1000,
         )
         await db.flush()
@@ -590,8 +650,12 @@ class TestOverkillInServices:
 
         # Simulate contest: user with elo=1100 solves a 1400-rated problem
         record = await PPService.record_pp(
-            db, uid, "9012C", 1400,
-            wa_count=0, time_spent=0.0,
+            db,
+            uid,
+            "9012C",
+            1400,
+            wa_count=0,
+            time_spent=0.0,
             user_elo=1100,
         )
         await db.flush()
@@ -632,7 +696,11 @@ class TestOverkillDoesNotAffectElo:
         uid = await _create_user(db, "alice", elo=1200)
 
         record = await PPService.record_pp(
-            db, uid, "1234A", 1600, user_elo=1200,
+            db,
+            uid,
+            "1234A",
+            1600,
+            user_elo=1200,
         )
         await db.flush()
 

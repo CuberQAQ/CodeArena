@@ -5,7 +5,7 @@ patching pattern.
 """
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -296,7 +296,10 @@ class TestAwardTokens:
 
         ref_id = uuid.uuid4()
         awarded = await award_tokens(
-            db, user, 20, "training_reward",
+            db,
+            user,
+            20,
+            "training_reward",
             reference_type="training",
             reference_id=ref_id,
         )
@@ -304,6 +307,7 @@ class TestAwardTokens:
 
         # Verify transaction was created
         from sqlalchemy import select
+
         stmt = select(_TestTokenTransaction).where(_TestTokenTransaction.user_id == user.id)
         result = await db.execute(stmt)
         tx = result.scalar_one()
@@ -382,12 +386,16 @@ class TestSpendTokens:
 
         ref_id = uuid.uuid4()
         await spend_tokens(
-            db, user, 20, "hint_purchase",
+            db,
+            user,
+            20,
+            "hint_purchase",
             reference_type="hint",
             reference_id=ref_id,
         )
 
         from sqlalchemy import select
+
         stmt = select(_TestTokenTransaction).where(_TestTokenTransaction.user_id == user.id)
         result = await db.execute(stmt)
         tx = result.scalar_one()
@@ -653,6 +661,7 @@ class TestIntegrationFlow:
 
         # Check transactions
         from sqlalchemy import select
+
         stmt = (
             select(_TestTokenTransaction)
             .where(_TestTokenTransaction.user_id == user.id)

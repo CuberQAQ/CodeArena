@@ -20,11 +20,12 @@
 - See [testing-patterns.md](testing-patterns.md) for the full pattern
 
 ## Challenge System (Task 5.1)
-- Match queue: in-memory dict + asyncio.Lock in `app/services/match_service.py`
+- Match queue: Redis-backed (Sorted Set + Hash) in `app/services/match_service.py` (Task 26.1)
 - Challenge logic: `app/services/challenge_service.py` (stateless service, receives db + external deps)
 - Routes: `app/api/v1/challenge.py` (7 endpoints under /api/v1/challenge/)
-- Pending match state: module-level dict in challenge_service (not persisted)
-- Token tiers: by problem rating, 5 tiers from 5 to 50 tokens
+- Pending match state: Redis Hash with TTL 5min (key: `pending_match:{session_id}`)
+- Token tiers: by problem rating, 7 tiers aligned with CF (Task 23.1)
+- Match atomicty: optimistic locking (WATCH/MULTI/EXEC), not Lua scripts (fakeredis compat)
 
 ## Training System (Task 6.1)
 - Training logic: `app/services/training_service.py` (stateless service, receives db + external deps)
@@ -33,8 +34,8 @@
 - Predefined topics: 12 topics mapped to CF tags (dp, greedy, math, etc.)
 - Streak: count * 5 tokens per increment, capped at 50 per session
 - Stars: 0-5 based on completion percentage (0%, >0%<=20%, ..., >80%)
-- Token tiers: same as challenge system (gray 10, green 20, blue 30, purple 40, yellow/red 50)
-- Attempt token tiers: gray 2, green 3, blue 4, purple 5, yellow/red 6
+- Token tiers: 7 tiers (gray 10, green 20, cyan 25, blue 35, purple 45, orange 55, red 65)
+- Attempt token tiers: gray 2, green 3, cyan 4, blue 5, purple 6, orange 7, red 8
 - Training Elo: K_train=8, uses expected score vs problem rating
 
 ## Contest System (Task 7.1)
@@ -43,7 +44,7 @@
 - Schemas: `app/schemas/contest.py`
 - Three tiers: beginner (<1400, 90min/4 problems, 800-1400), advanced (1400-1800, 120min/5, 1200-2000), master (>1800, 150min/6, 1600-2600)
 - Eligibility: only checks min_elo; users can downgrade but not upgrade
-- Token tiers: same as challenge/training (gray 10, green 20, blue 30, purple 40, yellow/red 50)
+- Token tiers: same as challenge/training (7 tiers: gray 10, green 20, cyan 25, blue 35, purple 45, orange 55, red 65)
 - Quit penalty: 0 submissions=no change, 1-2=-5~-10, 3+=M-Elo formula
 - M-Elo: uses EloService.calculate_contest_elo via process_contest_result
 - Timing: _ensure_utc helper handles naive datetimes from SQLite
@@ -55,11 +56,20 @@
 - Routes: `app/api/v1/hints.py` (4 endpoints under /api/v1/hints/)
 - Schemas: `app/schemas/hint.py`
 - Model: `app/models/hint_purchase.py` (already existed in DB schema)
-- Pricing: gray [3,10,20], green [5,15,30], blue [8,20,40], purple [10,25,50], yellow/red [15,30,60]
+- Pricing: gray [3,10,20], green [5,15,30], cyan [6,18,35], blue [8,20,40], purple [10,25,50], orange [12,28,55], red [15,30,60]
 - Elo decay: level 1=0.75, level 2=0.50, level 3=0.25 (only affects positive gains; PP unaffected)
 - Sequential unlock: 1->2->3, no skipping, no re-unlock, rejected if insufficient tokens
 - Uses economy_service.spend_tokens for token deduction
 - Test pattern: patch HintPurchase + economy_svc.spend_tokens
+
+## Rating Tier System (Task 23.1)
+- Frontend: 10-tier CF system in `frontend/src/utils/index.ts` (RATING_TIERS constant)
+- Backend: 7-tier system in `backend/app/core/default_config.py` (difficulty_tiers + hint_pricing)
+- Frontend functions: getRatingTierInfo(), getRatingColor(), getDifficultyLabel() all based on RATING_TIERS
+- Backend tier boundaries: gray 800-1199, green 1200-1399, cyan 1400-1599, blue 1600-1899, purple 1900-2099, orange 2100-2399, red 2400-9999
+- Tier constants duplicated in: economy_service, challenge_service, training_service, contest_service, hint_service
+- Tier display: Profile/Dashboard/Leaderboard pages show "{elo} / {tierName}" format
+- Dashboard chart: uses getDifficultyLabel() for dynamic tier names
 
 ## Admin System (Task 12.1)
 - Admin service: `app/services/admin_service.py` (stateless functions, receives db)
@@ -72,6 +82,17 @@
 - Stats: counts from User, ChallengeSession, TrainingSession, ContestSession
 - Frontend: AdminOverviewPage (stats cards + user table), AdminConfigPage (expandable sections, per-field save/reset)
 - Test pattern: patch User, ChallengeSession, TrainingSession, ContestSession in admin_svc_module
+
+## Redis Infrastructure (Task 26.1)
+- Redis module: `app/core/redis.py` (async client, connection pool, init/close)
+- Config: `REDIS_URL` in `app/core/config.py` (default: redis://localhost:6379/0)
+- Lifespan: init_redis_pool() on startup, close_redis_pool() on shutdown in `app/main.py`
+- 503 handler: RedisUnavailableError caught in main.py, returns SERVICE_UNAVAILABLE
+- Docker: redis:7-alpine in both docker-compose.yml and docker-compose.prod.yml
+- Dependency: `redis[hiredis]>=5.0.0` in requirements.txt
+- Testing: `fakeredis` for in-memory tests; patch `get_redis` in both match_service and challenge_service modules
+- Queue keys: `match_queue:scores` (sorted set), `match_queue:entries` (hash)
+- Pending keys: `pending_match:{session_id}` (string with TTL 300s)
 
 ## Deployment Configuration (Task 13.2)
 - Production compose: `docker-compose.prod.yml` with internal/frontend network isolation

@@ -181,9 +181,7 @@ class TestUserTagEloCRUD:
         found.total_submissions = 5
         await db_session.flush()
 
-        result2 = await db_session.execute(
-            select(UserTagElo).where(UserTagElo.id == tag_elo.id)
-        )
+        result2 = await db_session.execute(select(UserTagElo).where(UserTagElo.id == tag_elo.id))
         updated = result2.scalar_one()
         assert updated.elo == 1350
         assert updated.total_submissions == 5
@@ -209,9 +207,7 @@ class TestPvEChallengeSessionCRUD:
         assert session.status == "active"  # server_default
 
         # READ
-        result = await db_session.execute(
-            select(PvEChallengeSession).where(PvEChallengeSession.user_id == user.id)
-        )
+        result = await db_session.execute(select(PvEChallengeSession).where(PvEChallengeSession.user_id == user.id))
         found = result.scalar_one()
         assert found.problem_id == "1500B"
         assert found.problem_rating == 1500
@@ -248,9 +244,7 @@ class TestSubmissionTrackingCRUD:
         await db_session.flush()
 
         # Verify matched state
-        result = await db_session.execute(
-            select(SubmissionTracking).where(SubmissionTracking.id == tracking.id)
-        )
+        result = await db_session.execute(select(SubmissionTracking).where(SubmissionTracking.id == tracking.id))
         matched = result.scalar_one()
         assert matched.status == "matched"
         assert matched.cf_submission_id == 12345678
@@ -260,9 +254,7 @@ class TestSubmissionTrackingCRUD:
         matched.cf_verdict = "OK"
         await db_session.flush()
 
-        result2 = await db_session.execute(
-            select(SubmissionTracking).where(SubmissionTracking.id == tracking.id)
-        )
+        result2 = await db_session.execute(select(SubmissionTracking).where(SubmissionTracking.id == tracking.id))
         settled = result2.scalar_one()
         assert settled.status == "settled"
         assert settled.cf_verdict == "OK"
@@ -299,9 +291,7 @@ class TestContestBotCRUD:
         assert bot.total_attempts == 0  # server_default
 
         # READ
-        result = await db_session.execute(
-            select(ContestBot).where(ContestBot.contest_id == contest.id)
-        )
+        result = await db_session.execute(select(ContestBot).where(ContestBot.contest_id == contest.id))
         found = result.scalar_one()
         assert found.bot_name == "BotAlpha"
         assert found.bot_elo == 1100

@@ -4,11 +4,16 @@
 # Usage:
 #   docker compose -f docker-compose.prod.yml up -d
 #
+# NOTE: 不可使用 docker compose up（不带 -f），那是 dev 环境。
+#       两个环境通过 name 字段隔离，互不影响。
+#
 # Prerequisites:
 #   1. Copy .env.example to .env and set all required values
 #   2. Generate a secure JWT_SECRET (see .env.example for instructions)
 #   3. Set strong POSTGRES_PASSWORD
 # ===========================================
+
+name: code-arena-prod
 
 services:
   # ---- Database ----
@@ -95,7 +100,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      - "9091:80"
     depends_on:
       backend:
         condition: service_healthy

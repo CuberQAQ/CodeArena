@@ -43,33 +43,21 @@ async def get_system_stats(db: AsyncSession) -> dict[str, Any]:
     total_users = await db.scalar(select(func.count(User.id)))
 
     # Active users
-    active_users = await db.scalar(
-        select(func.count(User.id)).where(User.is_active.is_(True))
-    )
+    active_users = await db.scalar(select(func.count(User.id)).where(User.is_active.is_(True)))
 
     # Challenge stats
     total_challenges = await db.scalar(select(func.count(ChallengeSession.id)))
     active_challenges = await db.scalar(
-        select(func.count(ChallengeSession.id)).where(
-            ChallengeSession.status == "active"
-        )
+        select(func.count(ChallengeSession.id)).where(ChallengeSession.status == "active")
     )
 
     # Training stats
     total_training_sessions = await db.scalar(select(func.count(TrainingSession.id)))
-    active_training = await db.scalar(
-        select(func.count(TrainingSession.id)).where(
-            TrainingSession.status == "active"
-        )
-    )
+    active_training = await db.scalar(select(func.count(TrainingSession.id)).where(TrainingSession.status == "active"))
 
     # Contest stats
     total_contests = await db.scalar(select(func.count(ContestSession.id)))
-    active_contests = await db.scalar(
-        select(func.count(ContestSession.id)).where(
-            ContestSession.status == "active"
-        )
-    )
+    active_contests = await db.scalar(select(func.count(ContestSession.id)).where(ContestSession.status == "active"))
 
     return {
         "users": {
@@ -110,9 +98,7 @@ async def list_users(
     # Apply search filter
     if search:
         pattern = f"%{search}%"
-        base_query = base_query.where(
-            (User.username.ilike(pattern)) | (User.email.ilike(pattern))
-        )
+        base_query = base_query.where((User.username.ilike(pattern)) | (User.email.ilike(pattern)))
 
     # Count total matching rows
     count_query = select(func.count()).select_from(base_query.subquery())
@@ -229,29 +215,37 @@ async def get_config_metadata() -> list[dict[str, Any]]:
                 for sub_key, sub_value in field_value.items():
                     if isinstance(sub_value, dict):
                         for leaf_key, leaf_value in sub_value.items():
-                            fields.append({
-                                "key": f"{section_key}.{field_key}.{sub_key}.{leaf_key}",
-                                "label": f"{field_key}.{sub_key}.{leaf_key}",
-                                "type": type(leaf_value).__name__,
-                                "default": leaf_value,
-                            })
+                            fields.append(
+                                {
+                                    "key": f"{section_key}.{field_key}.{sub_key}.{leaf_key}",
+                                    "label": f"{field_key}.{sub_key}.{leaf_key}",
+                                    "type": type(leaf_value).__name__,
+                                    "default": leaf_value,
+                                }
+                            )
                     else:
-                        fields.append({
-                            "key": f"{section_key}.{field_key}.{sub_key}",
-                            "label": f"{field_key}.{sub_key}",
-                            "type": type(sub_value).__name__,
-                            "default": sub_value,
-                        })
+                        fields.append(
+                            {
+                                "key": f"{section_key}.{field_key}.{sub_key}",
+                                "label": f"{field_key}.{sub_key}",
+                                "type": type(sub_value).__name__,
+                                "default": sub_value,
+                            }
+                        )
             else:
-                fields.append({
-                    "key": f"{section_key}.{field_key}",
-                    "label": field_key,
-                    "type": type(field_value).__name__,
-                    "default": field_value,
-                })
-        sections.append({
-            "key": section_key,
-            "label": section_key.upper(),
-            "fields": fields,
-        })
+                fields.append(
+                    {
+                        "key": f"{section_key}.{field_key}",
+                        "label": field_key,
+                        "type": type(field_value).__name__,
+                        "default": field_value,
+                    }
+                )
+        sections.append(
+            {
+                "key": section_key,
+                "label": section_key.upper(),
+                "fields": fields,
+            }
+        )
     return sections
