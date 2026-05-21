@@ -510,6 +510,21 @@ class ContestService:
                 _hint_cfg = EloConfig()
                 hint_att = _hint_cfg.hint_attenuation.get(hint_level)
 
+            # Calculate time_factor for M-Elo (FR-16.7)
+            contest_time_factor = 1.0
+            if solved and time_spent and time_spent > 0:
+                effective_t = TimeFactorService.compute_effective_time(time_spent, wa_count)
+                try:
+                    expected_t = await TimeFactorService.calculate_expected_time(
+                        db, problem_id, user.elo
+                    )
+                    if expected_t and expected_t > 0:
+                        contest_time_factor = TimeFactorService.calculate_time_factor(
+                            effective_t, expected_t
+                        )
+                except Exception:
+                    pass  # Fallback to 1.0 on calculation failure
+
             await MEloService.batch_update_melo_for_problem(
                 db=db,
                 user_id=user.id,
@@ -517,7 +532,7 @@ class ContestService:
                 problem_rating=problem_rating,
                 s_value=s_val,
                 k_factor=melo_k,
-                time_factor=1.0,
+                time_factor=contest_time_factor,
                 hint_attenuation=hint_att,
                 coefficient=1.0,
                 solved=solved,

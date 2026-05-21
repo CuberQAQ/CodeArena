@@ -24,8 +24,12 @@ logger = logging.getLogger("code_arena.medal")
 # Medal tier thresholds (FR-10.1)
 # Flat, non-overlapping medal mapping (threshold, level, medal_type).
 # Iterated from highest threshold to lowest; the first match wins.
-# EC Final thresholds overlap with WF/Regional, so EF medals are awarded
-# via the separate MEDAL_TIERS structure below for display/config purposes.
+# NOTE: ec_final tier has overlapping thresholds with world_finals and regional
+# (MEDAL_TIERS defines ec_final gold=2600/silver=2400/bronze=2200, but these
+# overlap with world_finals silver=2600/bronze=2400 and regional gold=2200).
+# The flat map currently uses world_finals and regional mappings for the
+# overlapping ranges. ec_full is only used for display/config purposes.
+# See human_todo.md for the design decision needed on threshold overlap.
 # ---------------------------------------------------------------------------
 
 _FLAT_MEDAL_MAP: list[tuple[int, str, str]] = [
