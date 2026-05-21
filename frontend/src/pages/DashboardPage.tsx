@@ -18,8 +18,9 @@ import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { DashboardCharts } from "@/components/charts/DashboardCharts";
 import { getRatingColor, getDifficultyLabelKey } from "@/utils";
+import { MedalBadge } from "@/components/medal";
 import api from "@/services/api";
-import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo } from "@/types";
+import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo, UserSettingsData, MedalInfo } from "@/types";
 
 interface QuickAction {
   to: string;
@@ -68,9 +69,19 @@ export default function DashboardPage() {
   const [loadingTx, setLoadingTx] = useState(true);
   const [activeContest, setActiveContest] = useState<ContestSessionInfo | null>(null);
   const [activeChallenge, setActiveChallenge] = useState<ActiveChallengeInfo | null>(null);
+  const [displayMode, setDisplayMode] = useState<"medal" | "cf_tier">("medal");
+  const [overallMedal, setOverallMedal] = useState<MedalInfo | null>(null);
 
   useEffect(() => {
     fetchUser().catch(() => {});
+    api
+      .get<ApiResponse<UserSettingsData>>("/auth/settings")
+      .then((res) => setDisplayMode(res.data.data.display_mode))
+      .catch(() => {});
+    api
+      .get<ApiResponse<{ elo: number; medal: MedalInfo }>>("/medal/overall")
+      .then((res) => setOverallMedal(res.data.data.medal))
+      .catch(() => {});
     api
       .get<ApiResponse<{ items: TransactionItem[] }>>("/economy/transactions?limit=5")
       .then((res) => setTransactions(res.data.data.items ?? []))
@@ -112,12 +123,24 @@ export default function DashboardPage() {
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground">{t("dashboard:eloRating")}</p>
-              <p
-                className="text-2xl font-bold"
-                style={{ color: getRatingColor(user.elo) }}
-              >
-                {user.elo} <span className="text-sm font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
-              </p>
+              {displayMode === "medal" && overallMedal ? (
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-2xl font-bold"
+                    style={{ color: getRatingColor(user.elo) }}
+                  >
+                    {user.elo}
+                  </span>
+                  <MedalBadge level={overallMedal.level} type={overallMedal.type} size="sm" />
+                </div>
+              ) : (
+                <p
+                  className="text-2xl font-bold"
+                  style={{ color: getRatingColor(user.elo) }}
+                >
+                  {user.elo} <span className="text-sm font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
+                </p>
+              )}
             </div>
           </div>
         </div>

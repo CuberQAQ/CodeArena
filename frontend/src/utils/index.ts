@@ -125,3 +125,32 @@ export function extractApiError(err: unknown, fallback = "An unexpected error oc
   // Fallback chain
   return detail ?? fallback;
 }
+
+// ---------------------------------------------------------------------------
+// Medal calculation (client-side, mirrors backend MedalService._rating_to_medal)
+// ---------------------------------------------------------------------------
+
+const FLAT_MEDAL_MAP: [number, string, string][] = [
+  [2800, "world_finals", "gold"],
+  [2600, "world_finals", "silver"],
+  [2400, "world_finals", "bronze"],
+  [2200, "regional", "gold"],
+  [2000, "regional", "silver"],
+  [1800, "regional", "bronze"],
+  [1600, "provincial", "gold"],
+  [1400, "provincial", "silver"],
+  [1200, "provincial", "bronze"],
+];
+
+/**
+ * Map a numeric rating to a medal tier + type (client-side).
+ * Mirrors backend MedalService._rating_to_medal exactly.
+ */
+export function ratingToMedal(rating: number): { level: string; type?: string } {
+  for (const [threshold, level, medalType] of FLAT_MEDAL_MAP) {
+    if (rating >= threshold) {
+      return { level, type: medalType };
+    }
+  }
+  return { level: "unranked" };
+}

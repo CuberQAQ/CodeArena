@@ -1,0 +1,37 @@
+{
+  "levels": {
+    "worldFinals": "World Finals",
+    "ecFinal": "EC Final",
+    "regional": "Regional",
+    "provincial": "Provincial",
+    "unranked": "Unranked"
+  },
+  "types": {
+    "gold": "Gold",
+    "silver": "Silver",
+    "bronze": "Bronze"
+  },
+  "cabinet": {
+    "title": "Trophy Cabinet",
+    "totalMedals": "Total Medals",
+    "noMedals": "No contest medals yet. Participate in virtual contests to earn medals!",
+    "level": "Level",
+    "gold": "Gold",
+    "silver": "Silver",
+    "bronze": "Bronze"
+  },
+  "skills": {
+    "title": "Skill Medal Wall",
+    "noSkills": "No skill data yet. Start solving problems to build your skill profile!"
+  },
+  "settings": {
+    "title": "Display Settings",
+    "displayMode": "Display Mode",
+    "medalMode": "Medal Mode",
+    "medalModeDesc": "Display XCPC-style medals (World Finals, Regional, etc.)",
+    "cfTierMode": "CF Tier Mode",
+    "cfTierModeDesc": "Display Codeforces tier names (Expert, Master, etc.)",
+    "saved": "Settings saved",
+    "failedSave": "Failed to save settings"
+  }
+}

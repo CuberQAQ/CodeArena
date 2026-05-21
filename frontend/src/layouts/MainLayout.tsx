@@ -10,6 +10,7 @@ import {
   X,
   Home,
   Compass,
+  Settings,
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,6 +31,7 @@ const navItems = [
   { to: "/contest", labelKey: "nav:contest", icon: Trophy },
   { to: "/leaderboard", labelKey: "nav:leaderboard", icon: BarChart3 },
   { to: "/profile", labelKey: "nav:profile", icon: User },
+  { to: "/settings", labelKey: "nav:settings", icon: Settings },
 ];
 
 // ---------------------------------------------------------------------------

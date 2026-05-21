@@ -14,5 +14,6 @@
   "configuration": "Configuration",
   "backToApp": "Back to App",
   "administrator": "Administrator",
-  "unauthorized": "Unauthorized"
+  "unauthorized": "Unauthorized",
+  "settings": "Settings"
 }

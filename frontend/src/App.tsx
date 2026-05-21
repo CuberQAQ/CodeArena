@@ -26,6 +26,7 @@ import CFBindPage from "@/pages/CFBindPage";
 import LeaderboardPage from "@/pages/LeaderboardPage";
 import AdminOverviewPage from "@/pages/AdminOverviewPage";
 import AdminConfigPage from "@/pages/AdminConfigPage";
+import SettingsPage from "@/pages/SettingsPage";
 
 function AuthInitializer({ children }: { children: React.ReactNode }) {
   const hydrate = useAuthStore((s) => s.hydrate);
@@ -70,6 +71,7 @@ function App() {
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/profile/cf-bind" element={<CFBindPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
             {/* ---- Admin routes (login + admin required) ---- */}

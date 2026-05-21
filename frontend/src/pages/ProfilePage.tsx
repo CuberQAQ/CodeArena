@@ -17,8 +17,18 @@ import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EloChart } from "@/components/charts/EloChart";
 import { extractApiError, getRatingColor, getDifficultyLabelKey, formatDate } from "@/utils";
+import { MedalBadge } from "@/components/medal";
+import { MedalCabinet } from "@/components/medal";
+import { SkillMedalWall } from "@/components/medal";
 import api from "@/services/api";
-import type { EloHistoryPoint, ApiResponse } from "@/types";
+import type {
+  EloHistoryPoint,
+  ApiResponse,
+  UserSettingsData,
+  MedalInfo,
+  MedalStatsResponse,
+  SkillMedalItem,
+} from "@/types";
 
 // ---------------------------------------------------------------------------
 // Inner form component -- owns its own editing state, keyed by user.id
@@ -174,6 +184,13 @@ export default function ProfilePage() {
   const [eloLoading, setEloLoading] = useState(true);
   const [eloError, setEloError] = useState(false);
 
+  // Medal system state
+  const [displayMode, setDisplayMode] = useState<"medal" | "cf_tier">("medal");
+  const [overallMedal, setOverallMedal] = useState<MedalInfo | null>(null);
+  const [medalStats, setMedalStats] = useState<Record<string, Record<string, number>>>({});
+  const [totalMedals, setTotalMedals] = useState(0);
+  const [skillMedals, setSkillMedals] = useState<SkillMedalItem[]>([]);
+
   useEffect(() => {
     let cancelled = false;
     api
@@ -193,6 +210,29 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Fetch medal data
+  useEffect(() => {
+    api
+      .get<ApiResponse<UserSettingsData>>("/auth/settings")
+      .then((res) => setDisplayMode(res.data.data.display_mode))
+      .catch(() => {});
+    api
+      .get<ApiResponse<{ elo: number; medal: MedalInfo }>>("/medal/overall")
+      .then((res) => setOverallMedal(res.data.data.medal))
+      .catch(() => {});
+    api
+      .get<ApiResponse<MedalStatsResponse>>("/medal/stats")
+      .then((res) => {
+        setMedalStats(res.data.data.stats);
+        setTotalMedals(res.data.data.total_medals);
+      })
+      .catch(() => {});
+    api
+      .get<ApiResponse<{ skills: SkillMedalItem[] }>>("/medal/skills")
+      .then((res) => setSkillMedals(res.data.data.skills))
+      .catch(() => {});
   }, []);
 
   if (!user) {
@@ -228,9 +268,18 @@ export default function ProfilePage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">{t("profile:eloRating")}</p>
-              <p className="text-2xl font-bold" style={{ color: getRatingColor(user.elo) }}>
-                {user.elo} <span className="text-sm font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
-              </p>
+              {displayMode === "medal" && overallMedal ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold" style={{ color: getRatingColor(user.elo) }}>
+                    {user.elo}
+                  </span>
+                  <MedalBadge level={overallMedal.level} type={overallMedal.type} size="sm" />
+                </div>
+              ) : (
+                <p className="text-2xl font-bold" style={{ color: getRatingColor(user.elo) }}>
+                  {user.elo} <span className="text-sm font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -276,6 +325,12 @@ export default function ProfilePage() {
       ) : (
         <EloChart data={eloHistory} />
       )}
+
+      {/* Medal Cabinet */}
+      <MedalCabinet stats={medalStats} totalMedals={totalMedals} />
+
+      {/* Skill Medal Wall */}
+      <SkillMedalWall skills={skillMedals} />
 
       {/* PP Ranking Placeholder */}
       <div className="rounded-xl border border-border bg-card p-5">

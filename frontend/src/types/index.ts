@@ -594,3 +594,45 @@ export interface FreePlayQuitResponse {
   new_elo: number | null;
   penalty: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// Medal System
+// ---------------------------------------------------------------------------
+
+export interface MedalInfo {
+  level: string;
+  type?: string;
+}
+
+export interface OverallMedalResponse {
+  elo: number;
+  medal: MedalInfo;
+}
+
+export interface SkillMedalItem {
+  tag: string;
+  level: string;
+  type?: string;
+  melo: number;
+}
+
+export interface SkillMedalsResponse {
+  skills: SkillMedalItem[];
+}
+
+export interface MedalStatsResponse {
+  stats: Record<string, Record<string, number>>;
+  total_medals: number;
+}
+
+export interface UserMedalPublicResponse {
+  user_id: string;
+  username: string;
+  overall_medal: MedalInfo;
+  medal_stats: Record<string, Record<string, number>>;
+  total_medals: number;
+}
+
+export interface UserSettingsData {
+  display_mode: "medal" | "cf_tier";
+}

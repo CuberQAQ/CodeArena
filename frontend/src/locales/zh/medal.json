@@ -1,0 +1,37 @@
+{
+  "levels": {
+    "worldFinals": "世界总决赛",
+    "ecFinal": "亚洲决赛",
+    "regional": "区域赛",
+    "provincial": "省赛",
+    "unranked": "未入段"
+  },
+  "types": {
+    "gold": "金牌",
+    "silver": "银牌",
+    "bronze": "铜牌"
+  },
+  "cabinet": {
+    "title": "奖牌柜",
+    "totalMedals": "奖牌总数",
+    "noMedals": "还没有比赛奖牌。参加虚拟比赛来赢得奖牌！",
+    "level": "级别",
+    "gold": "金牌",
+    "silver": "银牌",
+    "bronze": "铜牌"
+  },
+  "skills": {
+    "title": "技能勋章墙",
+    "noSkills": "还没有技能数据。开始解题来建立你的技能档案！"
+  },
+  "settings": {
+    "title": "显示设置",
+    "displayMode": "展示模式",
+    "medalMode": "奖牌制",
+    "medalModeDesc": "显示 XCPC 风格奖牌（世界总决赛、区域赛等）",
+    "cfTierMode": "CF 段位制",
+    "cfTierModeDesc": "显示 Codeforces 段位名称（专家、大师等）",
+    "saved": "设置已保存",
+    "failedSave": "保存设置失败"
+  }
+}

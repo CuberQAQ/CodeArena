@@ -4,8 +4,9 @@ import { Dumbbell, Star, BookOpen, Shield } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { getRatingTierInfo, RATING_KEY_MAP } from "@/utils";
+import { MedalBadge } from "@/components/medal";
 import api from "@/services/api";
-import type { ApiResponse, TopicInfo } from "@/types";
+import type { ApiResponse, TopicInfo, UserSettingsData, SkillMedalItem } from "@/types";
 
 function StarRating({ count, max = 7 }: { count: number; max?: number }) {
   return (
@@ -26,6 +27,8 @@ export default function TrainingPage() {
   const [topics, setTopics] = useState<TopicInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [displayMode, setDisplayMode] = useState<"medal" | "cf_tier">("medal");
+  const [skillMedals, setSkillMedals] = useState<Record<string, SkillMedalItem>>({});
 
   useEffect(() => {
     api
@@ -37,6 +40,20 @@ export default function TrainingPage() {
         setError(msg ?? t("failedLoadTopics"));
       })
       .finally(() => setLoading(false));
+    api
+      .get<ApiResponse<UserSettingsData>>("/auth/settings")
+      .then((res) => setDisplayMode(res.data.data.display_mode))
+      .catch(() => {});
+    api
+      .get<ApiResponse<{ skills: SkillMedalItem[] }>>("/medal/skills")
+      .then((res) => {
+        const map: Record<string, SkillMedalItem> = {};
+        for (const s of res.data.data.skills) {
+          map[s.tag] = s;
+        }
+        setSkillMedals(map);
+      })
+      .catch(() => {});
   }, [t]);
 
   if (loading) {
@@ -102,6 +119,21 @@ export default function TrainingPage() {
                     )}
                     {topic.melo !== null ? (
                       (() => {
+                        // Check if any of the topic's cf_tags have a skill medal
+                        const medalSkill = topic.cf_tags
+                          .map((tag) => skillMedals[tag])
+                          .find((s) => s && s.level !== "unranked");
+
+                        if (displayMode === "medal" && medalSkill) {
+                          return (
+                            <MedalBadge
+                              level={medalSkill.level}
+                              type={medalSkill.type}
+                              size="sm"
+                            />
+                          );
+                        }
+
                         const tierInfo = getRatingTierInfo(topic.melo);
                         return (
                           <span

@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { BarChart3, TrendingUp, Medal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { getRatingColor, getDifficultyLabelKey } from "@/utils";
+import { getRatingColor, getDifficultyLabelKey, ratingToMedal } from "@/utils";
+import { MedalBadge } from "@/components/medal";
 import api from "@/services/api";
-import type { ApiResponse, UserInfo } from "@/types";
+import type { ApiResponse, UserInfo, UserSettingsData } from "@/types";
 
 type SortKey = "elo" | "pp";
 
@@ -13,6 +14,7 @@ export default function LeaderboardPage() {
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortKey>("elo");
+  const [displayMode, setDisplayMode] = useState<"medal" | "cf_tier">("medal");
   const hasFetchedRef = useRef(false);
 
   useEffect(() => {
@@ -25,6 +27,10 @@ export default function LeaderboardPage() {
         setUsers([]);
       })
       .finally(() => setLoading(false));
+    api
+      .get<ApiResponse<UserSettingsData>>("/auth/settings")
+      .then((res) => setDisplayMode(res.data.data.display_mode))
+      .catch(() => {});
   }, []);
 
   const sorted = [...users].sort((a, b) =>
@@ -106,7 +112,25 @@ export default function LeaderboardPage() {
                   className="text-right text-sm font-bold"
                   style={{ color: getRatingColor(user.elo) }}
                 >
-                  {user.elo} <span className="text-xs font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
+                  {displayMode === "medal" ? (
+                    (() => {
+                      const medal = ratingToMedal(user.elo);
+                      return (
+                        <span className="inline-flex items-center gap-1">
+                          {user.elo}
+                          <MedalBadge
+                            level={medal.level}
+                            type={medal.type}
+                            size="sm"
+                          />
+                        </span>
+                      );
+                    })()
+                  ) : (
+                    <>
+                      {user.elo} <span className="text-xs font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
+                    </>
+                  )}
                 </span>
                 <span className="text-right text-sm font-semibold text-yellow-400">
                   {user.pp}

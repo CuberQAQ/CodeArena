@@ -14,5 +14,6 @@
   "configuration": "配置",
   "backToApp": "返回应用",
   "administrator": "管理员",
-  "unauthorized": "未授权"
+  "unauthorized": "未授权",
+  "settings": "设置"
 }
