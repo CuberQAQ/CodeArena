@@ -1026,7 +1026,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ## 阶段 37: 测试补全 — 前端 E2E + CI 集成
 
 ### Task 37.1: 前端 E2E 测试补全
-**状态**: ⬜ 待开发
+**状态**: 🟢 已完成
 **优先级**: P2
 **依赖**: 无
 
@@ -1055,7 +1055,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ---
 
 ### Task 37.2: CI 集成测试配置
-**状态**: ⬜ 待开发
+**状态**: 🟢 已完成
 **优先级**: P2
 **依赖**: Task 36.2, 36.3
 
@@ -1073,3 +1073,500 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 - [ ] CI backend-test job 添加 `--cov` 覆盖率门禁
 - [ ] CI 新增 frontend-e2e job，安装 Playwright + 浏览器，运行 E2E
 - [ ] E2E 测试需要后端 API server → 使用 docker-compose service 或 mock server
+
+---
+
+## 阶段 38: 体验优化 — Bug 修复 + 快速改进
+
+> 需求文档 V1.3 新增需求（2026-05-22）。Task 37.x 由其他 agent 负责，本阶段从 38 开始。
+
+### Task 38.1: 做题计时器持久化 (FR-19)
+**状态**: ⬜ 待开发
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+自由选题和专题训练的做题计时器基于 session 的 started_at 时间戳计算已用时间，刷新页面或重新进入时不归零。
+
+#### 需求规格 (requirements.md FR-19)
+- FR-19.1: session 记录 started_at 时间戳（精度秒级）
+- FR-19.2: 计时器基于 started_at 计算 elapsed = now - started_at，跨页面连续
+- FR-19.3: 适用自由选题 session 和专题训练 session
+
+#### 需要修改的文件
+- `backend/app/models/free_play_session.py` — 确认 started_at 字段已存在（当前模型已有）
+- `backend/app/models/training_session.py` — 确认/新增 started_at 字段
+- `backend/app/services/free_play_service.py` — start_session() 确保 started_at = utcnow
+- `backend/app/services/training_service.py` — start session 时记录 started_at
+- `frontend/src/pages/FreePlaySessionPage.tsx` — useElapsedTime 改为接受初始值：从后端 session 的 started_at 计算 elapsed
+- `frontend/src/pages/TrainingDetailPage.tsx` — 同上，计时器从 started_at 恢复
+- `backend/migrations/versions/` — 若 training_session 缺少 started_at 则新增 migration
+
+#### 调用方清单
+- FreePlaySessionPage 加载时获取 session 数据（含 started_at）
+- TrainingDetailPage 加载时获取 session 数据（含 started_at）
+
+#### 反向集成清单
+- started_at 同时用于 time_spent 计算（结算时 time_spent = completed_at - started_at），确保一致
+- 后端 session GET API 返回 started_at 字段供前端使用
+
+#### 关键实现细节
+1. **FreePlaySession** 模型已有 `started_at` 字段，只需确认 start_session 时正确写入
+2. **TrainingSession** 需确认是否有 started_at；若没有，新增 Column(DateTime) 并在 migration 中设置默认值 = created_at
+3. **useElapsedTime 改造**：接受 initialSeconds 参数，初始化时 setElapsed(initialSeconds) 而非 setElapsed(0)
+4. **session API 返回**：前端加载已有 session 时，从 API 响应获取 started_at，计算 Math.floor((Date.now() - new Date(started_at).getTime()) / 1000) 作为 initialSeconds
+
+#### 测试要点
+- [ ] **自由选题刷新**: 开始做题 → 刷新页面 → 计时器从上次时间继续
+- [ ] **训练刷新**: 开始训练做题 → 刷新页面 → 计时器从上次时间继续
+- [ ] **自由选题重新进入**: 关闭页面 → 重新进入 session → 计时器正确恢复
+- [ ] **新 session**: 新建 session 时计时器从 0 开始
+- [ ] **结算时间一致**: time_spent 与前端计时器显示一致
+
+---
+
+### Task 38.2: CF 全球排名用户展示修复 (FR-18.5)
+**状态**: ⬜ 待开发
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+全球排名页面正常展示 CF 采样用户数据，CA 用户和 CF 用户混合排行。
+
+#### 需求规格 (requirements.md FR-18.5)
+- 全球排名中的 CF 采样用户正常显示
+- CF 用户展示估算 PP 和 CF rating
+- 排序：PP 降序，同 PP 时 CA 用户优先
+
+#### 需要修改的文件
+- `backend/app/services/ranking_service.py` — 排查 get_global_ranking() 数据查询逻辑
+- `backend/app/services/cf_ranking_service.py` — 排查采样数据是否正确存储
+- `backend/app/models/cf_sample_user.py` — 确认模型和数据完整性
+- `backend/app/api/v1/ranking.py` — 确认 API 端点返回 CF 用户数据
+- `frontend/src/pages/GlobalRankingPage.tsx` — 确认前端正确渲染 CF 用户
+
+#### 调用方清单
+- GlobalRankingPage 组件调用 GET /ranking/global API
+- CF 采样管道 cf_ranking_service.run_sampling_pipeline()
+
+#### 关键实现细节
+1. **排查方向**：
+   - cf_sample_users 表是否有数据（采样管道是否执行过）
+   - ranking_service 查询是否正确 JOIN cf_sample_users
+   - API 响应格式前端是否正确解析
+   - 前端渲染条件是否过滤掉了 CF 用户
+2. **修复验证**：确保 global ranking 页面同时展示 CA 和 CF 用户
+
+#### 测试要点
+- [ ] **CF 用户可见**: 全球排名页面包含 CF 采样用户
+- [ ] **混合排序**: CA 和 CF 用户按 PP 混合排序
+- [ ] **CA 优先**: 同 PP 时 CA 用户排在前面
+- [ ] **CF 用户信息**: CF 用户显示估算 PP 和 CF rating
+- [ ] **国家筛选**: CF 用户也参与国家筛选
+
+---
+
+### Task 38.3: 自由选题改为出 3 道题 (FR-8.2, 8.3)
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+手动筛选和自适应推荐均返回 3 道难度梯度上升的题目，前端以卡片形式并排展示。
+
+#### 需求规格 (requirements.md FR-8.2, 8.3)
+- FR-8.2: 手动筛选返回 3 道，rating 均匀分布，不足 3 题返回实际数量
+- FR-8.3: 自适应推荐返回 3 道，梯度 ±100 / +100~200 / +200~300
+
+#### 需要修改的文件
+- `backend/app/services/free_play_service.py` —
+  - `search_problems()`: 返回 3 道题而非 1 道，rating 均匀分布
+  - `recommend_problem()`: 返回 3 道推荐题，难度梯度上升
+  - 响应模型调整：FreePlaySearchResponse / FreePlayRecommendResponse 改为列表
+- `backend/app/api/v1/free_play.py` — 适配新的响应格式
+- `frontend/src/pages/FreePlayPage.tsx` — 展示 3 道题卡片并排，标注 Easy/Medium/Hard，用户选择一道开始
+- `frontend/src/pages/FreePlaySessionPage.tsx` — 无变化（session 仍针对单道题）
+- `frontend/src/locales/` — 新增 Easy/Medium/Hard 翻译
+
+#### 调用方清单
+- FreePlayPage 调用 search/recommend API
+- 用户选择其中一道题后调用 start_session
+
+#### 反向集成清单
+- 结算逻辑不变（仍然是单题结算）
+- session 创建仍然针对单道题
+
+#### 关键实现细节
+1. **手动筛选 3 题**：获取所有符合条件的题后，按 rating 排序，均匀取 3 道（低/中/高）。如 30 道符合题，取第 1/15/30 或等间隔取
+2. **自适应推荐 3 题**：确定推荐 tag 后，在三个难度范围分别搜索：
+   - 简单: [M-Elo-100, M-Elo+100]
+   - 中等: [M-Elo+100, M-Elo+200]
+   - 困难: [M-Elo+200, M-Elo+300]
+   每个范围取一道，不足则范围向外扩展
+3. **前端展示**：3 张卡片并排，每张显示题目名、rating（带颜色）、难度标签（Easy/Medium/Hard）、CF tags。用户点击任意一张开始做题
+4. **去重**：3 道题不能包含已 AC 的题目，3 道题之间不能重复
+
+#### 测试要点
+- [ ] **手动筛选 3 题**: 搜索结果返回 3 道，rating 梯度上升
+- [ ] **手动筛选不足 3 题**: 范围内只有 1-2 题 → 返回实际数量
+- [ ] **自适应推荐 3 题**: 3 道题难度分别为 ±100 / +100~200 / +200~300
+- [ ] **前端 3 卡片展示**: 并排显示，标注 Easy/Medium/Hard
+- [ ] **选择题目**: 点击任意卡片进入做题 session
+- [ ] **去重**: 不包含已 AC 题，3 道互不重复
+
+---
+
+### Task 38.4: 算法标签与技能名称中文化 (FR-21)
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+12 个算法专题拥有双语名称，前端根据语言偏好展示中文或英文名。
+
+#### 需求规格 (requirements.md FR-21)
+- FR-21.1: 每个专题拥有中英文名称
+- FR-21.2: 段位名称中英文对照
+- FR-21.3: 标签名称通过 i18n 获取
+
+#### 需要修改的文件
+- `backend/app/services/training_service.py` — PREDEFINED_TOPICS 每项增加 name_zh 字段
+- `frontend/src/locales/en/` — 新增专题名称英文翻译
+- `frontend/src/locales/zh/` — 新增专题名称中文翻译
+- `frontend/src/pages/TrainingPage.tsx` — 专题卡片使用 i18n key 展示名称
+- `frontend/src/pages/TrainingDetailPage.tsx` — 专题详情使用 i18n 名称
+- `frontend/src/components/charts/RadarChart.tsx` — 雷达维度名使用 i18n
+- 其他展示标签名的前端组件 — 统一使用 i18n
+
+#### 调用方清单
+- TrainingPage 专题卡片
+- TrainingDetailPage 专题标题
+- RadarChart 维度标签
+- Profile 页技能勋章墙
+
+#### 关键实现细节
+1. **后端 name_zh**：在 PREDEFINED_TOPICS 每项增加 `"name_zh": "动态规划"` 字段，API 响应中同时返回 name 和 name_zh
+2. **前端 i18n**：在翻译文件中增加 `topic_dp: "动态规划"` / `topic_dp: "Dynamic Programming"` 的映射
+3. **展示统一**：所有展示标签名的位置使用 `t('topic_dp')` 而非硬编码英文名
+4. **段位中文化**：段位名称翻译已有（Newbie/新手 等），确认翻译完整
+
+#### 测试要点
+- [ ] **训练页中文**: 切换中文后专题名显示中文
+- [ ] **训练页英文**: 切换英文后专题名显示英文
+- [ ] **雷达图中文**: 雷达维度名随语言切换
+- [ ] **详情页**: 专题详情页标题随语言切换
+- [ ] **段位中文化**: 所有段位名称中英文正确
+
+---
+
+## 阶段 39: 比赛赛制改造
+
+### Task 39.1: 比赛赛制后端改造 (FR-4.4)
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+比赛分级改为 5 级赛制：Beginner(Div4)/Pupil(Div3)/Advanced(Div2)/Master(Div1)/Blitz(短时赛)，展示名沿用风格化名称，底层 Div 编号对齐 CF。
+
+#### 需求规格 (requirements.md FR-4.4)
+- 5 级赛制表（见 requirements.md）
+- 高 rating 用户可降级参加低 Div
+- Blitz 短时赛：60min/3-4 题/无门槛
+
+#### 需要修改的文件
+- `backend/app/services/contest_service.py` —
+  - TIER_CONFIGS 重构为 5 级，增加 div 编号字段
+  - 新增 "pupil" 和 "blitz" tier 配置
+  - rated 规则：高 rating 用户参加低 Div 不 rated（或按 CF 规则）
+  - Blitz 题目选择逻辑：根据参赛群体平均 rating 动态调整
+  - rated 范围检查逻辑调整
+- `backend/app/api/v1/contest.py` — API 适配新 tier
+- `backend/app/api/v1/contest_ws.py` — WebSocket 适配
+
+#### 调用方清单
+- ContestPage 调用创建比赛 API
+- ContestDetailPage 实时状态
+- 比赛结算 PR 计算
+
+#### 反向集成清单
+- 比赛结算（PR → Elo 更新）逻辑不变
+- 比赛奖牌发放不变（与组别无关）
+- Bot 生成逻辑适配新 tier 范围
+- M-Elo 更新不变
+
+#### 关键实现细节
+1. **TIER_CONFIGS 重构**：
+   ```python
+   TIER_CONFIGS = {
+       "beginner": {"div": 4, "name": "Beginner Contest", "max_elo": 1399, "duration_minutes": 120, "problem_count": 6, "rating_range": [800, 1400]},
+       "pupil": {"div": 3, "name": "Pupil Contest", "max_elo": 1599, "duration_minutes": 120, "problem_count": 6, "rating_range": [800, 1600]},
+       "advanced": {"div": 2, "name": "Advanced Contest", "max_elo": 2099, "duration_minutes": 120, "problem_count": 5, "rating_range": [1200, 2200]},
+       "master": {"div": 1, "name": "Master Contest", "min_elo": 1900, "duration_minutes": 120, "problem_count": 5, "rating_range": [1600, 3000]},
+       "blitz": {"div": None, "name": "Blitz Contest", "duration_minutes": 60, "problem_count": 3, "rating_range": "dynamic"},
+   }
+   ```
+2. **Rated 规则**：用户 rating 在 tier 的 rated 范围内时 rated，否则可参加但不 rated（rating 不变）
+3. **Blitz 题目选择**：根据报名用户的平均 rating 确定题目 rating 范围（如平均 1500 → 题目 [1000, 2000]）
+4. **现有数据兼容**：已有的 contest_session 记录的 tier 值需兼容（beginner/advanced/master 仍然有效）
+
+#### 测试要点
+- [ ] **5 级赛制创建**: 可创建 5 种类型的比赛
+- [ ] **Div 编号**: beginner=Div4, pupil=Div3, advanced=Div2, master=Div1, blitz=无
+- [ ] **Rated 规则**: rating 1300 参加 beginner → rated；rating 1800 参加 beginner → 不 rated
+- [ ] **Blitz 题目**: 题目难度根据参赛群体动态调整
+- [ ] **Blitz 时长**: 60 分钟比赛
+- [ ] **高 rating 降级**: 2000 rating 用户可参加 advanced(Div2)
+- [ ] **结算不变**: PR 计算和奖牌发放逻辑不受影响
+- [ ] **现有比赛兼容**: 已有比赛数据不受影响
+
+---
+
+### Task 39.2: 比赛赛制前端适配 (FR-4.4)
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: Task 39.1
+
+#### 任务描述
+前端比赛页面适配 5 级赛制，展示 5 种比赛类型卡片。
+
+#### 需要修改的文件
+- `frontend/src/pages/ContestPage.tsx` —
+  - 展示 5 种比赛类型卡片（增加 Pupil 和 Blitz）
+  - 每张卡片显示展示名、Div 编号、rated 范围、时长、题数
+  - Eligibility 检查适配新 rated 规则
+  - Blitz 卡片特殊样式（闪电图标、短时标识）
+- `frontend/src/pages/ContestDetailPage.tsx` — 适配新 tier 参数
+- `frontend/src/locales/` — 新增比赛类型翻译
+
+#### 测试要点
+- [ ] **5 种卡片**: 页面展示 5 种比赛类型
+- [ ] **Eligibility**: 各 tier 准入判断正确
+- [ ] **Blitz 展示**: 短时赛卡片有特殊样式
+- [ ] **Div 编号展示**: 卡片上显示 Div 1/2/3/4
+- [ ] **i18n**: 比赛类型名称中英文正确
+
+---
+
+## 阶段 40: 训练 UX 重构
+
+### Task 40.1: 训练 UX 后端改造 — 精选题 + 推荐 (FR-3.5)
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+训练系统后端增加精选题列表 API 和智能推荐 API，支持"推荐做题"和"题目列表"双模式。
+
+#### 需求规格 (requirements.md FR-3.5)
+- 推荐做题模式：基于 M-Elo 自动推荐一道题
+- 题目列表模式：返回 20-30 道精选题，支持加载更多和难度筛选
+- 推荐专题区域：基于用户水平推荐 2-3 个专题
+
+#### 需要修改的文件
+- `backend/app/services/training_service.py` —
+  - 新增 `get_curated_problems(db, topic_id, user_id, limit=20, offset=0, min_rating=None, max_rating=None)` 方法
+  - 新增 `recommend_training_problem(db, topic_id, user_id)` 方法
+  - 新增 `get_recommended_topics(db, user_id, limit=3)` 方法
+  - 精选逻辑：按 rating 分段，每段选 AC 率高的代表题
+- `backend/app/api/v1/training.py` — 新增 API 端点：
+  - `GET /training/topics/{id}/curated-problems` — 精选题列表
+  - `GET /training/topics/{id}/recommend` — 推荐一道题
+  - `GET /training/recommended-topics` — 推荐专题
+
+#### 调用方清单
+- 前端训练详情页调用推荐和精选题 API
+- 前端训练首页调用推荐专题 API
+
+#### 反向集成清单
+- 推荐逻辑依赖 M-Elo 数据
+- 精选题依赖 CF API 题库数据
+- 结算逻辑不变
+
+#### 关键实现细节
+1. **精选题逻辑**：获取某 tag 的所有题目 → 按 rating 排序 → 按 rating 分段（每 200 分一段）→ 每段选 3-5 道代表题（优先选 AC 率高的、有比赛出处的）→ 合并返回 20-30 道
+2. **推荐逻辑**：基于用户在该 tag 的 M-Elo，在 [M-Elo-100, M-Elo+100] 范围内选一道未做题
+3. **推荐专题**：按各 tag 的 M-Elo 升序排列（最弱的排前面），取前 3 个
+4. **渐进式解锁**：精选题 API 支持 offset 参数，初始加载 20 道，加载更多时 +20
+
+#### 测试要点
+- [ ] **精选题数量**: 返回 20-30 道
+- [ ] **精选题难度递进**: rating 从低到高排列
+- [ ] **推荐题水平匹配**: 推荐题 rating 接近用户 M-Elo
+- [ ] **推荐专题**: 返回用户最弱的 2-3 个专题
+- [ ] **加载更多**: offset 参数正确翻页
+- [ ] **难度筛选**: min_rating/max_rating 过滤正确
+
+---
+
+### Task 40.2: 训练 UX 前端重构 (FR-3.5)
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: Task 40.1, Task 38.4
+
+#### 任务描述
+重构训练页面前端：卡片信息精简、双模式（推荐做题 + 题目列表）切换、学习路径引导、实时反馈。
+
+#### 需要修改的文件
+- `frontend/src/pages/TrainingPage.tsx` —
+  - 卡片精简：只展示中文名 + 进度百分比；hover 展示 M-Elo/已完成数
+  - 推荐专题区域：顶部展示 2-3 个推荐专题卡片
+  - "今日训练目标"提示文案
+- `frontend/src/pages/TrainingDetailPage.tsx` —
+  - 双模式切换 UI（推荐模式 / 列表模式 tab）
+  - 推荐模式：分屏布局（左题面，右信息面板 + SolvingTimeline + 计时器）+ "换一道"按钮
+  - 列表模式：精选题列表，按难度递进，支持"加载更多"和难度筛选
+  - 使用 i18n 展示中文专题名
+- `frontend/src/locales/` — 新增训练 UX 翻译
+
+#### 调用方清单
+- 训练首页用户选择专题
+- 训练详情页用户做题
+
+#### 反向集成清单
+- SolvingTimeline 组件复用
+- ProblemViewer / ProblemStatementViewer 复用
+- 计时器使用 Task 38.1 持久化后的逻辑
+
+#### 关键实现细节
+1. **卡片精简**：移除当前的 CF tags 展示、冗余的星级/奖牌细节。一级只显示：中文名 + 进度条 + M-Elo 数值
+2. **推荐专题区**：卡片上方展示"推荐训练"横幅，显示 2-3 个推荐专题，带理由文案（如"你的动态规划 M-Elo 最低，建议优先练习"）
+3. **双模式 tab**：默认"推荐做题"tab，可切换"题目列表"tab
+4. **推荐模式分屏**：左侧 ProblemStatementViewer 占 60%，右侧信息面板占 40%（含 SolvingTimeline、计时器、连续 AC、streak、预计 token）
+5. **列表模式**：每道题显示 rating（带颜色）、难度标签、已做/未做状态。点击题目进入做题
+6. **"换一道"按钮**：调用推荐 API 获取新题，不创建新 session
+
+#### 测试要点
+- [ ] **卡片精简**: 每张卡片只显示核心信息
+- [ ] **推荐专题**: 首页顶部展示推荐专题
+- [ ] **双模式切换**: 推荐和列表模式切换流畅
+- [ ] **推荐模式分屏**: 左题面右信息面板布局正确
+- [ ] **列表模式精选题**: 显示 20-30 道，难度递进
+- [ ] **加载更多**: 点击加载更多追加题目
+- [ ] **换一道**: 点击后获取新推荐题
+- [ ] **i18n**: 专题名和 UI 文案中英文切换
+- [ ] **计时器持久化**: 刷新后计时器不归零
+
+---
+
+## 阶段 41: 排名整合 + 雷达 + UX 打磨
+
+### Task 41.1: 排名页面整合 (FR-20)
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: Task 38.2（CF 用户展示修复后才有意义）
+
+#### 任务描述
+合并 Leaderboard 和 Global Ranking 为统一排名页面 /ranking，双标签页切换。
+
+#### 需求规格 (requirements.md FR-20)
+- FR-20.1: 统一排名页面，双标签页（全球排名 + 站内排名）
+- FR-20.2: 导航栏只有一个排名入口
+
+#### 需要修改的文件
+- `frontend/src/pages/GlobalRankingPage.tsx` — 重构为统一排名页面，路由改为 /ranking
+  - 合并 LeaderboardPage 的功能到站内排名 tab
+  - 全球排名 tab：CA + CF 混合排行
+  - 站内排名 tab：仅 CA 用户，支持按 PP/ELO 排序
+- `frontend/src/pages/LeaderboardPage.tsx` — 废弃或重定向到 /ranking
+- `frontend/src/App.tsx` 或路由配置 — /leaderboard → 重定向 /ranking，/global-ranking → 重定向 /ranking
+- 导航栏配置 — 移除重复入口，只保留一个"排名"导航项
+
+#### 调用方清单
+- 导航栏链接
+- 直接 URL 访问 /leaderboard 或 /global-ranking
+
+#### 关键实现细节
+1. **页面结构**：统一 RankingPage，顶部两个 tab：
+   - "全球排名" tab：复用当前 GlobalRankingPage 的全球排名部分（CA + CF 混排）
+   - "站内排名" tab：复用当前 LeaderboardPage 的功能（CA 用户排行，按 PP/ELO 排序）
+2. **路由**：/ranking 为新路由，/leaderboard 和 /global-ranking 做 301 重定向
+3. **导航栏**：只保留一个"排名"入口，图标用 Globe 或 Trophy
+
+#### 测试要点
+- [ ] **统一入口**: 导航栏只有一个排名链接
+- [ ] **全球排名 tab**: CA + CF 混合排行正常
+- [ ] **站内排名 tab**: 仅 CA 用户，PP/ELO 排序
+- [ ] **旧路由重定向**: /leaderboard → /ranking, /global-ranking → /ranking
+- [ ] **国家筛选**: 两个 tab 均支持
+- [ ] **分页**: 两个 tab 均支持
+
+---
+
+### Task 41.2: 技能雷达维度收归 (FR-22)
+**状态**: ⬜ 待开发
+**优先级**: P2
+**依赖**: Task 38.4（标签中文化后才有完整维度名）
+
+#### 任务描述
+雷达图从 12 个专题维度收归为 8 个核心维度，每个维度聚合一个或多个子专题的 M-Elo。
+
+#### 需求规格 (requirements.md FR-22)
+- FR-22.1: 8 个核心维度定义
+- FR-22.2: 聚合规则（加权平均）
+- FR-22.3: 训练专题保持 12 个
+- FR-22.4: 无数据维度显示默认值
+
+#### 需要修改的文件
+- `frontend/src/components/charts/RadarChart.tsx` —
+  - 新增维度映射配置：8 个核心维度 → 对应的 CF tags
+  - 获取 M-Elo 数据后按映射聚合
+  - 维度名使用 i18n 中英文展示
+- 后端 API（如 M-Elo 数据是按 tag 返回的，聚合在前端做即可）
+
+#### 关键实现细节
+1. **维度映射**：
+   ```typescript
+   const RADAR_DIMENSIONS = [
+     { key: "dp", label_zh: "动态规划", label_en: "Dynamic Programming", tags: ["dp"] },
+     { key: "graphs", label_zh: "图论", label_en: "Graph Theory", tags: ["graphs", "trees"] },
+     { key: "math", label_zh: "数学", label_en: "Mathematics", tags: ["math", "number theory"] },
+     { key: "ds", label_zh: "数据结构", label_en: "Data Structures", tags: ["data structures"] },
+     { key: "strings", label_zh: "字符串", label_en: "Strings", tags: ["strings"] },
+     { key: "greedy", label_zh: "贪心与构造", label_en: "Greedy & Constructive", tags: ["greedy", "constructive algorithms"] },
+     { key: "search", label_zh: "搜索与排序", label_en: "Search & Sorting", tags: ["binary search", "sortings"] },
+     { key: "geometry", label_zh: "计算几何", label_en: "Geometry", tags: ["geometry"] },
+   ]
+   ```
+2. **聚合计算**：核心维度的 value = 其 tags 对应 M-Elo 的平均值。若某 tag 无数据，跳过。若所有 tags 都无数据，使用 Global Elo 或 1200
+3. **训练专题不变**：训练页面仍显示 12 个子专题卡片
+
+#### 测试要点
+- [ ] **8 维度展示**: 雷达图显示 8 个维度
+- [ ] **聚合正确**: 图论 = avg(graphs M-Elo, trees M-Elo)
+- [ ] **无数据维度**: 缺少数据的维度显示默认值
+- [ ] **维度名 i18n**: 切换语言维度名跟随切换
+- [ ] **训练页不变**: 训练页仍展示 12 个子专题
+
+---
+
+### Task 41.3: 整体 UX 打磨 (FR-23)
+**状态**: ⬜ 待开发
+**优先级**: P2
+**依赖**: Task 41.1（排名整合后统一导航）
+
+#### 任务描述
+统一导航栏、页面标题面包屑、loading 状态、错误提示、响应式布局、深色模式适配。
+
+#### 需求规格 (requirements.md FR-23)
+- FR-23.1: 导航项不重复
+- FR-23.2: 所有页面有清晰标题和返回路径
+- FR-23.3: 统一 loading/skeleton
+- FR-23.4: 统一错误信息样式
+- FR-23.5: 关键页面移动端可用
+- FR-23.6: 深色模式适配
+
+#### 需要修改的文件
+- `frontend/src/components/layout/MainLayout.tsx` — 导航栏配置更新
+- `frontend/src/components/layout/` — 统一面包屑组件
+- `frontend/src/components/ui/` — 统一 loading/skeleton/error 组件
+- 各页面组件 — 标题和面包屑接入
+- `frontend/src/index.css` 或 `tailwind.config.js` — 深色模式样式检查
+
+#### 测试要点
+- [ ] **导航无重复**: 每类功能只有一个导航入口
+- [ ] **面包屑**: 各页面有面包屑导航
+- [ ] **loading 统一**: 各页面使用统一的 skeleton/loading 组件
+- [ ] **错误提示**: 错误信息用户友好，不显示技术栈
+- [ ] **移动端**: 关键页面在 375px 宽度下可用
+- [ ] **深色模式**: 所有新改动在深色模式下样式正确
