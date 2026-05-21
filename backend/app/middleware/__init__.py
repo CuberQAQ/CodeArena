@@ -15,10 +15,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         duration_ms = (time.perf_counter() - start) * 1000
 
         # Use the app's logger if available, otherwise print
-        message = (
-            f"{request.method} {request.url.path} "
-            f"-> {response.status_code} ({duration_ms:.1f}ms)"
-        )
+        message = f"{request.method} {request.url.path} -> {response.status_code} ({duration_ms:.1f}ms)"
         if hasattr(request.app.state, "logger") and request.app.state.logger:
             request.app.state.logger.info(message)
         else:
@@ -33,7 +30,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Tracks request counts per client IP within a sliding window.
     Suitable for single-process deployments; for multi-process
     deployments, replace with a Redis-backed implementation.
+
+    Certain high-frequency, low-cost endpoints (e.g. /auth/me,
+    /auth/refresh) are excluded from rate limiting so that normal
+    page-load patterns do not trigger spurious 429 responses.
+    Brute-force targets (/auth/login, /auth/register) remain limited.
     """
+
+    # Prefixes that bypass rate limiting entirely.
+    EXCLUDED_PATH_PREFIXES: tuple[str, ...] = (
+        "/api/v1/auth/me",
+        "/api/v1/auth/refresh",
+    )
 
     def __init__(self, app: FastAPI, max_requests: int = 60, window_seconds: int = 60) -> None:
         super().__init__(app)
@@ -42,7 +50,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # {client_ip: [(timestamp, ...), ...]}
         self._requests: dict[str, list[float]] = {}
 
+    def _is_excluded(self, path: str) -> bool:
+        """Return True for paths that should bypass rate limiting."""
+        return any(path == prefix or path.startswith(prefix + "/") for prefix in self.EXCLUDED_PATH_PREFIXES)
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        # Skip rate limiting for excluded endpoints
+        if self._is_excluded(request.url.path):
+            return await call_next(request)
+
         client_ip = request.client.host if request.client else "unknown"
         now = time.time()
 
@@ -51,9 +67,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             self._requests[client_ip] = []
 
         # Remove timestamps outside the window
-        self._requests[client_ip] = [
-            ts for ts in self._requests[client_ip] if now - ts < self.window_seconds
-        ]
+        self._requests[client_ip] = [ts for ts in self._requests[client_ip] if now - ts < self.window_seconds]
 
         if len(self._requests[client_ip]) >= self.max_requests:
             return Response(

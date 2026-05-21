@@ -83,9 +83,18 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const res = await api.get<ApiResponse<UserInfo>>("/auth/me");
       set({ user: res.data.data, isAuthenticated: true, isLoading: false });
-    } catch {
-      clearTokens();
-      set({ user: null, isAuthenticated: false, isLoading: false });
+    } catch (err: unknown) {
+      // Only clear tokens on 401 (auth failure). 429/5xx are transient —
+      // keep existing state so the user is not logged out due to rate limiting.
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 401) {
+        clearTokens();
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      } else {
+        // Transient error (429, 500, network failure, etc.): keep tokens,
+        // mark loading done but leave user null so the UI can retry later.
+        set({ isLoading: false });
+      }
     }
   },
 }));

@@ -246,7 +246,7 @@ test.describe("PvP Challenge Flow (E2E Integration)", () => {
   // ========================================================================
   // Scenario 3: Quit penalty
   // ========================================================================
-  test("S3: P1 quits → P2 sees Victory", async ({ page, browser }) => {
+  test("S3: P1 quits → P2 auto-detects Victory via polling", async ({ page, browser }) => {
     const suffix = Date.now();
     const { p1, p2, ctx2 } = await setupTwoPlayers(suffix, "s3", page, browser);
 
@@ -258,11 +258,7 @@ test.describe("PvP Challenge Flow (E2E Integration)", () => {
       await p1.page.waitForSelector('text="Challenge Abandoned"', { timeout: 10_000 });
       await ss(p1.page, "pvp-s3-quit-p1");
 
-      // P2: reload and wait for result — frontend polls for status
-      await p2.page.reload();
-      await p2.page.waitForLoadState("networkidle");
-
-      // Wait for any result — P2 should see Victory (opponent quit)
+      // P2 should auto-detect opponent quit via in_progress polling (no reload needed)
       const p2Result = await Promise.race(
         RESULT_HEADINGS.map((h) =>
           p2.page.waitForSelector(`text="${h}"`, { timeout: 20_000 })

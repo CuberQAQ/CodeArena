@@ -87,7 +87,7 @@ function buildStatsFromTransactions(
 // Component
 // ---------------------------------------------------------------------------
 
-export function DashboardCharts() {
+export function DashboardCharts({ transactions }: { transactions: TransactionItem[] }) {
   const { user } = useAuthStore();
   const { t } = useTranslation("dashboard");
   const [loading, setLoading] = useState(true);
@@ -110,15 +110,7 @@ export function DashboardCharts() {
 
     try {
       // Fetch M-Elo data (for radar chart)
-      const meloPromise = getMElo().catch(() => null);
-
-      // Fetch transaction history (for token stats)
-      const txPromise = api
-        .get<ApiResponse<{ items: TransactionItem[]; total: number }>>("/economy/transactions?limit=100")
-        .then((res) => res.data.data)
-        .catch(() => null);
-
-      const [meloResult, txResult] = await Promise.all([meloPromise, txPromise]);
+      const meloResult = await getMElo().catch(() => null);
 
       // --- Radar data (M-Elo) ---
       if (meloResult && meloResult.melos.length > 0) {
@@ -126,13 +118,11 @@ export function DashboardCharts() {
         setRadarData(radar);
 
         // --- Stats ---
-        const transactions = txResult?.items ?? [];
         // Estimate total solved from M-Elo submissions
         const totalSolved = meloResult.melos.reduce((sum, m) => sum + m.total_submissions, 0);
         setStats(buildStatsFromTransactions(transactions, totalSolved, radar, t));
       } else {
         // No M-Elo data - use transactions-only stats
-        const transactions = txResult?.items ?? [];
         setRadarData([]);
         setStats(buildStatsFromTransactions(transactions, 0, [], t));
       }
@@ -155,9 +145,10 @@ export function DashboardCharts() {
     } finally {
       setLoading(false);
     }
-  }, [user, t]);
+  }, [user, t, transactions]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch updates state via callbacks
     fetchAllData();
   }, [fetchAllData]);
 

@@ -16,6 +16,8 @@
   "opponentFoundDesc": "Your match is ready. Click start to reveal the problem!",
   "startChallenge": "Start Challenge",
   "starting": "Starting...",
+  "waitingForOpponent": "Waiting for Opponent...",
+  "waitingForOpponentDesc": "Your opponent needs to confirm before the challenge begins. Please wait.",
   "challengeInProgress": "Challenge in progress",
   "openOnCodeforces": "Open on Codeforces",
   "reportYourResult": "Report Your Result",

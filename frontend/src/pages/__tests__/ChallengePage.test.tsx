@@ -330,4 +330,486 @@ describe("ChallengePage", () => {
       expect(screen.getByText("soloChallenge")).toBeInTheDocument();
     });
   });
+
+  // --- WAITING_OPPONENT PHASE ---
+
+  // 8. waiting_opponent: shows waiting UI, then transitions to in_progress when opponent confirms
+  it("shows waiting phase when start returns waiting_opponent, then polls and transitions to in_progress", async () => {
+    const sessionId = "ws1";
+
+    // Track call count to simulate status change after first poll
+    let detailCallCount = 0;
+
+    server.use(
+      http.get("*/api/v1/challenge/active", () =>
+        HttpResponse.json({ success: true, data: null, message: "ok" }),
+      ),
+      // Queue returns matched
+      http.post("*/api/v1/challenge/queue", () =>
+        HttpResponse.json({
+          success: true,
+          data: { matched: true, session_id: sessionId, status: "matched" },
+          message: "ok",
+        }),
+      ),
+      // Status polling (not needed but just in case)
+      http.get("*/api/v1/challenge/status", () =>
+        HttpResponse.json({ success: true, data: { matched: true, session_id: sessionId }, message: "ok" }),
+      ),
+      // Start returns waiting_opponent
+      http.post("*/api/v1/challenge/start", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            session_id: sessionId,
+            problem: null,
+            status: "waiting_opponent",
+          },
+          message: "ok",
+        }),
+      ),
+      // Detail: first call returns pending, second returns active
+      http.get("*/api/v1/challenge/ws1", () => {
+        detailCallCount++;
+        if (detailCallCount === 1) {
+          return HttpResponse.json({
+            success: true,
+            data: {
+              id: sessionId,
+              status: "pending",
+              problem: null,
+              result: null,
+            },
+            message: "ok",
+          });
+        }
+        return HttpResponse.json({
+          success: true,
+          data: {
+            id: sessionId,
+            status: "active",
+            problem: { contest_id: 300, index: "C", name: "Polished Problem", rating: 1600, tags: ["dp"], url: "https://codeforces.com/300/C" },
+            result: null,
+            is_challenger: true,
+            elo_change: null,
+            tokens_earned: null,
+            created_at: new Date().toISOString(),
+          },
+          message: "ok",
+        });
+      }),
+    );
+
+    renderWithRoutes();
+    const user = userEvent.setup();
+
+    // 1. Click "Find Opponent" -> enters matched phase (queue returns matched immediately)
+    await waitFor(() => {
+      expect(screen.getByText("findOpponent")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("findOpponent"));
+
+    // 2. Wait for matched phase and click "Start Challenge"
+    await waitFor(() => {
+      expect(screen.getByText("startChallenge")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    await user.click(screen.getByText("startChallenge"));
+
+    // 3. Should now be in waiting phase (not in_progress)
+    await waitFor(() => {
+      expect(screen.getByText("waitingForOpponent")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Should NOT show in_progress UI
+    expect(screen.queryByText("challengeInProgress")).not.toBeInTheDocument();
+
+    // 4. After polling, should transition to in_progress
+    await waitFor(() => {
+      expect(screen.getByText("challengeInProgress")).toBeInTheDocument();
+    }, { timeout: 10000 });
+    expect(screen.getByText("Polished Problem")).toBeInTheDocument();
+  });
+
+  // 9. waiting_opponent: Cancel button returns to idle
+  it("returns to idle when cancel is clicked during waiting phase", async () => {
+    const sessionId = "ws2";
+
+    server.use(
+      http.get("*/api/v1/challenge/active", () =>
+        HttpResponse.json({ success: true, data: null, message: "ok" }),
+      ),
+      http.post("*/api/v1/challenge/queue", () =>
+        HttpResponse.json({
+          success: true,
+          data: { matched: true, session_id: sessionId, status: "matched" },
+          message: "ok",
+        }),
+      ),
+      http.post("*/api/v1/challenge/start", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            session_id: sessionId,
+            problem: null,
+            status: "waiting_opponent",
+          },
+          message: "ok",
+        }),
+      ),
+      // Keep returning pending so waiting phase persists
+      http.get("*/api/v1/challenge/ws2", () =>
+        HttpResponse.json({
+          success: true,
+          data: { id: sessionId, status: "pending", problem: null, result: null },
+          message: "ok",
+        }),
+      ),
+    );
+
+    renderWithRoutes();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("findOpponent")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("findOpponent"));
+
+    await waitFor(() => {
+      expect(screen.getByText("startChallenge")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    await user.click(screen.getByText("startChallenge"));
+
+    await waitFor(() => {
+      expect(screen.getByText("waitingForOpponent")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Click cancel
+    await user.click(screen.getByText("common:cancel"));
+
+    // Should be back to idle
+    await waitFor(() => {
+      expect(screen.getByText("findOpponent")).toBeInTheDocument();
+    });
+  });
+
+  // 10. waiting_opponent: opponent leaves during wait -> transitions to result
+  it("transitions to result when opponent quits during waiting phase", async () => {
+    const sessionId = "ws3";
+    let detailCallCount = 0;
+
+    server.use(
+      http.get("*/api/v1/challenge/active", () =>
+        HttpResponse.json({ success: true, data: null, message: "ok" }),
+      ),
+      http.post("*/api/v1/challenge/queue", () =>
+        HttpResponse.json({
+          success: true,
+          data: { matched: true, session_id: sessionId, status: "matched" },
+          message: "ok",
+        }),
+      ),
+      http.post("*/api/v1/challenge/start", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            session_id: sessionId,
+            problem: null,
+            status: "waiting_opponent",
+          },
+          message: "ok",
+        }),
+      ),
+      http.get("*/api/v1/challenge/ws3", () => {
+        detailCallCount++;
+        if (detailCallCount <= 1) {
+          return HttpResponse.json({
+            success: true,
+            data: { id: sessionId, status: "pending", problem: null, result: null },
+            message: "ok",
+          });
+        }
+        return HttpResponse.json({
+          success: true,
+          data: {
+            id: sessionId,
+            status: "completed",
+            result: "win",
+            problem: null,
+            is_challenger: true,
+            elo_change: 5,
+            tokens_earned: 0,
+            created_at: new Date().toISOString(),
+          },
+          message: "ok",
+        });
+      }),
+    );
+
+    renderWithRoutes();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("findOpponent")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("findOpponent"));
+
+    await waitFor(() => {
+      expect(screen.getByText("startChallenge")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    await user.click(screen.getByText("startChallenge"));
+
+    await waitFor(() => {
+      expect(screen.getByText("waitingForOpponent")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Should eventually transition to result
+    await waitFor(() => {
+      expect(screen.getByText("victory")).toBeInTheDocument();
+    }, { timeout: 10000 });
+  });
+
+  // --- IN_PROGRESS PHASE POLLING (Bug 28.2) ---
+
+  // 11. in_progress polling: detects opponent quit and transitions to result
+  it("detects opponent quit during in_progress phase and shows result", async () => {
+    const sessionId = "ip1";
+    let detailCallCount = 0;
+
+    server.use(
+      http.get("*/api/v1/challenge/active", () =>
+        HttpResponse.json({ success: true, data: null, message: "ok" }),
+      ),
+      http.post("*/api/v1/challenge/queue", () =>
+        HttpResponse.json({
+          success: true,
+          data: { matched: true, session_id: sessionId, status: "matched" },
+          message: "ok",
+        }),
+      ),
+      http.post("*/api/v1/challenge/start", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            session_id: sessionId,
+            problem: { contest_id: 400, index: "D", name: "Opponent Quit Detection", rating: 1400, tags: ["greedy"], url: "https://codeforces.com/400/D" },
+            status: "problem_revealed",
+          },
+          message: "ok",
+        }),
+      ),
+      http.get("*/api/v1/challenge/ip1", () => {
+        detailCallCount++;
+        // First call is for fetching full details after start
+        if (detailCallCount === 1) {
+          return HttpResponse.json({
+            success: true,
+            data: {
+              id: sessionId,
+              status: "active",
+              problem: { contest_id: 400, index: "D", name: "Opponent Quit Detection", rating: 1400, tags: ["greedy"], url: "https://codeforces.com/400/D" },
+              result: null,
+              is_challenger: true,
+              elo_change: null,
+              tokens_earned: null,
+              created_at: new Date().toISOString(),
+            },
+            message: "ok",
+          });
+        }
+        // Subsequent calls from in_progress polling: opponent has quit
+        return HttpResponse.json({
+          success: true,
+          data: {
+            id: sessionId,
+            status: "completed",
+            result: "win",
+            problem: { contest_id: 400, index: "D", name: "Opponent Quit Detection", rating: 1400, tags: ["greedy"], url: "https://codeforces.com/400/D" },
+            is_challenger: true,
+            elo_change: 12,
+            tokens_earned: 20,
+            created_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+          },
+          message: "ok",
+        });
+      }),
+    );
+
+    renderWithRoutes();
+    const user = userEvent.setup();
+
+    // Join queue -> matched immediately
+    await waitFor(() => {
+      expect(screen.getByText("findOpponent")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("findOpponent"));
+
+    // Wait for matched phase and start
+    await waitFor(() => {
+      expect(screen.getByText("startChallenge")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    await user.click(screen.getByText("startChallenge"));
+
+    // Should be in in_progress phase
+    await waitFor(() => {
+      expect(screen.getByText("challengeInProgress")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    expect(screen.getByText("Opponent Quit Detection")).toBeInTheDocument();
+
+    // in_progress polling should detect opponent quit and transition to result
+    await waitFor(() => {
+      expect(screen.getByText("victory")).toBeInTheDocument();
+    }, { timeout: 10000 });
+  });
+
+  // 12. in_progress polling: transient errors are tolerated
+  it("continues polling on transient errors during in_progress phase", { timeout: 15000 }, async () => {
+    const sessionId = "ip2";
+    let detailCallCount = 0;
+
+    server.use(
+      http.get("*/api/v1/challenge/active", () =>
+        HttpResponse.json({ success: true, data: null, message: "ok" }),
+      ),
+      http.post("*/api/v1/challenge/queue", () =>
+        HttpResponse.json({
+          success: true,
+          data: { matched: true, session_id: sessionId, status: "matched" },
+          message: "ok",
+        }),
+      ),
+      http.post("*/api/v1/challenge/start", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            session_id: sessionId,
+            problem: { contest_id: 500, index: "E", name: "Transient Error Test", rating: 1100, tags: [], url: "https://codeforces.com/500/E" },
+            status: "problem_revealed",
+          },
+          message: "ok",
+        }),
+      ),
+      http.get("*/api/v1/challenge/ip2", () => {
+        detailCallCount++;
+        if (detailCallCount === 1) {
+          // Initial detail fetch
+          return HttpResponse.json({
+            success: true,
+            data: {
+              id: sessionId,
+              status: "active",
+              problem: { contest_id: 500, index: "E", name: "Transient Error Test", rating: 1100, tags: [], url: "https://codeforces.com/500/E" },
+              result: null,
+              is_challenger: true,
+              created_at: new Date().toISOString(),
+            },
+            message: "ok",
+          });
+        }
+        if (detailCallCount === 2) {
+          // Transient error on first poll
+          return HttpResponse.json(
+            { success: false, error: { code: "INTERNAL", message: "Server error" } },
+            { status: 500 },
+          );
+        }
+        // Subsequent polls: session completed
+        return HttpResponse.json({
+          success: true,
+          data: {
+            id: sessionId,
+            status: "completed",
+            result: "loss",
+            problem: { contest_id: 500, index: "E", name: "Transient Error Test", rating: 1100, tags: [], url: "https://codeforces.com/500/E" },
+            is_challenger: true,
+            elo_change: -8,
+            tokens_earned: null,
+            created_at: new Date().toISOString(),
+            completed_at: new Date().toISOString(),
+          },
+          message: "ok",
+        });
+      }),
+    );
+
+    renderWithRoutes();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("findOpponent")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("findOpponent"));
+
+    await waitFor(() => {
+      expect(screen.getByText("startChallenge")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    await user.click(screen.getByText("startChallenge"));
+
+    await waitFor(() => {
+      expect(screen.getByText("challengeInProgress")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Should survive transient error and eventually show result
+    await waitFor(() => {
+      expect(screen.getByText("defeat")).toBeInTheDocument();
+    }, { timeout: 10000 });
+  });
+
+  // --- COMPLETED SESSION RESUME VIA /challenge/active (Bug 28.2) ---
+
+  // 13. Resumes completed challenge when navigating back to /challenge
+  it("resumes completed challenge when /challenge/active returns completed session", async () => {
+    const completedInfo = {
+      id: "cs1",
+      problem_id: "p5",
+      problem_name: "Completed Resume",
+      problem_rating: 1700,
+      created_at: new Date(Date.now() - 300000).toISOString(),
+      is_challenger: true,
+      opponent_username: "opponent",
+      opponent_elo: 1600,
+      status: "completed",
+    };
+
+    const challengeDetail = {
+      id: "cs1",
+      challenger_id: "u1",
+      opponent_id: "u2",
+      problem_id: "p5",
+      problem_rating: 1700,
+      problem: { contest_id: 600, index: "F", name: "Completed Resume", rating: 1700, tags: ["graphs"], url: "https://codeforces.com/600/F" },
+      challenger_solved: true,
+      opponent_solved: false,
+      challenger_submissions: 1,
+      opponent_submissions: 2,
+      challenger_time: 200,
+      opponent_time: 400,
+      status: "completed",
+      result: "win",
+      is_challenger: true,
+      elo_change: 18,
+      tokens_earned: 35,
+      opponent_tokens_earned: 0,
+      created_at: new Date(Date.now() - 300000).toISOString(),
+      completed_at: new Date().toISOString(),
+    };
+
+    server.use(
+      http.get("*/api/v1/challenge/active", () =>
+        HttpResponse.json({ success: true, data: completedInfo, message: "ok" }),
+      ),
+      http.get("*/api/v1/challenge/cs1", () =>
+        HttpResponse.json({ success: true, data: challengeDetail, message: "ok" }),
+      ),
+    );
+
+    renderWithRoutes();
+
+    // Should show the result of the completed challenge
+    await waitFor(() => {
+      expect(screen.getByText("victory")).toBeInTheDocument();
+    }, { timeout: 3000 });
+    expect(screen.getByText("Completed Resume")).toBeInTheDocument();
+    expect(screen.getByText("1700")).toBeInTheDocument();
+  });
 });

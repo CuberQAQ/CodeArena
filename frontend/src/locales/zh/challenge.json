@@ -16,6 +16,8 @@
   "opponentFoundDesc": "比赛准备就绪，点击开始查看题目！",
   "startChallenge": "开始对战",
   "starting": "开始中...",
+  "waitingForOpponent": "等待对手确认...",
+  "waitingForOpponentDesc": "对手需要确认后才能开始对战，请稍候。",
   "challengeInProgress": "对战进行中",
   "openOnCodeforces": "在 Codeforces 中打开",
   "reportYourResult": "报告结果",
