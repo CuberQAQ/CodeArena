@@ -41,8 +41,8 @@ export default function TrainingDetailPage() {
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const trackingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [lastTokensEarned, setLastTokensEarned] = useState(0);
-  const [tokenTriggerKey, setTokenTriggerKey] = useState(0);
+  const lastTokensEarned = 0;
+  const tokenTriggerKey = 0;
   const [achievements, setAchievements] = useState<AchievementEvent[]>([]);
   const [showAchievements, setShowAchievements] = useState(false);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
@@ -403,7 +403,7 @@ export default function TrainingDetailPage() {
                         <ExternalLink className="size-4" />
                       </a>
                       {!problem.solved && (
-                        <Loader2 className="size-4 animate-spin text-primary" title={t("training:waitingForCFResult")} />
+                        <Loader2 className="size-4 animate-spin text-primary" />
                       )}
                     </div>
                   </div>

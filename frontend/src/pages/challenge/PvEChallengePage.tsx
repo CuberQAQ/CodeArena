@@ -143,7 +143,7 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
         const tracking = res.data?.data;
         if (tracking && tracking.status === "timeout") {
           if (pollRef.current) clearInterval(pollRef.current);
-          setError(t("challenge:trackingTimedOut"));
+          usePvEChallengeStore.setState({ error: t("challenge:trackingTimedOut") });
           return;
         }
         if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {

@@ -561,7 +561,7 @@ export default function ContestDetailPage() {
                           <ExternalLink className="size-4" />
                         </a>
                         {!problem.solved && (
-                          <Loader2 className="size-4 animate-spin text-primary" title={t("waitingForCFResult")} />
+                          <Loader2 className="size-4 animate-spin text-primary" />
                         )}
                       </div>
                     </div>

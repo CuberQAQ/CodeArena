@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Globe, ShieldCheck, BarChart3, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
 import api from "@/services/api";
 import type { ApiResponse, GlobalRankingItem, ArenaRankingItem, RankingPageData } from "@/types";
 

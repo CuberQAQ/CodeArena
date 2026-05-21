@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Clock, Loader2, Star, TrendingDown, TrendingUp } from "lucide-react";
+import { Clock, Star, TrendingDown, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import api from "@/services/api";
 

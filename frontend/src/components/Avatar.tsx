@@ -29,7 +29,7 @@ export function Avatar({ userId, src, size = 40, className = "" }: AvatarProps) 
   // Even without src, we try to load from the endpoint -- if it 404s, the
   // onError handler shows the placeholder
   const avatarUrl = userId ? `/api/v1/auth/avatar/${userId}` : null;
-  const shouldShowImage = avatarUrl && !imgError;
+  const shouldShowImage = (avatarUrl || src) && !imgError;
 
   // Reset error state when userId changes
   useEffect(() => {
@@ -43,7 +43,7 @@ export function Avatar({ userId, src, size = 40, className = "" }: AvatarProps) 
     >
       {shouldShowImage ? (
         <img
-          src={avatarUrl}
+          src={avatarUrl ?? undefined}
           alt="Avatar"
           className="h-full w-full object-cover"
           onError={() => setImgError(true)}
