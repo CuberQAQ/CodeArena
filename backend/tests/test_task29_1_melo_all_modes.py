@@ -811,23 +811,21 @@ class TestTrainingCoefficientPreservation:
     """Verify training mode uses its own coefficient logic (not the batch method)."""
 
     @pytest.mark.asyncio
-    async def test_training_mode_does_not_use_batch_method(self, db):
-        """Training _calculate_training_elo should NOT call batch_update_melo_for_problem.
+    async def test_training_mode_uses_batch_method_with_coefficient(self, db):
+        """Training _calculate_training_elo should use batch_update_melo_for_problem
+        with its polarization coefficient (melo_coeff=2.0).
 
-        Training uses its own polarization coefficients (Global x0.5, M-Elo x2.0)
-        via _calculate_training_elo, not the generic batch method.
+        Training passes its own melo_coeff to batch_update_melo_for_problem so the
+        batch method applies the x2.0 M-Elo polarization while the training service
+        handles the Global Elo x0.5 separately.
         """
-        # Verify that training_service.py still uses its own M-Elo update path
-        # by checking the code directly -- training_service.update_melo is called
-        # directly, not batch_update_melo_for_problem.
         from app.services import training_service as training_svc_module
 
-        # The training service should NOT import or use batch_update_melo_for_problem
+        # The training service should use batch_update_melo_for_problem
         with open(training_svc_module.__file__) as f:
             source = f.read()
-        assert "batch_update_melo_for_problem" not in source, (
-            "Training service should not use batch_update_melo_for_problem -- "
-            "it uses its own _calculate_training_elo with polarization coefficients"
+        assert "batch_update_melo_for_problem" in source, (
+            "Training service should use batch_update_melo_for_problem for M-Elo updates"
         )
 
 

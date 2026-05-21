@@ -17,7 +17,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.schemas.training import RecommendedProblemResponse
+from app.services import config_service as config_svc_module
 from app.services import economy_service as economy_svc_module
+from app.services import elo_service as elo_svc_module
 from app.services import training_service as training_svc_module
 from app.services.training_service import (
     TrainingService,
@@ -188,6 +190,22 @@ async def db(async_engine):
     _mock_hint_service = AsyncMock()
     _mock_hint_service.get_max_hint_level = AsyncMock(return_value=0)
 
+    # Default K factor config: use k_newbie=8 to match the previous hard-coded K=8
+    _default_elo_config = {
+        "k_newbie": 8,
+        "k_veteran": 8,
+        "k_newbie_threshold": 20,
+        "k_veteran_threshold": 100,
+    }
+
+    async def _mock_get_config(db, key):
+        if key == "elo":
+            return _default_elo_config
+        raise KeyError(key)
+
+    # Mock batch_update_melo_for_problem so it matches the old _mock_melo_service.update_melo
+    _mock_melo_service.batch_update_melo_for_problem = AsyncMock(return_value={"dp": 0})
+
     async with session_factory() as session:
         # Clear the bulk-fetch cache so each test starts fresh
         TrainingService._problems_cache.clear()
@@ -203,6 +221,8 @@ async def db(async_engine):
             patch.object(training_svc_module, "HintService", _mock_hint_service),
             patch.object(training_svc_module.SubmissionTracker, "register_pending", AsyncMock()),
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
+            patch.object(config_svc_module.ConfigService, "get_config", _mock_get_config),
+            patch.object(elo_svc_module.EloService, "get_submission_count", AsyncMock(return_value=0)),
         ):
             yield session
 

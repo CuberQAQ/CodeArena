@@ -610,11 +610,15 @@ async def training_db(async_engine):
 
     async def _mock_get_config(db, key):
         """Return default config values for training tests."""
+        from app.core.default_config import DEFAULT_CONFIG
+
         configs = {
             "melo.training_global_coefficient": 0.5,
             "melo.training_melo_coefficient": 2.0,
         }
-        return configs.get(key)
+        if key in configs:
+            return configs[key]
+        return DEFAULT_CONFIG.get(key, {})
 
     from app.services import config_service as config_svc_module
 
@@ -780,9 +784,9 @@ class TestTrainingHintAttenuation:
                 problem_id="100A",
             )
 
-        # Compute raw value: k_train=8, global_coeff=0.5, expected_score
+        # Compute raw value using segmented K from DEFAULT_CONFIG elo (k_newbie=40 for 0 submissions)
         expected = 1.0 / (1.0 + 10.0 ** ((1500 - 1000) / 400.0))
-        raw = round(8 * (1.0 - expected) * 0.5)
+        raw = round(40 * (1.0 - expected) * 0.5)
         assert result["global_elo_change"] == raw, f"No hint: expected {raw}, got {result['global_elo_change']}"
 
     @pytest.mark.asyncio
@@ -1038,7 +1042,7 @@ class TestContestHintAttenuation:
         from app.services import hint_service as hint_svc_module
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_no_hint = await contest_svc_module.ContestService._settle_with_pr(
+            elo_no_hint, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1049,7 +1053,7 @@ class TestContestHintAttenuation:
 
         # With hint level 2
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=2)):
-            elo_with_hint = await contest_svc_module.ContestService._settle_with_pr(
+            elo_with_hint, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1075,7 +1079,7 @@ class TestContestHintAttenuation:
         from app.services import hint_service as hint_svc_module
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_change = await contest_svc_module.ContestService._settle_with_pr(
+            elo_change, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1099,7 +1103,7 @@ class TestContestHintAttenuation:
         from app.services import hint_service as hint_svc_module
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_no_hint = await contest_svc_module.ContestService._settle_with_pr(
+            elo_no_hint, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1109,7 +1113,7 @@ class TestContestHintAttenuation:
         user.elo = 2000  # Reset
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=3)):
-            elo_with_hint = await contest_svc_module.ContestService._settle_with_pr(
+            elo_with_hint, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1135,7 +1139,7 @@ class TestContestHintAttenuation:
             await db.flush()
 
             with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=level)):
-                elo_change = await contest_svc_module.ContestService._settle_with_pr(
+                elo_change, _ = await contest_svc_module.ContestService._settle_with_pr(
                     db=db,
                     user=user,
                     session=contest_session,
@@ -1165,7 +1169,7 @@ class TestContestHintAttenuation:
             return hint_map.get(problem_id, 0)
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", _hint_by_problem):
-            elo_change = await contest_svc_module.ContestService._settle_with_pr(
+            elo_change, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,

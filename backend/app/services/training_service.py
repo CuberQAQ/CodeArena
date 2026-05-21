@@ -1361,15 +1361,6 @@ class TrainingService:
                 "shield_active": True,
             }
 
-        # --- Shield deactivation on first AC ---
-        if solved and shield_active and primary_tag:
-            await MEloService.deactivate_shield(db, user.id, primary_tag)
-            logger.info(
-                "Shield deactivated for user=%s tag=%s on first AC",
-                user.id,
-                primary_tag,
-            )
-
         # --- Load configurable coefficients ---
         try:
             global_coeff = await config_svc.ConfigService.get_config(db, "melo.training_global_coefficient")
@@ -1380,7 +1371,16 @@ class TrainingService:
         except (KeyError, Exception):
             melo_coeff = 2.0
 
-        k_train = 8
+        # --- Configurable segmented K factor (same as other modes) ---
+        elo_config = await config_svc.ConfigService.get_config(db, "elo")
+        k_config = {
+            "k_newbie": elo_config.get("k_newbie", 40),
+            "k_veteran": elo_config.get("k_veteran", 20),
+            "k_newbie_threshold": elo_config.get("k_newbie_threshold", 20),
+            "k_veteran_threshold": elo_config.get("k_veteran_threshold", 100),
+        }
+        user_sub_count = await EloService.get_submission_count(db, user.id)
+        k = EloService.calculate_k_factor(user_sub_count, k_config)
 
         # Calculate S-value based on attempts
         if solved:
@@ -1396,25 +1396,19 @@ class TrainingService:
 
         # --- Global Elo calculation ---
         global_expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - user.elo) / 400.0))
-        global_elo_change = round(k_train * (s_value - global_expected) * global_coeff)
-
-        # --- M-Elo calculation ---
-        melo_change: int | None = None
-        if primary_tag:
-            melo_record = await MEloService.get_or_create_melo(db, user.id, primary_tag)
-            melo_expected = 1.0 / (1.0 + 10.0 ** ((problem_rating - melo_record.elo) / 400.0))
-            melo_change = round(k_train * (s_value - melo_expected) * melo_coeff)
+        global_elo_change = round(k * (s_value - global_expected) * global_coeff)
 
         # --- Hint attenuation on positive gains (FR-5.3) ---
+        hint_attenuation: float | None = None
         if problem_id is not None:
             hint_level = await HintService.get_max_hint_level(db, user.id, problem_id)
             if hint_level > 0:
+                hint_attenuation = EloService.apply_hint_attenuation(1.0, hint_level)
                 if global_elo_change > 0:
                     global_elo_change = round(EloService.apply_hint_attenuation(float(global_elo_change), hint_level))
-                if melo_change is not None and melo_change > 0:
-                    melo_change = round(EloService.apply_hint_attenuation(float(melo_change), hint_level))
 
         # --- Time factor on positive gains (FR-16.4) ---
+        time_factor: float | None = None
         if (
             solved
             and cf_service is not None
@@ -1437,8 +1431,6 @@ class TrainingService:
             )
             if global_elo_change > 0:
                 global_elo_change = round(global_elo_change * time_factor)
-            if melo_change is not None and melo_change > 0:
-                melo_change = round(melo_change * time_factor)
 
         # --- Apply Global Elo change ---
         if global_elo_change != 0:
@@ -1455,9 +1447,24 @@ class TrainingService:
             )
             db.add(history)
 
-        # --- Apply M-Elo change ---
-        if melo_change is not None and melo_change != 0:
-            await MEloService.update_melo(db, user.id, primary_tag, melo_change)
+        # --- M-Elo update for all problem tags (FR-9.1) ---
+        topic = await db.get(TopicCategory, topic_id)
+        problem_tags = topic.cf_tags if (topic and isinstance(topic.cf_tags, list)) else []
+        melo_change: int | None = None
+        if problem_tags:
+            melo_result = await MEloService.batch_update_melo_for_problem(
+                db=db,
+                user_id=user.id,
+                problem_tags=problem_tags,
+                problem_rating=problem_rating,
+                s_value=s_value,
+                k_factor=k,
+                time_factor=time_factor,
+                hint_attenuation=hint_attenuation,
+                coefficient=melo_coeff,
+                solved=solved,
+            )
+            melo_change = sum(melo_result.values())
 
         return {
             "global_elo_change": global_elo_change,

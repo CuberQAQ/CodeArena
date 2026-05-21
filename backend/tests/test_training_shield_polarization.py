@@ -26,7 +26,9 @@ from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, UniqueCo
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from app.services import config_service as config_svc_module
 from app.services import economy_service as economy_svc_module
+from app.services import elo_service as elo_svc_module
 from app.services import training_service as training_svc_module
 from app.services.time_factor_service import TimeFactorService
 from app.services.training_service import TrainingService
@@ -171,6 +173,25 @@ async def db(async_engine):
     _mock_hint_service = AsyncMock()
     _mock_hint_service.get_max_hint_level = AsyncMock(return_value=0)
 
+    # Default K factor config: use k_newbie=8 to match the previous hard-coded K=8
+    # so existing test expectations remain valid without recalculating every assertion.
+    _default_elo_config = {
+        "k_newbie": 8,
+        "k_veteran": 8,
+        "k_newbie_threshold": 20,
+        "k_veteran_threshold": 100,
+    }
+
+    # Track per-key overrides so individual tests can customise coefficients
+    _config_overrides: dict[str, object] = {}
+
+    async def _mock_get_config(db, key):
+        if key in _config_overrides:
+            return _config_overrides[key]
+        if key == "elo":
+            return _default_elo_config
+        raise KeyError(key)
+
     async with session_factory() as session:
         with (
             patch.object(training_svc_module, "User", _TestUser),
@@ -183,6 +204,8 @@ async def db(async_engine):
             patch.object(training_svc_module.SubmissionTracker, "register_pending", AsyncMock()),
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
             patch.object(training_svc_module, "TimeFactorService") as mock_tf_cls,
+            patch.object(config_svc_module.ConfigService, "get_config", _mock_get_config),
+            patch.object(elo_svc_module.EloService, "get_submission_count", AsyncMock(return_value=0)),
         ):
             # Neutralize time factor: always return 1.0 so existing tests pass
             mock_tf_cls.calculate_expected_time = AsyncMock(return_value=999999.0)
@@ -656,6 +679,8 @@ class TestWeightPolarization:
                 return 1.0  # No attenuation
             if key == "melo.training_melo_coefficient":
                 return 3.0  # Triple
+            if key == "elo":
+                return {"k_newbie": 8, "k_veteran": 8, "k_newbie_threshold": 20, "k_veteran_threshold": 100}
             raise KeyError(key)
 
         with patch.object(config_svc_module.ConfigService, "get_config", _mock_get_config):

@@ -704,11 +704,15 @@ async def training_db(async_engine):
     _mock_hint_service.get_max_hint_level = AsyncMock(return_value=0)
 
     async def _mock_get_config(db, key):
+        from app.core.default_config import DEFAULT_CONFIG
+
         configs = {
             "melo.training_global_coefficient": 0.5,
             "melo.training_melo_coefficient": 2.0,
         }
-        return configs.get(key)
+        if key in configs:
+            return configs[key]
+        return DEFAULT_CONFIG.get(key, {})
 
     from app.services import config_service as config_svc_module
 
@@ -959,8 +963,10 @@ class TestTrainingTimeFactor:
             )
         elo_stacked = result_stacked["global_elo_change"]
 
-        # Expected: baseline * 0.50 (hint) * 1.5 (time) = baseline * 0.75
-        expected = round(elo_baseline * 0.50 * 1.5)
+        # Expected: hint_attenuation first (round), then time factor (round)
+        # hint_level=2 -> attenuation=0.5 -> round(baseline*0.5), then *1.5 -> round
+        after_hint = round(elo_baseline * 0.50)
+        expected = round(after_hint * 1.5)
         assert elo_stacked == expected, f"Stacked: {elo_stacked} vs expected {expected} (baseline={elo_baseline})"
 
 
@@ -1099,7 +1105,7 @@ class TestContestTimeFactor:
         from app.services import hint_service as hint_svc_module
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_fast = await contest_svc_module.ContestService._settle_with_pr(
+            elo_fast, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1111,7 +1117,7 @@ class TestContestTimeFactor:
 
         # Without time factor
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_no_tf = await contest_svc_module.ContestService._settle_with_pr(
+            elo_no_tf, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1135,7 +1141,7 @@ class TestContestTimeFactor:
         from app.services import hint_service as hint_svc_module
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_slow = await contest_svc_module.ContestService._settle_with_pr(
+            elo_slow, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1146,7 +1152,7 @@ class TestContestTimeFactor:
         user.elo = 1200  # Reset
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_no_tf = await contest_svc_module.ContestService._settle_with_pr(
+            elo_no_tf, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1170,7 +1176,7 @@ class TestContestTimeFactor:
 
         # No hint, no time factor baseline
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_baseline = await contest_svc_module.ContestService._settle_with_pr(
+            elo_baseline, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1187,7 +1193,7 @@ class TestContestTimeFactor:
             return hint_map.get(problem_id, 0)
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", _hint_by_problem):
-            elo_stacked = await contest_svc_module.ContestService._settle_with_pr(
+            elo_stacked, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1212,7 +1218,7 @@ class TestContestTimeFactor:
         from app.services import hint_service as hint_svc_module
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_with_tf = await contest_svc_module.ContestService._settle_with_pr(
+            elo_with_tf, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
@@ -1223,7 +1229,7 @@ class TestContestTimeFactor:
         user.elo = 2000
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
-            elo_no_tf = await contest_svc_module.ContestService._settle_with_pr(
+            elo_no_tf, _ = await contest_svc_module.ContestService._settle_with_pr(
                 db=db,
                 user=user,
                 session=contest_session,
