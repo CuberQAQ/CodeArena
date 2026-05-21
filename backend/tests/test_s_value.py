@@ -47,9 +47,7 @@ class _TestPPRecord(_TestBase):
     __tablename__ = "pp_records"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     cf_problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
     problem_rating: Mapped[int] = mapped_column(Integer, nullable=False)
     base_pp: Mapped[float] = mapped_column(Float, nullable=False)
@@ -60,9 +58,7 @@ class _TestEloHistory(_TestBase):
     __tablename__ = "elo_history"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     elo_before: Mapped[int] = mapped_column(Integer, nullable=False)
     elo_after: Mapped[int] = mapped_column(Integer, nullable=False)
     elo_change: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -275,7 +271,11 @@ class TestChallengeSValue:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
@@ -299,13 +299,17 @@ class TestChallengeSValue:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
             opponent_submission_count=10,
             s_value_challenger=0.90,  # 2 errors
-            s_value_opponent=0.0,     # didn't solve
+            s_value_opponent=0.0,  # didn't solve
         )
         # Challenger: K=40, expected=0.5, change = 40*(0.90-0.5) = 16
         # Opponent: K=40, expected=0.5, change = 40*(0.0-0.5) = -20
@@ -322,13 +326,17 @@ class TestChallengeSValue:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=0.0,  # opponent won
             session_id=session_id,
             challenger_submission_count=10,
             opponent_submission_count=10,
             s_value_challenger=0.80,  # 4 errors
-            s_value_opponent=1.0,    # perfect AC
+            s_value_opponent=1.0,  # perfect AC
         )
         # Challenger (lost): K=40, expected=0.5, change = 40*(0.80-0.5) = 12
         # Wait -- challenger lost the match but had S=0.80 (they did solve, just slower)
@@ -348,7 +356,11 @@ class TestChallengeSValue:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1500, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1500,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
@@ -374,7 +386,11 @@ class TestChallengeSValue:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
@@ -426,13 +442,17 @@ class TestContestSValue:
         # 3 solved, but with errors: S-values lower than 1.0
         s_values = [0.70, 0.70, 0.70]  # Each had many errors
         score_s = EloService.calculate_contest_score(
-            solved_problems=3, total_problems=5,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            solved_problems=3,
+            total_problems=5,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
             s_values=s_values,
         )
         score_plain = EloService.calculate_contest_score(
-            solved_problems=3, total_problems=5,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            solved_problems=3,
+            total_problems=5,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
         )
         # S-value score: 2.10/5 = 0.42 < 3/5 = 0.6
         assert score_s < score_plain
@@ -441,13 +461,17 @@ class TestContestSValue:
         """All perfect ACs: S-values should match plain ratio."""
         s_values = [1.0, 1.0, 1.0]
         score_s = EloService.calculate_contest_score(
-            solved_problems=3, total_problems=5,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            solved_problems=3,
+            total_problems=5,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
             s_values=s_values,
         )
         score_plain = EloService.calculate_contest_score(
-            solved_problems=3, total_problems=5,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            solved_problems=3,
+            total_problems=5,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
         )
         assert score_s == pytest.approx(score_plain)
 
@@ -476,9 +500,13 @@ class TestContestSValue:
         s_values = [1.0, 0.90]  # 2 solved, 1 perfect, 1 with 2 errors
 
         new_rating, elo_change = await EloService.process_contest_result(
-            db, uid, 1200,
-            solved_problems=2, total_problems=4,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            db,
+            uid,
+            1200,
+            solved_problems=2,
+            total_problems=4,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
             contest_session_id=session_id,
             s_values=s_values,
         )
@@ -494,9 +522,13 @@ class TestContestSValue:
         session_id = uuid.uuid4()
 
         new_rating, elo_change = await EloService.process_contest_result(
-            db, uid, 1200,
-            solved_problems=2, total_problems=4,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            db,
+            uid,
+            1200,
+            solved_problems=2,
+            total_problems=4,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
             contest_session_id=session_id,
             # No s_values
         )
@@ -507,8 +539,10 @@ class TestContestSValue:
     def test_contest_score_empty_s_values(self):
         """Empty S-values list (no solved problems)."""
         score = EloService.calculate_contest_score(
-            solved_problems=0, total_problems=5,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            solved_problems=0,
+            total_problems=5,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
             s_values=[],
         )
         assert score == pytest.approx(0.0)
@@ -517,8 +551,10 @@ class TestContestSValue:
         """Time bonus should be added on top of S-value base score."""
         s_values = [1.0, 1.0]
         score = EloService.calculate_contest_score(
-            solved_problems=2, total_problems=5,
-            time_used_seconds=100, time_limit_seconds=3600,
+            solved_problems=2,
+            total_problems=5,
+            time_used_seconds=100,
+            time_limit_seconds=3600,
             s_values=s_values,
         )
         # base_score = 2.0/5 = 0.4
@@ -605,7 +641,11 @@ class TestBackwardCompatibility:
         session_id = uuid.uuid4()
 
         new_a, _, change_a, _ = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
@@ -620,9 +660,13 @@ class TestBackwardCompatibility:
         session_id = uuid.uuid4()
 
         new_rating, elo_change = await EloService.process_contest_result(
-            db, uid, 1200,
-            solved_problems=3, total_problems=6,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            db,
+            uid,
+            1200,
+            solved_problems=3,
+            total_problems=6,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
             contest_session_id=session_id,
         )
         # base_score = 3/6 = 0.5, expected = 0.5, change = 0
@@ -636,7 +680,9 @@ class TestBackwardCompatibility:
         session_id = uuid.uuid4()
 
         new_rating, change = await EloService.process_quit_penalty(
-            db, uid_a, 1200,
+            db,
+            uid_a,
+            1200,
             submissions=3,
             session_id=session_id,
             opponent_id=uid_b,
@@ -675,7 +721,11 @@ class TestReasonLabelsWithSValue:
         session_id = uuid.uuid4()
 
         await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
@@ -701,7 +751,11 @@ class TestReasonLabelsWithSValue:
         session_id = uuid.uuid4()
 
         await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=0.5,  # draw
             session_id=session_id,
             challenger_submission_count=10,
@@ -732,7 +786,11 @@ class TestHintAttenuationWithSValue:
         # Without hint, S=0.90 (2 errors)
         session_id1 = uuid.uuid4()
         _, _, change_no_hint, _ = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id1,
             challenger_submission_count=10,
@@ -746,7 +804,11 @@ class TestHintAttenuationWithSValue:
         uid_d = await _create_user(db, "dave", 1200)
         session_id2 = uuid.uuid4()
         _, _, change_with_hint, _ = await EloService.process_challenge_result(
-            db, uid_c, uid_d, 1200, 1200,
+            db,
+            uid_c,
+            uid_d,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id2,
             hint_level_challenger=1,
@@ -768,7 +830,11 @@ class TestHintAttenuationWithSValue:
         session_id = uuid.uuid4()
 
         _, _, change_a, _ = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=0.0,  # loss
             session_id=session_id,
             hint_level_challenger=2,

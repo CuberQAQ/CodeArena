@@ -107,9 +107,7 @@ async def async_engine():
 @pytest.fixture
 async def db(async_engine):
     """Provide an async session with patched model references."""
-    session_factory = async_sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
     async with session_factory() as session:
         with (
@@ -486,9 +484,7 @@ class TestConfigMetadata:
         metadata = await get_config_metadata()
         elo_section = next(s for s in metadata if s["key"] == "elo")
 
-        initial_elo_field = next(
-            f for f in elo_section["fields"] if f["key"] == "elo.initial_elo"
-        )
+        initial_elo_field = next(f for f in elo_section["fields"] if f["key"] == "elo.initial_elo")
         assert initial_elo_field["type"] == "int"
         assert initial_elo_field["default"] == 1200
 

@@ -129,9 +129,7 @@ class _TestUserTagElo(_TestBase):
     total_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     first_ac_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "tag", name="uq_user_tag_elo_user_tag"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "tag", name="uq_user_tag_elo_user_tag"),)
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +183,7 @@ async def db(async_engine):
         ):
             # Also patch MEloService to use test models via the melo_svc module
             from app.services import melo_service as melo_svc_module
+
             with (
                 patch.object(melo_svc_module, "UserTagElo", _TestUserTagElo),
                 patch.object(melo_svc_module, "User", _TestUser),
@@ -280,8 +279,13 @@ class TestLearningShield:
 
         # Submit failure
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=False, attempts=3, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=False,
+            attempts=3,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
@@ -301,8 +305,13 @@ class TestLearningShield:
 
         # Submit one problem (failure) first so there are submissions
         await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=False, attempts=2, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=False,
+            attempts=2,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
 
@@ -325,8 +334,13 @@ class TestLearningShield:
 
         # AC a problem
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
@@ -340,6 +354,7 @@ class TestLearningShield:
         # Verify shield is deactivated by checking that a subsequent failure
         # DOES deduct Elo
         from app.services.melo_service import MEloService
+
         shield_active = await MEloService.is_shield_active(db, user.id, "dp")
         assert shield_active is False
 
@@ -353,8 +368,13 @@ class TestLearningShield:
 
         # First: AC to deactivate shield
         await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
@@ -363,8 +383,13 @@ class TestLearningShield:
 
         # Second: failure -- should deduct Elo (shield off)
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=False, attempts=3, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=False,
+            attempts=3,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
 
@@ -385,7 +410,9 @@ class TestLearningShield:
         user = _make_test_user(elo=1200)
         dp_topic = _make_test_topic(name="DP", slug="dp", cf_tags=["dp"])
         greedy_topic = _make_test_topic(
-            name="Greedy", slug="greedy_test", cf_tags=["greedy"],
+            name="Greedy",
+            slug="greedy_test",
+            cf_tags=["greedy"],
             display_order=99,
         )
         db.add_all([user, dp_topic, greedy_topic])
@@ -393,20 +420,31 @@ class TestLearningShield:
 
         # AC a dp problem -> deactivates dp shield
         dp_session = _TestTrainingSession(
-            user_id=user.id, topic_id=dp_topic.id, total_problems=5, status="active",
+            user_id=user.id,
+            topic_id=dp_topic.id,
+            total_problems=5,
+            status="active",
         )
         db.add(dp_session)
         await db.flush()
 
         await TrainingService.submit_problem(
-            db=db, user=user, session_id=dp_session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=dp_session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
         # Now fail a greedy problem -- shield should still be active for greedy
         greedy_session = _TestTrainingSession(
-            user_id=user.id, topic_id=greedy_topic.id, total_problems=5, status="active",
+            user_id=user.id,
+            topic_id=greedy_topic.id,
+            total_problems=5,
+            status="active",
         )
         db.add(greedy_session)
         await db.flush()
@@ -414,8 +452,13 @@ class TestLearningShield:
         elo_before = user.elo
 
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=greedy_session.id,
-            problem_id="100A", solved=False, attempts=2, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=greedy_session.id,
+            problem_id="100A",
+            solved=False,
+            attempts=2,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
 
@@ -427,6 +470,7 @@ class TestLearningShield:
 
         # DP shield should be off
         from app.services.melo_service import MEloService
+
         dp_shield = await MEloService.is_shield_active(db, user.id, "dp")
         greedy_shield = await MEloService.is_shield_active(db, user.id, "greedy")
         assert dp_shield is False
@@ -468,8 +512,13 @@ class TestWeightPolarization:
 
         # AC a 1600 problem with user at 1200
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
@@ -493,13 +542,19 @@ class TestWeightPolarization:
 
         # AC a 1600 problem
         await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
         # Check M-Elo for dp tag
         from app.services.melo_service import MEloService
+
         melo = await MEloService.get_or_create_melo(db, user.id, "dp")
 
         # M-Elo starts at 1200 (global elo inheritance)
@@ -521,8 +576,13 @@ class TestWeightPolarization:
 
         # First AC (1600 rated) to deactivate shield and raise Elo
         await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
@@ -530,8 +590,13 @@ class TestWeightPolarization:
 
         # Now fail a problem -- should deduct
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=False, attempts=3, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=False,
+            attempts=3,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
 
@@ -551,13 +616,19 @@ class TestWeightPolarization:
 
         # First AC to set up M-Elo
         await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 
         # After first AC, global elo and M-Elo should differ
         from app.services.melo_service import MEloService
+
         melo = await MEloService.get_or_create_melo(db, user.id, "dp")
 
         # Global Elo gained 4 (from 1200 to 1204)
@@ -580,14 +651,17 @@ class TestWeightPolarization:
                 return 3.0  # Triple
             raise KeyError(key)
 
-        with patch.object(
-            config_svc_module.ConfigService, "get_config", _mock_get_config
-        ):
+        with patch.object(config_svc_module.ConfigService, "get_config", _mock_get_config):
             user, topic, session = await _setup_training_session(db, user_elo=1200)
 
             result = await TrainingService.submit_problem(
-                db=db, user=user, session_id=session.id,
-                problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+                db=db,
+                user=user,
+                session_id=session.id,
+                problem_id="300C",
+                solved=True,
+                attempts=1,
+                time_spent=120.0,
                 cf_service=cf_mock,
             )
 
@@ -600,6 +674,7 @@ class TestWeightPolarization:
 
             # M-Elo with coeff=3.0:
             from app.services.melo_service import MEloService
+
             melo = await MEloService.get_or_create_melo(db, user.id, "dp")
             # melo_change = round(7.27 * 3.0) = round(21.82) = 22
             assert melo.elo == 1222
@@ -614,8 +689,13 @@ class TestWeightPolarization:
 
         # 1. Fail a problem with shield active -- no Elo change
         r1 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="200B", solved=False, attempts=3, time_spent=60.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="200B",
+            solved=False,
+            attempts=3,
+            time_spent=60.0,
             cf_service=cf_mock,
         )
         assert r1.elo_change is None
@@ -624,8 +704,13 @@ class TestWeightPolarization:
 
         # 2. AC a problem -- shield deactivates, polarization applies
         r2 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
         assert r2.elo_change is not None
@@ -638,8 +723,13 @@ class TestWeightPolarization:
 
         # 3. Fail another problem -- shield off, normal deduction with polarization
         r3 = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="100A", solved=False, attempts=2, time_spent=30.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="100A",
+            solved=False,
+            attempts=2,
+            time_spent=30.0,
             cf_service=cf_mock,
         )
         # Should have a small deduction (attenuated by 0.5)
@@ -655,8 +745,13 @@ class TestWeightPolarization:
         user, topic, session = await _setup_training_session(db, user_elo=1200, cf_tags=[])
 
         result = await TrainingService.submit_problem(
-            db=db, user=user, session_id=session.id,
-            problem_id="300C", solved=True, attempts=1, time_spent=120.0,
+            db=db,
+            user=user,
+            session_id=session.id,
+            problem_id="300C",
+            solved=True,
+            attempts=1,
+            time_spent=120.0,
             cf_service=cf_mock,
         )
 

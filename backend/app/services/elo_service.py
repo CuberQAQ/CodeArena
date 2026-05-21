@@ -33,11 +33,13 @@ class EloConfig:
     """
 
     k_factor: float = 32.0
-    hint_attenuation: dict[int, float] = field(default_factory=lambda: {
-        1: 0.75,
-        2: 0.50,
-        3: 0.25,
-    })
+    hint_attenuation: dict[int, float] = field(
+        default_factory=lambda: {
+            1: 0.75,
+            2: 0.50,
+            3: 0.25,
+        }
+    )
     quit_penalty_min: int = -10
     quit_penalty_max: int = -5
     contest_time_bonus_factor: float = 0.1
@@ -381,7 +383,11 @@ class EloService:
             k_factor = config.k_factor
 
         contest_score = EloService.calculate_contest_score(
-            solved_problems, total_problems, time_used_seconds, time_limit_seconds, config,
+            solved_problems,
+            total_problems,
+            time_used_seconds,
+            time_limit_seconds,
+            config,
             s_values=s_values,
         )
         expected_score = 0.5
@@ -526,12 +532,8 @@ class EloService:
         else:
             reason_b = EloReason.CHALLENGE_DRAW
 
-        await EloService.record_elo_history(
-            db, challenger_id, challenger_rating, new_a, reason_a, session_id
-        )
-        await EloService.record_elo_history(
-            db, opponent_id, opponent_rating, new_b, reason_b, session_id
-        )
+        await EloService.record_elo_history(db, challenger_id, challenger_rating, new_a, reason_a, session_id)
+        await EloService.record_elo_history(db, opponent_id, opponent_rating, new_b, reason_b, session_id)
 
         return new_a, new_b, change_a, change_b
 
@@ -576,9 +578,7 @@ class EloService:
         if penalty == -1:
             # 3+ submissions => normal loss
             if opponent_id is None or opponent_rating is None:
-                raise ValueError(
-                    "opponent_id and opponent_rating are required when submissions >= 3 (normal loss)"
-                )
+                raise ValueError("opponent_id and opponent_rating are required when submissions >= 3 (normal loss)")
 
             # Calculate K-factors
             k_user = config.k_factor
@@ -596,9 +596,7 @@ class EloService:
             new_b = round(opponent_rating + raw_change_b)
             change_a = new_a - current_rating
 
-            await EloService.record_elo_history(
-                db, user_id, current_rating, new_a, EloReason.QUIT_PENALTY, session_id
-            )
+            await EloService.record_elo_history(db, user_id, current_rating, new_a, EloReason.QUIT_PENALTY, session_id)
             # Also record opponent's win
             await EloService.record_elo_history(
                 db, opponent_id, opponent_rating, new_b, EloReason.CHALLENGE_WIN, session_id
@@ -609,9 +607,7 @@ class EloService:
             return current_rating, 0
 
         new_rating = current_rating + penalty
-        await EloService.record_elo_history(
-            db, user_id, current_rating, new_rating, EloReason.QUIT_PENALTY, session_id
-        )
+        await EloService.record_elo_history(db, user_id, current_rating, new_rating, EloReason.QUIT_PENALTY, session_id)
         return new_rating, penalty
 
     @staticmethod
@@ -660,8 +656,13 @@ class EloService:
             effective_k = EloService.calculate_k_factor(user_submission_count, k_factor_config)
 
         new_rating, elo_change = EloService.calculate_contest_elo(
-            current_rating, solved_problems, total_problems,
-            time_used_seconds, time_limit_seconds, effective_k, config,
+            current_rating,
+            solved_problems,
+            total_problems,
+            time_used_seconds,
+            time_limit_seconds,
+            effective_k,
+            config,
             s_values=s_values,
         )
         await EloService.record_elo_history(

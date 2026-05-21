@@ -1,3 +1,5 @@
+name: code-arena-dev
+
 services:
   # ---- Database ----
   db:

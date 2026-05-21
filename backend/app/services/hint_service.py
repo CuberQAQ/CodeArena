@@ -37,13 +37,13 @@ logger = logging.getLogger("code_arena.hints")
 
 _HINT_PRICE_TIERS: list[tuple[int, list[int]]] = [
     # (rating_threshold, [level_1, level_2, level_3])
-    (1200, [3, 10, 20]),     # gray (800-1199)
-    (1400, [5, 15, 30]),     # green (1200-1399)
-    (1600, [6, 18, 35]),     # cyan (1400-1599)
-    (1900, [8, 20, 40]),     # blue (1600-1899)
-    (2100, [10, 25, 50]),    # purple (1900-2099)
-    (2400, [12, 28, 55]),    # orange (2100-2399)
-    (9999, [15, 30, 60]),    # red (2400+)
+    (1200, [3, 10, 20]),  # gray (800-1199)
+    (1400, [5, 15, 30]),  # green (1200-1399)
+    (1600, [6, 18, 35]),  # cyan (1400-1599)
+    (1900, [8, 20, 40]),  # blue (1600-1899)
+    (2100, [10, 25, 50]),  # purple (1900-2099)
+    (2400, [12, 28, 55]),  # orange (2100-2399)
+    (9999, [15, 30, 60]),  # red (2400+)
 ]
 
 # Elo decay multipliers per hint level
@@ -109,16 +109,10 @@ class HintService:
 
         # Calculate prices for all levels
         prices_list = get_hint_prices(problem_rating)
-        prices = [
-            HintPriceInfo(level=i + 1, tokens=prices_list[i])
-            for i in range(3)
-        ]
+        prices = [HintPriceInfo(level=i + 1, tokens=prices_list[i]) for i in range(3)]
 
         # Elo decay preview
-        elo_decay_preview = [
-            EloDecayPreview(level=i, multiplier=_ELO_DECAY_MULTIPLIERS[i])
-            for i in range(1, 4)
-        ]
+        elo_decay_preview = [EloDecayPreview(level=i, multiplier=_ELO_DECAY_MULTIPLIERS[i]) for i in range(1, 4)]
 
         # Determine next unlockable level
         next_level = None
@@ -176,9 +170,7 @@ class HintService:
 
         # Validate: cannot re-unlock
         if level in existing_levels:
-            raise BadRequestException(
-                message=f"Hint level {level} is already unlocked for this problem"
-            )
+            raise BadRequestException(message=f"Hint level {level} is already unlocked for this problem")
 
         # Validate: must unlock in order (1 -> 2 -> 3)
         if level == 1:
@@ -186,13 +178,9 @@ class HintService:
             pass
         elif level == 2:
             if 1 not in existing_levels:
-                raise BadRequestException(
-                    message="Must unlock hint level 1 before level 2"
-                )
+                raise BadRequestException(message="Must unlock hint level 1 before level 2")
         elif level == 3 and 2 not in existing_levels:
-            raise BadRequestException(
-                message="Must unlock hint levels 1 and 2 before level 3"
-            )
+            raise BadRequestException(message="Must unlock hint levels 1 and 2 before level 3")
 
         # Calculate price
         prices = get_hint_prices(problem_rating)
@@ -200,9 +188,7 @@ class HintService:
 
         # Check balance
         if user.tokens < cost:
-            raise BadRequestException(
-                message=f"Insufficient tokens: have {user.tokens}, need {cost}"
-            )
+            raise BadRequestException(message=f"Insufficient tokens: have {user.tokens}, need {cost}")
 
         # Spend tokens via economy service
         await economy_svc.spend_tokens(
@@ -269,9 +255,7 @@ class HintService:
         purchase = result.scalar_one_or_none()
 
         if purchase is None:
-            raise BadRequestException(
-                message=f"Hint level {level} is not unlocked for this problem"
-            )
+            raise BadRequestException(message=f"Hint level {level} is not unlocked for this problem")
 
         # Generate hint content
         tags = problem_tags or []

@@ -171,6 +171,7 @@ def _get_elo_config():
 
 async def _mock_get_config(db, key):
     from app.core.default_config import DEFAULT_CONFIG
+
     return DEFAULT_CONFIG.get("elo", {})
 
 
@@ -188,13 +189,15 @@ async def challenge_db(async_engine):
 
     async def _mock_award_tokens(db, user, amount, tx_type=None, reference_type=None, reference_id=None):
         user.tokens += amount
-        recorded_transactions.append({
-            "user_id": user.id,
-            "amount": amount,
-            "tx_type": tx_type,
-            "reference_type": reference_type,
-            "reference_id": reference_id,
-        })
+        recorded_transactions.append(
+            {
+                "user_id": user.id,
+                "amount": amount,
+                "tx_type": tx_type,
+                "reference_type": reference_type,
+                "reference_id": reference_id,
+            }
+        )
         return amount
 
     async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, reference_id=None):
@@ -232,13 +235,15 @@ async def contest_db(async_engine):
 
     async def _mock_award_tokens(db, user, amount, tx_type=None, reference_type=None, reference_id=None):
         user.tokens += amount
-        recorded_transactions.append({
-            "user_id": user.id,
-            "amount": amount,
-            "tx_type": tx_type,
-            "reference_type": reference_type,
-            "reference_id": reference_id,
-        })
+        recorded_transactions.append(
+            {
+                "user_id": user.id,
+                "amount": amount,
+                "tx_type": tx_type,
+                "reference_type": reference_type,
+                "reference_id": reference_id,
+            }
+        )
         return amount
 
     async def _mock_record_elo_history(db, user_id, elo_before, elo_after, reason, reference_id=None):
@@ -333,9 +338,7 @@ class TestHintAttenuationPassThrough:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_hint_level_challenger_passed_to_elo(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db
-    ):
+    async def test_hint_level_challenger_passed_to_elo(self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db):
         """hint_level_challenger from session is forwarded to process_challenge_result."""
         mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
@@ -349,7 +352,8 @@ class TestHintAttenuationPassThrough:
 
         # Create session with hint_level_challenger=2
         session = _make_challenge_session(
-            user_a.id, user_b.id,
+            user_a.id,
+            user_b.id,
             hints_used_challenger=2,
             hints_used_opponent=0,
         )
@@ -357,13 +361,9 @@ class TestHintAttenuationPassThrough:
         await challenge_db.flush()
 
         # Challenger submits solved
-        await ChallengeService.submit_result(
-            challenge_db, user_a, session.id, solved=True, time_spent=60.0, attempts=1
-        )
+        await ChallengeService.submit_result(challenge_db, user_a, session.id, solved=True, time_spent=60.0, attempts=1)
 
-        mock_elo_cls.process_challenge_result = AsyncMock(
-            return_value=(1215, 1185, 15, -15)
-        )
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1215, 1185, 15, -15))
 
         # Opponent submits unsolved -> triggers settlement
         await ChallengeService.submit_result(
@@ -378,9 +378,7 @@ class TestHintAttenuationPassThrough:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_hint_level_opponent_passed_to_elo(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db
-    ):
+    async def test_hint_level_opponent_passed_to_elo(self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db):
         """hint_level_opponent from session is forwarded to process_challenge_result."""
         mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
@@ -393,7 +391,8 @@ class TestHintAttenuationPassThrough:
         await challenge_db.flush()
 
         session = _make_challenge_session(
-            user_a.id, user_b.id,
+            user_a.id,
+            user_b.id,
             hints_used_challenger=0,
             hints_used_opponent=3,
         )
@@ -404,13 +403,9 @@ class TestHintAttenuationPassThrough:
             challenge_db, user_a, session.id, solved=False, time_spent=120.0, attempts=2
         )
 
-        mock_elo_cls.process_challenge_result = AsyncMock(
-            return_value=(1170, 1230, -30, 30)
-        )
+        mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1170, 1230, -30, 30))
 
-        await ChallengeService.submit_result(
-            challenge_db, user_b, session.id, solved=True, time_spent=60.0, attempts=1
-        )
+        await ChallengeService.submit_result(challenge_db, user_b, session.id, solved=True, time_spent=60.0, attempts=1)
 
         call_kwargs = mock_elo_cls.process_challenge_result.call_args
         assert call_kwargs.kwargs.get("hint_level_challenger") == 0
@@ -423,7 +418,8 @@ class TestHintAttenuationEloCalculation:
     def test_level1_attenuation_positive_gain(self):
         """Level 1 hint: positive Elo change * 0.75."""
         new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            rating_a=1200, rating_b=1200,
+            rating_a=1200,
+            rating_b=1200,
             actual_score_a=1.0,  # win -> positive gain
             hint_level=1,
         )
@@ -434,7 +430,8 @@ class TestHintAttenuationEloCalculation:
     def test_level2_attenuation_positive_gain(self):
         """Level 2 hint: positive Elo change * 0.50."""
         new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            rating_a=1200, rating_b=1200,
+            rating_a=1200,
+            rating_b=1200,
             actual_score_a=1.0,
             hint_level=2,
         )
@@ -444,7 +441,8 @@ class TestHintAttenuationEloCalculation:
     def test_level3_attenuation_positive_gain(self):
         """Level 3 hint: positive Elo change * 0.25."""
         new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            rating_a=1200, rating_b=1200,
+            rating_a=1200,
+            rating_b=1200,
             actual_score_a=1.0,
             hint_level=3,
         )
@@ -454,7 +452,8 @@ class TestHintAttenuationEloCalculation:
     def test_no_attenuation_on_loss(self):
         """Losses are not attenuated even with hints."""
         new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            rating_a=1200, rating_b=1200,
+            rating_a=1200,
+            rating_b=1200,
             actual_score_a=0.0,  # loss -> negative change
             hint_level=3,
         )
@@ -462,7 +461,8 @@ class TestHintAttenuationEloCalculation:
         assert change_a < 0
         # Same as without hints
         new_a2, _, change_a2 = EloService.calculate_challenge_elo(
-            rating_a=1200, rating_b=1200,
+            rating_a=1200,
+            rating_b=1200,
             actual_score_a=0.0,
             hint_level=0,
         )
@@ -471,7 +471,8 @@ class TestHintAttenuationEloCalculation:
     def test_no_attenuation_zero_hints(self):
         """No hints: no attenuation applied."""
         new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            rating_a=1200, rating_b=1200,
+            rating_a=1200,
+            rating_b=1200,
             actual_score_a=1.0,
             hint_level=0,
         )
@@ -550,9 +551,7 @@ class TestChallengeAttemptReward:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_loser_gets_attempt_tokens(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db
-    ):
+    async def test_loser_gets_attempt_tokens(self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db):
         """The losing player who submitted gets attempt tokens."""
         mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
@@ -567,16 +566,15 @@ class TestChallengeAttemptReward:
 
         # problem_rating=1200 -> green tier -> attempt tokens = 3
         session = _make_challenge_session(
-            user_a.id, user_b.id,
+            user_a.id,
+            user_b.id,
             problem_rating=1200,
         )
         challenge_db.add(session)
         await challenge_db.flush()
 
         # Challenger solves
-        await ChallengeService.submit_result(
-            challenge_db, user_a, session.id, solved=True, time_spent=60.0, attempts=1
-        )
+        await ChallengeService.submit_result(challenge_db, user_a, session.id, solved=True, time_spent=60.0, attempts=1)
         # Opponent fails but has submissions
         result = await ChallengeService.submit_result(
             challenge_db, user_b, session.id, solved=False, time_spent=120.0, attempts=3
@@ -613,15 +611,14 @@ class TestChallengeAttemptReward:
         await challenge_db.flush()
 
         session = _make_challenge_session(
-            user_a.id, user_b.id,
+            user_a.id,
+            user_b.id,
             problem_rating=1200,
         )
         challenge_db.add(session)
         await challenge_db.flush()
 
-        await ChallengeService.submit_result(
-            challenge_db, user_a, session.id, solved=True, time_spent=60.0, attempts=1
-        )
+        await ChallengeService.submit_result(challenge_db, user_a, session.id, solved=True, time_spent=60.0, attempts=1)
         # Opponent fails with 0 submissions
         result = await ChallengeService.submit_result(
             challenge_db, user_b, session.id, solved=False, time_spent=120.0, attempts=0
@@ -635,9 +632,7 @@ class TestChallengeAttemptReward:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_both_lose_both_get_attempt_tokens(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db
-    ):
+    async def test_both_lose_both_get_attempt_tokens(self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db):
         """Neither solved: both get attempt tokens (draw case)."""
         mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
@@ -651,7 +646,8 @@ class TestChallengeAttemptReward:
         await challenge_db.flush()
 
         session = _make_challenge_session(
-            user_a.id, user_b.id,
+            user_a.id,
+            user_b.id,
             problem_rating=1000,  # gray -> attempt = 2
         )
         challenge_db.add(session)
@@ -676,9 +672,7 @@ class TestChallengeAttemptReward:
     @patch.object(challenge_svc_module, "ConfigService")
     @patch.object(challenge_svc_module, "PPService")
     @patch.object(challenge_svc_module, "EloService")
-    async def test_attempt_tokens_by_rating_tier(
-        self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db
-    ):
+    async def test_attempt_tokens_by_rating_tier(self, mock_elo_cls, mock_pp_cls, mock_config_cls, challenge_db):
         """Attempt tokens match the rating tier."""
         mock_config_cls.get_config = AsyncMock(return_value=_get_elo_config())
         mock_elo_cls.get_submission_count = AsyncMock(return_value=0)
@@ -687,12 +681,12 @@ class TestChallengeAttemptReward:
 
         # Test each tier
         tiers = [
-            (900, 2),    # gray
-            (1200, 3),   # green
-            (1500, 4),   # cyan
-            (1800, 5),   # blue
-            (2000, 6),   # purple
-            (2200, 7),   # orange
+            (900, 2),  # gray
+            (1200, 3),  # green
+            (1500, 4),  # cyan
+            (1800, 5),  # blue
+            (2000, 6),  # purple
+            (2200, 7),  # orange
         ]
 
         for rating, expected_attempt_tokens in tiers:
@@ -704,15 +698,14 @@ class TestChallengeAttemptReward:
             await challenge_db.flush()
 
             session = _make_challenge_session(
-                user_a.id, user_b.id,
+                user_a.id,
+                user_b.id,
                 problem_rating=rating,
             )
             challenge_db.add(session)
             await challenge_db.flush()
 
-            mock_elo_cls.process_challenge_result = AsyncMock(
-                return_value=(1230, 1170, 30, -30)
-            )
+            mock_elo_cls.process_challenge_result = AsyncMock(return_value=(1230, 1170, 30, -30))
 
             await ChallengeService.submit_result(
                 challenge_db, user_a, session.id, solved=True, time_spent=60.0, attempts=1
@@ -726,8 +719,7 @@ class TestChallengeAttemptReward:
             attempt_txs = [t for t in txs if t["tx_type"] == "reward_attempt" and t["user_id"] == user_b.id]
             assert len(attempt_txs) == 1, f"Expected 1 attempt tx for rating {rating}, got {len(attempt_txs)}"
             assert attempt_txs[0]["amount"] == expected_attempt_tokens, (
-                f"Rating {rating}: expected {expected_attempt_tokens} attempt tokens, "
-                f"got {attempt_txs[0]['amount']}"
+                f"Rating {rating}: expected {expected_attempt_tokens} attempt tokens, got {attempt_txs[0]['amount']}"
             )
 
 
@@ -748,7 +740,9 @@ class TestContestAttemptReward:
         # Submit unsolved problem (rating 800 = gray -> attempt tokens = 2)
         problem = started.problems[0]
         result = await ContestService.submit_problem(
-            contest_db, user, started.id,
+            contest_db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=False,
             attempts=2,
@@ -787,7 +781,9 @@ class TestContestAttemptReward:
             contest_db._recorded_transactions.clear()
             expected = attempt_tokens_for_rating(problem.rating)
             result = await ContestService.submit_problem(
-                contest_db, user, started.id,
+                contest_db,
+                user,
+                started.id,
                 problem_id=problem.problem_id,
                 solved=False,
                 attempts=2,
@@ -795,8 +791,7 @@ class TestContestAttemptReward:
             )
 
             assert result.tokens_earned == expected, (
-                f"Rating {problem.rating}: expected {expected}, "
-                f"got {result.tokens_earned}"
+                f"Rating {problem.rating}: expected {expected}, got {result.tokens_earned}"
             )
 
     @pytest.mark.asyncio
@@ -812,7 +807,9 @@ class TestContestAttemptReward:
 
         problem = started.problems[0]
         result = await ContestService.submit_problem(
-            contest_db, user, started.id,
+            contest_db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=True,
             attempts=1,
@@ -842,7 +839,9 @@ class TestContestAttemptReward:
 
         problem = started.problems[0]
         await ContestService.submit_problem(
-            contest_db, user, started.id,
+            contest_db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=False,
             attempts=2,
@@ -874,7 +873,9 @@ class TestDailyCapApplies:
 
         problem = started.problems[0]
         result = await ContestService.submit_problem(
-            contest_db, user, started.id,
+            contest_db,
+            user,
+            started.id,
             problem_id=problem.problem_id,
             solved=False,
             attempts=2,

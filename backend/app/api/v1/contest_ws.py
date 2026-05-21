@@ -81,9 +81,7 @@ async def contest_live_leaderboard(
     # Accept connection
     await websocket.accept()
 
-    logger.info(
-        "WebSocket connected: user=%s contest=%s", user.username, contest_id
-    )
+    logger.info("WebSocket connected: user=%s contest=%s", user.username, contest_id)
 
     try:
         while True:
@@ -91,14 +89,14 @@ async def contest_live_leaderboard(
             async with async_session_factory() as db:
                 try:
                     leaderboard = await ContestSimulationService.build_leaderboard(
-                        db, contest_id, user,
+                        db,
+                        contest_id,
+                        user,
                     )
                     await db.commit()
                 except Exception:
                     await db.rollback()
-                    logger.exception(
-                        "Error building leaderboard for WS contest=%s", contest_id
-                    )
+                    logger.exception("Error building leaderboard for WS contest=%s", contest_id)
                     leaderboard = LeaderboardResponse()
 
             # Send leaderboard
@@ -107,24 +105,20 @@ async def contest_live_leaderboard(
             # Check if contest is still active (time_elapsed >= time_total means ended)
             if leaderboard.time_total > 0 and leaderboard.time_elapsed >= leaderboard.time_total:
                 # Contest has ended, send final and close
-                await websocket.send_json({
-                    "type": "contest_ended",
-                    "leaderboard": leaderboard.model_dump(mode="json"),
-                })
+                await websocket.send_json(
+                    {
+                        "type": "contest_ended",
+                        "leaderboard": leaderboard.model_dump(mode="json"),
+                    }
+                )
                 break
 
             # Wait before next update
             await asyncio.sleep(5)
 
     except WebSocketDisconnect:
-        logger.debug(
-            "WebSocket disconnected: user=%s contest=%s", user.username, contest_id
-        )
+        logger.debug("WebSocket disconnected: user=%s contest=%s", user.username, contest_id)
     except Exception:
-        logger.exception(
-            "WebSocket error: user=%s contest=%s", user.username, contest_id
-        )
+        logger.exception("WebSocket error: user=%s contest=%s", user.username, contest_id)
     finally:
-        logger.info(
-            "WebSocket closed: user=%s contest=%s", user.username, contest_id
-        )
+        logger.info("WebSocket closed: user=%s contest=%s", user.username, contest_id)

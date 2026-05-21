@@ -64,7 +64,7 @@ def postgres_url(postgres_container):
     if "+asyncpg://" in raw:
         return raw
     scheme_end = raw.index("://")
-    return "postgresql+asyncpg://" + raw[scheme_end + 3:]
+    return "postgresql+asyncpg://" + raw[scheme_end + 3 :]
 
 
 @pytest.fixture(scope="session")
@@ -81,8 +81,9 @@ def _run_migrations(postgres_url):
        ssl='prefer' for TCP connections.  We patch asyncpg.connect to inject
        ssl=None so the migration engine can connect.
     """
-    import asyncpg as _asyncpg
     from unittest.mock import patch as _patch
+
+    import asyncpg as _asyncpg
 
     _orig_connect = _asyncpg.connect
 
@@ -307,13 +308,15 @@ def make_cf_problems_response(
         contest_id = 1000 + i
         index = chr(ord("A") + (i % 6))
         rating = base_rating + (i * 100)
-        problems.append({
-            "contestId": contest_id,
-            "index": index,
-            "name": f"Test Problem {i}",
-            "rating": rating,
-            "tags": tags or ["dp", "math"],
-        })
+        problems.append(
+            {
+                "contestId": contest_id,
+                "index": index,
+                "name": f"Test Problem {i}",
+                "rating": rating,
+                "tags": tags or ["dp", "math"],
+            }
+        )
     return {"status": "OK", "result": {"problems": problems}}
 
 
@@ -326,10 +329,14 @@ def mock_cf_service(
 
     mock = AsyncMock()
     mock.get_problemset_problems = AsyncMock(return_value=problems_data["result"])
-    mock.get_user_info = AsyncMock(return_value=[{
-        "handle": "testcf",
-        "rating": 1500,
-    }])
+    mock.get_user_info = AsyncMock(
+        return_value=[
+            {
+                "handle": "testcf",
+                "rating": 1500,
+            }
+        ]
+    )
     mock.get_user_status = AsyncMock(return_value=[])
     mock.close = AsyncMock()
     return mock

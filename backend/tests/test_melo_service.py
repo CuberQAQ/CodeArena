@@ -48,9 +48,7 @@ class _TestUserTagElo(_TestBase):
     total_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     first_ac_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "tag", name="uq_user_tag_elo_user_tag"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "tag", name="uq_user_tag_elo_user_tag"),)
 
 
 # ---------------------------------------------------------------------------

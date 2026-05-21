@@ -5,8 +5,8 @@ from app.models.contest_problem_record import ContestProblemRecord
 from app.models.contest_session import ContestSession
 from app.models.elo_history import EloHistory
 from app.models.hint_purchase import HintPurchase
-from app.models.pve_challenge_session import PvEChallengeSession
 from app.models.pp_record import PPRecord
+from app.models.pve_challenge_session import PvEChallengeSession
 from app.models.submission_tracking import SubmissionTracking
 from app.models.system_config import SystemConfig
 from app.models.token_transaction import TokenTransaction

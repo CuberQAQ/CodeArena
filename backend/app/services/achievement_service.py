@@ -113,9 +113,7 @@ class AchievementService:
             type=AchievementType.OVERKILL_BONUS,
             title="越级挑战!",  # "越级挑战!"
             description=(
-                f"你以 {user_elo} Elo 解决了 "
-                f"{problem_rating} 难度的题目! "
-                f"PP {tier_label}"  # noqa: RUF001
+                f"你以 {user_elo} Elo 解决了 {problem_rating} 难度的题目! PP {tier_label}"  # noqa: RUF001
             ),
             icon="zap",
         )
@@ -149,10 +147,7 @@ class AchievementService:
         return AchievementEvent(
             type=AchievementType.CONTEST_WIN,
             title="冠军!",  # "冠军!"
-            description=(
-                f"你在 {total_participants} 名参赛者中"
-                f" 荣获第一名!"
-            ),
+            description=(f"你在 {total_participants} 名参赛者中 荣获第一名!"),
             icon="trophy",
         )
 
@@ -186,9 +181,6 @@ class AchievementService:
         return AchievementEvent(
             type=AchievementType.PERSONAL_BEST_PP,
             title="个人最佳!",  # "个人最佳!"
-            description=(
-                f"你的总 PP 刷新了历史纪录! "
-                f"{old_pp:.1f} → {new_pp:.1f}"
-            ),
+            description=(f"你的总 PP 刷新了历史纪录! {old_pp:.1f} → {new_pp:.1f}"),
             icon="star",
         )

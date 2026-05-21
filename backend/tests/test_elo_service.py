@@ -40,15 +40,14 @@ class _TestEloHistory(_TestBase):
     __tablename__ = "elo_history"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     elo_before: Mapped[int] = mapped_column(Integer, nullable=False)
     elo_after: Mapped[int] = mapped_column(Integer, nullable=False)
     elo_change: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(50), nullable=False)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -306,9 +305,7 @@ class TestChallengeElo:
         change = 32 * (1 - 0.359935) = 32 * 0.640065 = 20.482
         new_A = round(1500 + 20.482) = 1520
         """
-        new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            1500, 1600, 1.0, k_factor=32.0, hint_level=0
-        )
+        new_a, new_b, change_a = EloService.calculate_challenge_elo(1500, 1600, 1.0, k_factor=32.0, hint_level=0)
         e_a = 1.0 / (1.0 + 10.0 ** (100 / 400.0))
         expected_change = 32.0 * (1.0 - e_a)
         assert new_a == round(1500 + expected_change)
@@ -425,17 +422,13 @@ class TestContestScore:
 class TestContestElo:
     def test_above_average_gains(self, config):
         """Solving all problems quickly should yield a gain."""
-        new_rating, change = EloService.calculate_contest_elo(
-            1200, 5, 5, 100, 3600, config=config
-        )
+        new_rating, change = EloService.calculate_contest_elo(1200, 5, 5, 100, 3600, config=config)
         assert new_rating > 1200
         assert change > 0
 
     def test_below_average_loses(self, config):
         """Solving nothing should yield a loss."""
-        new_rating, change = EloService.calculate_contest_elo(
-            1200, 0, 5, 3500, 3600, config=config
-        )
+        new_rating, change = EloService.calculate_contest_elo(1200, 0, 5, 3500, 3600, config=config)
         assert new_rating < 1200
         assert change < 0
 
@@ -443,9 +436,7 @@ class TestContestElo:
         """Contest score == 0.5 => no change."""
         # base=0.5, time_bonus=0 => need solved/total = 0.5 and time_ratio such that bonus=0
         # solved=3, total=6, time_used=time_limit => time_bonus=0
-        new_rating, change = EloService.calculate_contest_elo(
-            1200, 3, 6, 3600, 3600, config=config
-        )
+        new_rating, change = EloService.calculate_contest_elo(1200, 3, 6, 3600, 3600, config=config)
         assert change == 0
         assert new_rating == 1200
 
@@ -471,9 +462,7 @@ class TestRecordEloHistory:
     async def test_record_with_reference(self, db: AsyncSession):
         uid = await _create_user(db)
         ref_id = uuid.uuid4()
-        record = await EloService.record_elo_history(
-            db, uid, 1200, 1184, EloReason.CHALLENGE_LOSS, reference_id=ref_id
-        )
+        record = await EloService.record_elo_history(db, uid, 1200, 1184, EloReason.CHALLENGE_LOSS, reference_id=ref_id)
         await db.flush()
 
         assert record.reference_id == ref_id
@@ -513,9 +502,7 @@ class TestProcessQuitPenalty:
         uid = await _create_user(db, "alice", 1200)
         session_id = uuid.uuid4()
 
-        new_rating, change = await EloService.process_quit_penalty(
-            db, uid, 1200, submissions=0, session_id=session_id
-        )
+        new_rating, change = await EloService.process_quit_penalty(db, uid, 1200, submissions=0, session_id=session_id)
         assert new_rating == 1200
         assert change == 0
 
@@ -620,12 +607,8 @@ class TestEdgeCases:
     def test_hint_attenuation_only_positive(self, config):
         """Verify multiple times that hint only affects positive changes."""
         for actual_score in [0.0, 0.5]:
-            _, _, no_hint = EloService.calculate_challenge_elo(
-                1200, 1200, actual_score, hint_level=0, config=config
-            )
-            _, _, with_hint = EloService.calculate_challenge_elo(
-                1200, 1200, actual_score, hint_level=3, config=config
-            )
+            _, _, no_hint = EloService.calculate_challenge_elo(1200, 1200, actual_score, hint_level=0, config=config)
+            _, _, with_hint = EloService.calculate_challenge_elo(1200, 1200, actual_score, hint_level=3, config=config)
             assert no_hint == with_hint
 
     def test_contest_score_boundary_values(self, config):

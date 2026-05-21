@@ -44,9 +44,9 @@ logger = logging.getLogger("code_arena.pve_challenge")
 # ---------------------------------------------------------------------------
 
 _SELECTION_RANGES: list[tuple[int, int]] = [
-    (-100, 200),   # Round 1: [Elo-100, Elo+200]
-    (-200, 300),   # Round 2: [Elo-200, Elo+300]
-    (-300, 400),   # Round 3: [Elo-300, Elo+400]
+    (-100, 200),  # Round 1: [Elo-100, Elo+200]
+    (-200, 300),  # Round 2: [Elo-200, Elo+300]
+    (-300, 400),  # Round 3: [Elo-300, Elo+400]
 ]
 
 
@@ -144,7 +144,10 @@ class PvEChallengeService:
           - Treats as a failed attempt with S=0, applies Elo loss.
         """
         session = await PvEChallengeService._get_session_or_raise(
-            db, session_id, user.id, required_status="active",
+            db,
+            session_id,
+            user.id,
+            required_status="active",
         )
 
         # Calculate S-value
@@ -198,7 +201,8 @@ class PvEChallengeService:
             )
             pp_change = round(user.pp - pp_before, 2)
             overkill_multiplier = PPService.calculate_overkill_multiplier(
-                user.elo, session.problem_rating,
+                user.elo,
+                session.problem_rating,
             )
 
         # Token rewards
@@ -208,7 +212,9 @@ class PvEChallengeService:
                 # AC reward
                 base_tokens = economy_svc.tokens_for_rating(session.problem_rating)
                 tokens_earned = await economy_svc.award_tokens(
-                    db, user, base_tokens,
+                    db,
+                    user,
+                    base_tokens,
                     tx_type="pve_challenge_reward",
                     reference_type="pve_challenge_session",
                     reference_id=session.id,
@@ -219,7 +225,9 @@ class PvEChallengeService:
                     time_bonus = economy_svc.time_bonus_for_rating(session.problem_rating)
                     if time_bonus > 0:
                         bonus = await economy_svc.award_tokens(
-                            db, user, time_bonus,
+                            db,
+                            user,
+                            time_bonus,
                             tx_type="time_bonus",
                             reference_type="pve_challenge_session",
                             reference_id=session.id,
@@ -230,7 +238,9 @@ class PvEChallengeService:
                 attempt_tokens = economy_svc.attempt_tokens_for_rating(session.problem_rating)
                 if attempt_tokens > 0:
                     tokens_earned = await economy_svc.award_tokens(
-                        db, user, attempt_tokens,
+                        db,
+                        user,
+                        attempt_tokens,
                         tx_type="pve_attempt_reward",
                         reference_type="pve_challenge_session",
                         reference_id=session.id,
@@ -239,7 +249,12 @@ class PvEChallengeService:
         # Record Elo history
         reason = EloReason.CHALLENGE_WIN if solved else EloReason.CHALLENGE_LOSS
         await EloService.record_elo_history(
-            db, user.id, user.elo, new_elo, reason, session.id,
+            db,
+            user.id,
+            user.elo,
+            new_elo,
+            reason,
+            session.id,
         )
 
         # Update user Elo
@@ -257,7 +272,11 @@ class PvEChallengeService:
 
         logger.info(
             "PvE challenge completed: session=%s solved=%s elo_change=%d tokens=%d s_value=%.2f",
-            session.id, solved, elo_change, tokens_earned, s_value,
+            session.id,
+            solved,
+            elo_change,
+            tokens_earned,
+            s_value,
         )
 
         # --- Achievement event detection ---
@@ -313,7 +332,10 @@ class PvEChallengeService:
           - 3+ submissions: normal failure (S=0, full Elo calculation)
         """
         session = await PvEChallengeService._get_session_or_raise(
-            db, session_id, user.id, required_status="active",
+            db,
+            session_id,
+            user.id,
+            required_status="active",
         )
 
         current_elo = user.elo
@@ -345,7 +367,12 @@ class PvEChallengeService:
 
         # Record Elo history
         await EloService.record_elo_history(
-            db, user.id, current_elo, new_elo, EloReason.QUIT_PENALTY, session.id,
+            db,
+            user.id,
+            current_elo,
+            new_elo,
+            EloReason.QUIT_PENALTY,
+            session.id,
         )
 
         # Update user Elo
@@ -361,7 +388,9 @@ class PvEChallengeService:
 
         logger.info(
             "PvE challenge quit: session=%s submissions=%d elo_change=%d",
-            session.id, submissions, elo_change,
+            session.id,
+            submissions,
+            elo_change,
         )
 
         return {
@@ -384,7 +413,9 @@ class PvEChallengeService:
     ) -> PvEDetailResponse:
         """Return detailed information about a PvE challenge session."""
         session = await PvEChallengeService._get_session_or_raise(
-            db, session_id, user.id,
+            db,
+            session_id,
+            user.id,
         )
 
         problem_info = PvEChallengeService._build_problem_info_from_session(session)
@@ -424,10 +455,7 @@ class PvEChallengeService:
         offset = (page - 1) * page_size
 
         # Total count
-        count_stmt = (
-            select(func.count(PvEChallengeSession.id))
-            .where(PvEChallengeSession.user_id == user.id)
-        )
+        count_stmt = select(func.count(PvEChallengeSession.id)).where(PvEChallengeSession.user_id == user.id)
         total = (await db.execute(count_stmt)).scalar_one()
 
         # Items

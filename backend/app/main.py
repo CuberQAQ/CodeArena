@@ -93,5 +93,6 @@ async def redis_unavailable_handler(_request, exc):
         status_code=503,
     )
 
+
 # Mount API routes
 app.include_router(api_router, prefix="/api/v1")

@@ -44,22 +44,22 @@ DEFAULT_CONFIG: dict = {
         "daily_token_cap": 120,
         "time_bonus_threshold_minutes": 20,
         "difficulty_tiers": {
-            "gray":   {"min": 800,  "max": 1199, "ac_reward": 10, "attempt_reward": 2},
-            "green":  {"min": 1200, "max": 1399, "ac_reward": 20, "attempt_reward": 3},
-            "cyan":   {"min": 1400, "max": 1599, "ac_reward": 25, "attempt_reward": 4},
-            "blue":   {"min": 1600, "max": 1899, "ac_reward": 35, "attempt_reward": 5},
+            "gray": {"min": 800, "max": 1199, "ac_reward": 10, "attempt_reward": 2},
+            "green": {"min": 1200, "max": 1399, "ac_reward": 20, "attempt_reward": 3},
+            "cyan": {"min": 1400, "max": 1599, "ac_reward": 25, "attempt_reward": 4},
+            "blue": {"min": 1600, "max": 1899, "ac_reward": 35, "attempt_reward": 5},
             "purple": {"min": 1900, "max": 2099, "ac_reward": 45, "attempt_reward": 6},
             "orange": {"min": 2100, "max": 2399, "ac_reward": 55, "attempt_reward": 7},
-            "red":    {"min": 2400, "max": 9999, "ac_reward": 65, "attempt_reward": 8},
+            "red": {"min": 2400, "max": 9999, "ac_reward": 65, "attempt_reward": 8},
         },
         "hint_pricing": {
-            "gray":   [3, 10, 20],
-            "green":  [5, 15, 30],
-            "cyan":   [6, 18, 35],
-            "blue":   [8, 20, 40],
+            "gray": [3, 10, 20],
+            "green": [5, 15, 30],
+            "cyan": [6, 18, 35],
+            "blue": [8, 20, 40],
             "purple": [10, 25, 50],
             "orange": [12, 28, 55],
-            "red":    [15, 30, 60],
+            "red": [15, 30, 60],
         },
     },
     "contest": {
@@ -77,11 +77,11 @@ DEFAULT_CONFIG: dict = {
         "simulation": {
             "tick_interval_seconds": 30,
             "difficulty_ticks": {
-                "easy": [2, 4],       # rating < 1200
-                "medium": [6, 16],    # 1200 <= rating < 1800
-                "hard": [16, 30],     # rating >= 1800
+                "easy": [2, 4],  # rating < 1200
+                "medium": [6, 16],  # 1200 <= rating < 1800
+                "hard": [16, 30],  # rating >= 1800
             },
-            "jitter": 0.3,           # +/-30% random jitter
+            "jitter": 0.3,  # +/-30% random jitter
         },
     },
     "cf_api": {

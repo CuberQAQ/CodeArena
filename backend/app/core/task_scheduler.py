@@ -118,7 +118,8 @@ class TaskScheduler:
             try:
                 # 1. Poll CF API and match pending records.
                 matched_count = await SubmissionTracker.poll_submissions(
-                    db, self._cf_service,
+                    db,
+                    self._cf_service,
                 )
 
                 # 2. Settle matched records.
@@ -134,7 +135,9 @@ class TaskScheduler:
                 if matched_count or settled_count or timeout_count:
                     logger.info(
                         "Poll cycle complete: matched=%d settled=%d timeout=%d",
-                        matched_count, settled_count, timeout_count,
+                        matched_count,
+                        settled_count,
+                        timeout_count,
                     )
             except Exception:
                 await db.rollback()

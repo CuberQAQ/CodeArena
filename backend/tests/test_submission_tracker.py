@@ -89,7 +89,9 @@ async def async_engine():
 async def db(async_engine):
     """Provide an async session with patched model references."""
     session_factory = async_sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False,
+        async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
     )
 
     async with session_factory() as session:
@@ -190,13 +192,19 @@ class TestRegisterPending:
         session_id = uuid.uuid4()
 
         r1 = await SubmissionTracker.register_pending(
-            db=db, user_id=user_id, session_type="pve",
-            session_id=session_id, problem_id="800A",
+            db=db,
+            user_id=user_id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
             expected_at=datetime.now(UTC),
         )
         r2 = await SubmissionTracker.register_pending(
-            db=db, user_id=user_id, session_type="pve",
-            session_id=session_id, problem_id="800B",
+            db=db,
+            user_id=user_id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800B",
             expected_at=datetime.now(UTC),
         )
 
@@ -258,9 +266,14 @@ class TestMatchAndUpdate:
     async def test_all_final_verdicts_recognized(self, db):
         """All recognized final verdicts should transition to 'matched'."""
         final_verdicts = [
-            "OK", "WRONG_ANSWER", "TIME_LIMIT_EXCEEDED",
-            "MEMORY_LIMIT_EXCEEDED", "COMPILATION_ERROR",
-            "RUNTIME_ERROR", "CHALLENGED", "SKIPPED",
+            "OK",
+            "WRONG_ANSWER",
+            "TIME_LIMIT_EXCEEDED",
+            "MEMORY_LIMIT_EXCEEDED",
+            "COMPILATION_ERROR",
+            "RUNTIME_ERROR",
+            "CHALLENGED",
+            "SKIPPED",
         ]
 
         for verdict in final_verdicts:
@@ -326,12 +339,15 @@ class TestFindMatchingSubmission:
 
         # Submission from 3 hours ago -- outside 5min-before window
         old_sub = _make_cf_submission(
-            contest_id=800, index="A",
+            contest_id=800,
+            index="A",
             creation_time=now - timedelta(hours=3),
         )
         # Submission from 30 min ago -- within 30min-after window
         recent_sub = _make_cf_submission(
-            submission_id=101, contest_id=800, index="A",
+            submission_id=101,
+            contest_id=800,
+            index="A",
             creation_time=now - timedelta(minutes=30),
         )
 
@@ -350,15 +366,21 @@ class TestFindMatchingSubmission:
 
         subs = [
             _make_cf_submission(
-                submission_id=100, contest_id=800, index="A",
+                submission_id=100,
+                contest_id=800,
+                index="A",
                 creation_time=now - timedelta(minutes=1),
             ),
             _make_cf_submission(
-                submission_id=200, contest_id=800, index="A",
+                submission_id=200,
+                contest_id=800,
+                index="A",
                 creation_time=now,
             ),
             _make_cf_submission(
-                submission_id=150, contest_id=800, index="A",
+                submission_id=150,
+                contest_id=800,
+                index="A",
                 creation_time=now - timedelta(seconds=30),
             ),
         ]
@@ -403,7 +425,9 @@ class TestPollSubmissions:
 
         now = datetime.now(UTC)
         cf_sub = _make_cf_submission(
-            contest_id=800, index="A", verdict="OK",
+            contest_id=800,
+            index="A",
+            verdict="OK",
             creation_time=now,
         )
         cf_mock = AsyncMock()
@@ -637,7 +661,10 @@ class TestGetTrackingForSession:
         await db.flush()
 
         result = await SubmissionTracker.get_tracking_for_session(
-            db, user.id, "pve", session_id,
+            db,
+            user.id,
+            "pve",
+            session_id,
         )
         assert result is not None
         assert result.id == tracking.id
@@ -645,7 +672,10 @@ class TestGetTrackingForSession:
     async def test_returns_none_when_not_found(self, db):
         """Should return None when no tracking record exists."""
         result = await SubmissionTracker.get_tracking_for_session(
-            db, uuid.uuid4(), "pve", uuid.uuid4(),
+            db,
+            uuid.uuid4(),
+            "pve",
+            uuid.uuid4(),
         )
         assert result is None
 
@@ -657,19 +687,26 @@ class TestGetTrackingForSession:
 
         session_id = uuid.uuid4()
         old = _make_tracking(
-            user_id=user.id, session_type="pve", session_id=session_id,
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
             status="timeout",
             created_at=datetime.now(UTC) - timedelta(hours=1),
         )
         recent = _make_tracking(
-            user_id=user.id, session_type="pve", session_id=session_id,
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
             status="pending",
         )
         db.add_all([old, recent])
         await db.flush()
 
         result = await SubmissionTracker.get_tracking_for_session(
-            db, user.id, "pve", session_id,
+            db,
+            user.id,
+            "pve",
+            session_id,
         )
         assert result is not None
         assert result.id == recent.id
@@ -747,7 +784,9 @@ class TestFullFlow:
 
         # Step 2: Poll CF API -- user submits and gets OK
         cf_sub = _make_cf_submission(
-            contest_id=800, index="A", verdict="OK",
+            contest_id=800,
+            index="A",
+            verdict="OK",
             creation_time=now,
         )
         cf_mock = AsyncMock()
@@ -812,7 +851,9 @@ class TestFullFlow:
 
         # First poll: TESTING verdict
         cf_sub_testing = _make_cf_submission(
-            contest_id=800, index="A", verdict="TESTING",
+            contest_id=800,
+            index="A",
+            verdict="TESTING",
             creation_time=now,
         )
         cf_mock = AsyncMock()
@@ -826,7 +867,10 @@ class TestFullFlow:
 
         # Second poll: OK verdict
         cf_sub_ok = _make_cf_submission(
-            submission_id=101, contest_id=800, index="A", verdict="OK",
+            submission_id=101,
+            contest_id=800,
+            index="A",
+            verdict="OK",
             creation_time=now,
         )
         cf_mock.get_user_status.return_value = [cf_sub_testing, cf_sub_ok]

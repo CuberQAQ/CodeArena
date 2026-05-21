@@ -42,9 +42,7 @@ class _TestPPRecord(_TestBase):
     __tablename__ = "pp_records"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     cf_problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
     problem_rating: Mapped[int] = mapped_column(Integer, nullable=False)
     base_pp: Mapped[float] = mapped_column(Float, nullable=False)
@@ -55,9 +53,7 @@ class _TestEloHistory(_TestBase):
     __tablename__ = "elo_history"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     elo_before: Mapped[int] = mapped_column(Integer, nullable=False)
     elo_after: Mapped[int] = mapped_column(Integer, nullable=False)
     elo_change: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -315,7 +311,11 @@ class TestProcessChallengeResultKFactor:
 
         # No PP records => submission_count=0 => K=40
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=0,
@@ -335,7 +335,11 @@ class TestProcessChallengeResultKFactor:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=150,
@@ -356,7 +360,11 @@ class TestProcessChallengeResultKFactor:
 
         # Alice is newbie (10 subs => K=40), Bob is veteran (150 subs => K=20)
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
@@ -378,7 +386,11 @@ class TestProcessChallengeResultKFactor:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=60,
@@ -397,7 +409,11 @@ class TestProcessChallengeResultKFactor:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             # No submission counts => falls back to EloConfig.k_factor = 32
@@ -420,9 +436,13 @@ class TestProcessContestResultKFactor:
         session_id = uuid.uuid4()
 
         new_rating, elo_change = await EloService.process_contest_result(
-            db, uid, 1200,
-            solved_problems=5, total_problems=5,
-            time_used_seconds=100, time_limit_seconds=3600,
+            db,
+            uid,
+            1200,
+            solved_problems=5,
+            total_problems=5,
+            time_used_seconds=100,
+            time_limit_seconds=3600,
             contest_session_id=session_id,
             user_submission_count=10,
             k_factor_config=None,
@@ -441,9 +461,13 @@ class TestProcessContestResultKFactor:
         session_id = uuid.uuid4()
 
         new_rating, elo_change = await EloService.process_contest_result(
-            db, uid, 1200,
-            solved_problems=5, total_problems=5,
-            time_used_seconds=100, time_limit_seconds=3600,
+            db,
+            uid,
+            1200,
+            solved_problems=5,
+            total_problems=5,
+            time_used_seconds=100,
+            time_limit_seconds=3600,
             contest_session_id=session_id,
             user_submission_count=150,
             k_factor_config=None,
@@ -458,9 +482,13 @@ class TestProcessContestResultKFactor:
         session_id = uuid.uuid4()
 
         new_rating, elo_change = await EloService.process_contest_result(
-            db, uid, 1200,
-            solved_problems=5, total_problems=5,
-            time_used_seconds=100, time_limit_seconds=3600,
+            db,
+            uid,
+            1200,
+            solved_problems=5,
+            total_problems=5,
+            time_used_seconds=100,
+            time_limit_seconds=3600,
             contest_session_id=session_id,
             # No submission_count => uses EloConfig.k_factor = 32
         )
@@ -481,12 +509,14 @@ class TestProcessQuitPenaltyKFactor:
         session_id = uuid.uuid4()
 
         new_rating, change = await EloService.process_quit_penalty(
-            db, uid_a, 1200,
+            db,
+            uid_a,
+            1200,
             submissions=3,
             session_id=session_id,
             opponent_id=uid_b,
             opponent_rating=1200,
-            user_submission_count=5,   # Newbie => K=40
+            user_submission_count=5,  # Newbie => K=40
             opponent_submission_count=5,
             k_factor_config=None,
         )
@@ -501,12 +531,14 @@ class TestProcessQuitPenaltyKFactor:
         session_id = uuid.uuid4()
 
         new_rating, change = await EloService.process_quit_penalty(
-            db, uid_a, 1200,
+            db,
+            uid_a,
+            1200,
             submissions=3,
             session_id=session_id,
             opponent_id=uid_b,
             opponent_rating=1200,
-            user_submission_count=200,   # Veteran => K=20
+            user_submission_count=200,  # Veteran => K=20
             opponent_submission_count=200,
             k_factor_config=None,
         )
@@ -520,7 +552,9 @@ class TestProcessQuitPenaltyKFactor:
         session_id = uuid.uuid4()
 
         new_rating, change = await EloService.process_quit_penalty(
-            db, uid, 1200,
+            db,
+            uid,
+            1200,
             submissions=0,
             session_id=session_id,
             user_submission_count=5,
@@ -541,9 +575,7 @@ class TestBackwardCompatibility:
     def test_calculate_challenge_elo_unchanged(self):
         """calculate_challenge_elo still works with fixed K when no submission count."""
         config = EloConfig()
-        new_a, new_b, change_a = EloService.calculate_challenge_elo(
-            1200, 1200, 1.0, config=config
-        )
+        new_a, new_b, change_a = EloService.calculate_challenge_elo(1200, 1200, 1.0, config=config)
         # K=32 (from EloConfig default), expected=0.5, change = 32*(1-0.5) = 16
         assert new_a == 1216
         assert change_a == 16
@@ -557,9 +589,7 @@ class TestBackwardCompatibility:
 
     def test_calculate_contest_elo_unchanged(self):
         """calculate_contest_elo still works with fixed K."""
-        new_rating, elo_change = EloService.calculate_contest_elo(
-            1200, 5, 5, 100, 3600
-        )
+        new_rating, elo_change = EloService.calculate_contest_elo(1200, 5, 5, 100, 3600)
         assert new_rating > 1200
         assert elo_change > 0
 
@@ -570,7 +600,11 @@ class TestBackwardCompatibility:
         session_id = uuid.uuid4()
 
         new_a, new_b, change_a, change_b = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
         )
@@ -584,9 +618,13 @@ class TestBackwardCompatibility:
         session_id = uuid.uuid4()
 
         new_rating, elo_change = await EloService.process_contest_result(
-            db, uid, 1200,
-            solved_problems=3, total_problems=6,
-            time_used_seconds=3600, time_limit_seconds=3600,
+            db,
+            uid,
+            1200,
+            solved_problems=3,
+            total_problems=6,
+            time_used_seconds=3600,
+            time_limit_seconds=3600,
             contest_session_id=session_id,
         )
         # contest_score = 0.5 + 0 = 0.5 (time used == limit), change = K*(0.5-0.5) = 0
@@ -600,7 +638,9 @@ class TestBackwardCompatibility:
         session_id = uuid.uuid4()
 
         new_rating, change = await EloService.process_quit_penalty(
-            db, uid_a, 1200,
+            db,
+            uid_a,
+            1200,
             submissions=3,
             session_id=session_id,
             opponent_id=uid_b,
@@ -624,7 +664,11 @@ class TestEloHistoryWithKFactor:
         session_id = uuid.uuid4()
 
         await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
@@ -655,9 +699,13 @@ class TestEloHistoryWithKFactor:
         session_id = uuid.uuid4()
 
         new_rating, _ = await EloService.process_contest_result(
-            db, uid, 1200,
-            solved_problems=5, total_problems=5,
-            time_used_seconds=100, time_limit_seconds=3600,
+            db,
+            uid,
+            1200,
+            solved_problems=5,
+            total_problems=5,
+            time_used_seconds=100,
+            time_limit_seconds=3600,
             contest_session_id=session_id,
             user_submission_count=10,
             k_factor_config=None,
@@ -686,7 +734,11 @@ class TestHintAttenuationWithKFactor:
 
         # Without hint
         _, _, change_no_hint, _ = await EloService.process_challenge_result(
-            db, uid_a, uid_b, 1200, 1200,
+            db,
+            uid_a,
+            uid_b,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id,
             challenger_submission_count=10,
@@ -699,7 +751,11 @@ class TestHintAttenuationWithKFactor:
         uid_d = await _create_user(db, "dave", 1200)
         session_id2 = uuid.uuid4()
         _, _, change_with_hint, _ = await EloService.process_challenge_result(
-            db, uid_c, uid_d, 1200, 1200,
+            db,
+            uid_c,
+            uid_d,
+            1200,
+            1200,
             actual_score_a=1.0,
             session_id=session_id2,
             hint_level_challenger=1,

@@ -7,7 +7,6 @@ streak tracking, and token/PP rewards.
 import uuid
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .conftest import (
     create_test_topic,
@@ -15,7 +14,6 @@ from .conftest import (
     make_cf_problems_response,
     mock_cf_service,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -92,9 +90,7 @@ class TestTrainingStart:
 
         cf = mock_cf_service()
         with pytest.raises(Exception, match="Topic not found"):
-            await TrainingService.start_training(
-                db_session, user, uuid.uuid4(), cf
-            )
+            await TrainingService.start_training(db_session, user, uuid.uuid4(), cf)
 
 
 class TestTrainingSubmit:
@@ -113,8 +109,13 @@ class TestTrainingSubmit:
         session_info = await TrainingService.start_training(db_session, user, topic.id, cf)
 
         result = await TrainingService.submit_problem(
-            db_session, user, session_info.id,
-            problem_id="1000A", solved=True, attempts=1, time_spent=300.0,
+            db_session,
+            user,
+            session_info.id,
+            problem_id="1000A",
+            solved=True,
+            attempts=1,
+            time_spent=300.0,
             cf_service=cf,
         )
         assert result.solved is True
@@ -137,8 +138,13 @@ class TestTrainingSubmit:
         session_info = await TrainingService.start_training(db_session, user, topic.id, cf)
 
         result = await TrainingService.submit_problem(
-            db_session, user, session_info.id,
-            problem_id="1000A", solved=False, attempts=3, time_spent=600.0,
+            db_session,
+            user,
+            session_info.id,
+            problem_id="1000A",
+            solved=False,
+            attempts=3,
+            time_spent=600.0,
             cf_service=cf,
         )
         assert result.solved is False
@@ -158,16 +164,26 @@ class TestTrainingSubmit:
 
         # Solve problem at rating 1000
         r1 = await TrainingService.submit_problem(
-            db_session, user, session_info.id,
-            problem_id="1000A", solved=True, attempts=1, time_spent=100.0,
+            db_session,
+            user,
+            session_info.id,
+            problem_id="1000A",
+            solved=True,
+            attempts=1,
+            time_spent=100.0,
             cf_service=cf,
         )
         assert r1.solved is True
 
         # Solve problem at rating 1100 (higher)
         r2 = await TrainingService.submit_problem(
-            db_session, user, session_info.id,
-            problem_id="1001B", solved=True, attempts=1, time_spent=200.0,
+            db_session,
+            user,
+            session_info.id,
+            problem_id="1001B",
+            solved=True,
+            attempts=1,
+            time_spent=200.0,
             cf_service=cf,
         )
         assert r2.solved is True
@@ -186,8 +202,13 @@ class TestTrainingSubmit:
         session_info = await TrainingService.start_training(db_session, user, topic.id, cf)
 
         result = await TrainingService.submit_problem(
-            db_session, user, session_info.id,
-            problem_id="1000A", solved=True, attempts=1, time_spent=300.0,
+            db_session,
+            user,
+            session_info.id,
+            problem_id="1000A",
+            solved=True,
+            attempts=1,
+            time_spent=300.0,
             cf_service=cf,
         )
         assert result.elo_change is not None
@@ -209,15 +230,25 @@ class TestTrainingSubmit:
         session_info = await TrainingService.start_training(db_session, user, topic.id, cf)
 
         await TrainingService.submit_problem(
-            db_session, user, session_info.id,
-            problem_id="1000A", solved=True, attempts=1, time_spent=100.0,
+            db_session,
+            user,
+            session_info.id,
+            problem_id="1000A",
+            solved=True,
+            attempts=1,
+            time_spent=100.0,
             cf_service=cf,
         )
 
         with pytest.raises(Exception, match="already solved"):
             await TrainingService.submit_problem(
-                db_session, user, session_info.id,
-                problem_id="1000A", solved=True, attempts=1, time_spent=100.0,
+                db_session,
+                user,
+                session_info.id,
+                problem_id="1000A",
+                solved=True,
+                attempts=1,
+                time_spent=100.0,
                 cf_service=cf,
             )
 

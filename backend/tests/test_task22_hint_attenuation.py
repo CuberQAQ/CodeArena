@@ -13,6 +13,7 @@ Cross-cutting checks:
 - PP calculations are NOT affected by hints
 """
 
+import contextlib
 import json
 import uuid
 from datetime import UTC, datetime
@@ -23,18 +24,17 @@ from sqlalchemy import DateTime, Float, Integer, String, TypeDecorator, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from app.services import contest_service as contest_svc_module
 from app.services import economy_service as economy_svc_module
 from app.services import pve_challenge_service as pve_svc_module
-from app.services import contest_service as contest_svc_module
 from app.services import training_service as training_svc_module
 from app.services.elo_service import EloService
-from app.services.hint_service import HintService
 from app.services.pp_service import PPService as _RealPPService
-
 
 # ---------------------------------------------------------------------------
 # SQLite JSON type helper
 # ---------------------------------------------------------------------------
+
 
 class JSONText(TypeDecorator):
     impl = String(2000)
@@ -54,6 +54,7 @@ class JSONText(TypeDecorator):
 # ---------------------------------------------------------------------------
 # Shared lightweight test models
 # ---------------------------------------------------------------------------
+
 
 class _TestBase(DeclarativeBase):
     pass
@@ -209,6 +210,7 @@ class _TestUserTagElo(_TestBase):
 # Shared engine fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 async def async_engine():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
@@ -310,6 +312,7 @@ async def pve_db(async_engine):
 
     async def _mock_get_config(db, key):
         from app.core.default_config import DEFAULT_CONFIG
+
         return DEFAULT_CONFIG.get("elo", {})
 
     async def _mock_get_submission_count(db, user_id):
@@ -338,8 +341,7 @@ async def pve_db(async_engine):
             # Use real S-value formula
             mock_elo_cls.calculate_s_value = staticmethod(
                 lambda is_solved, is_first_ac, error_count: (
-                    1.0 if is_solved and is_first_ac
-                    else (max(0.7, 1.0 - 0.05 * error_count) if is_solved else 0.0)
+                    1.0 if is_solved and is_first_ac else (max(0.7, 1.0 - 0.05 * error_count) if is_solved else 0.0)
                 )
             )
             # Use real expected score formula
@@ -351,9 +353,7 @@ async def pve_db(async_engine):
             # Use REAL apply_hint_attenuation so we verify the actual logic
             mock_elo_cls.apply_hint_attenuation = staticmethod(EloService.apply_hint_attenuation)
             mock_pp_cls.record_pp = _mock_record_pp
-            mock_pp_cls.calculate_overkill_multiplier = staticmethod(
-                _RealPPService.calculate_overkill_multiplier
-            )
+            mock_pp_cls.calculate_overkill_multiplier = staticmethod(_RealPPService.calculate_overkill_multiplier)
             mock_hint_cls.get_max_hint_level = AsyncMock(return_value=0)
             mock_ach_cls.check_overkill = staticmethod(lambda **kwargs: None)
             mock_ach_cls.check_personal_best_pp = staticmethod(lambda **kwargs: None)
@@ -390,8 +390,12 @@ class TestPvEHintAttenuation:
         # Mock hint level to 1
         with patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=1)):
             result = await pve_svc_module.PvEChallengeService.submit_result(
-                db=db, user=user, session_id=pve_session.id,
-                solved=True, time_spent=60.0, attempts=1,
+                db=db,
+                user=user,
+                session_id=pve_session.id,
+                solved=True,
+                time_spent=60.0,
+                attempts=1,
             )
 
         # With real EloService.apply_hint_attenuation, elo_change should be
@@ -410,8 +414,12 @@ class TestPvEHintAttenuation:
 
         with patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=2)):
             result = await pve_svc_module.PvEChallengeService.submit_result(
-                db=db, user=user, session_id=pve_session.id,
-                solved=True, time_spent=60.0, attempts=1,
+                db=db,
+                user=user,
+                session_id=pve_session.id,
+                solved=True,
+                time_spent=60.0,
+                attempts=1,
             )
 
         assert result.elo_change > 0
@@ -427,8 +435,12 @@ class TestPvEHintAttenuation:
 
         with patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=3)):
             result = await pve_svc_module.PvEChallengeService.submit_result(
-                db=db, user=user, session_id=pve_session.id,
-                solved=True, time_spent=60.0, attempts=1,
+                db=db,
+                user=user,
+                session_id=pve_session.id,
+                solved=True,
+                time_spent=60.0,
+                attempts=1,
             )
 
         assert result.elo_change > 0
@@ -446,18 +458,25 @@ class TestPvEHintAttenuation:
 
             with patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=level)):
                 result = await pve_svc_module.PvEChallengeService.submit_result(
-                    db=db, user=user, session_id=pve_session.id,
-                    solved=True, time_spent=60.0, attempts=1,
+                    db=db,
+                    user=user,
+                    session_id=pve_session.id,
+                    solved=True,
+                    time_spent=60.0,
+                    attempts=1,
                 )
             results_by_level[level] = result.elo_change
 
         # Verify strict ordering: level 0 > 1 > 2 > 3
-        assert results_by_level[0] > results_by_level[1], \
+        assert results_by_level[0] > results_by_level[1], (
             f"No hint ({results_by_level[0]}) should be > Level 1 ({results_by_level[1]})"
-        assert results_by_level[1] > results_by_level[2], \
+        )
+        assert results_by_level[1] > results_by_level[2], (
             f"Level 1 ({results_by_level[1]}) should be > Level 2 ({results_by_level[2]})"
-        assert results_by_level[2] > results_by_level[3], \
+        )
+        assert results_by_level[2] > results_by_level[3], (
             f"Level 2 ({results_by_level[2]}) should be > Level 3 ({results_by_level[3]})"
+        )
 
     @pytest.mark.asyncio
     async def test_no_hint_no_attenuation(self, pve_db):
@@ -470,16 +489,19 @@ class TestPvEHintAttenuation:
 
         with patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             result = await pve_svc_module.PvEChallengeService.submit_result(
-                db=db, user=user, session_id=pve_session.id,
-                solved=True, time_spent=60.0, attempts=1,
+                db=db,
+                user=user,
+                session_id=pve_session.id,
+                solved=True,
+                time_spent=60.0,
+                attempts=1,
             )
 
         # With no hints, raw elo_change should equal the unattenuated value
         # Verify by manually computing: K=32, expected=1/(1+10^((1500-1200)/400)) = ~0.152
         expected = 1.0 / (1.0 + 10.0 ** ((1500 - 1200) / 400.0))
         raw_change = 32.0 * (1.0 - expected)
-        assert result.elo_change == round(raw_change), \
-            f"Expected {round(raw_change)}, got {result.elo_change}"
+        assert result.elo_change == round(raw_change), f"Expected {round(raw_change)}, got {result.elo_change}"
 
     @pytest.mark.asyncio
     async def test_failure_not_attenuated(self, pve_db):
@@ -493,8 +515,12 @@ class TestPvEHintAttenuation:
         # With hints level 3
         with patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=3)):
             result_with_hint = await pve_svc_module.PvEChallengeService.submit_result(
-                db=db, user=user, session_id=pve_session.id,
-                solved=False, time_spent=60.0, attempts=3,
+                db=db,
+                user=user,
+                session_id=pve_session.id,
+                solved=False,
+                time_spent=60.0,
+                attempts=3,
             )
 
         assert result_with_hint.elo_change < 0, "Failure should produce negative Elo change"
@@ -507,12 +533,18 @@ class TestPvEHintAttenuation:
 
         with patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             result_no_hint = await pve_svc_module.PvEChallengeService.submit_result(
-                db=db, user=user2, session_id=pve_session2.id,
-                solved=False, time_spent=60.0, attempts=3,
+                db=db,
+                user=user2,
+                session_id=pve_session2.id,
+                solved=False,
+                time_spent=60.0,
+                attempts=3,
             )
 
-        assert result_with_hint.elo_change == result_no_hint.elo_change, \
-            f"Failure Elo should be same with/without hints: {result_with_hint.elo_change} vs {result_no_hint.elo_change}"
+        assert result_with_hint.elo_change == result_no_hint.elo_change, (
+            f"Failure Elo should be same with/without hints: "
+            f"{result_with_hint.elo_change} vs {result_no_hint.elo_change}"
+        )
 
     @pytest.mark.asyncio
     async def test_pp_not_affected_by_hints(self, pve_db):
@@ -543,9 +575,13 @@ class TestPvEHintAttenuation:
             patch.object(pve_svc_module.PPService, "record_pp", _track_pp_call),
             patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=3)),
         ):
-            result = await pve_svc_module.PvEChallengeService.submit_result(
-                db=db, user=user, session_id=pve_session.id,
-                solved=True, time_spent=60.0, attempts=1,
+            await pve_svc_module.PvEChallengeService.submit_result(
+                db=db,
+                user=user,
+                session_id=pve_session.id,
+                solved=True,
+                time_spent=60.0,
+                attempts=1,
             )
 
         # PP should be recorded (user.pp was increased by mock)
@@ -595,6 +631,7 @@ async def training_db(async_engine):
             patch.object(config_svc_module.ConfigService, "get_config", _mock_get_config),
         ):
             from app.services import melo_service as melo_svc_module
+
             with (
                 patch.object(melo_svc_module, "UserTagElo", _TestUserTagElo),
                 patch.object(melo_svc_module, "User", _TestUser),
@@ -647,8 +684,13 @@ class TestTrainingHintAttenuation:
 
         # Calculate unattenuated result first
         result_no_hint = await training_svc_module.TrainingService._calculate_training_elo(
-            db, user, problem_rating=1500, session_id=session.id,
-            topic_id=topic.id, solved=True, attempts=1,
+            db,
+            user,
+            problem_rating=1500,
+            session_id=session.id,
+            topic_id=topic.id,
+            solved=True,
+            attempts=1,
             problem_id="100A",
         )
         elo_no_hint = result_no_hint["global_elo_change"]
@@ -656,18 +698,23 @@ class TestTrainingHintAttenuation:
 
         # Now with hint level 2
         from app.services import training_service as ts_mod
+
         with patch.object(ts_mod.HintService, "get_max_hint_level", AsyncMock(return_value=2)):
             result_hint = await training_svc_module.TrainingService._calculate_training_elo(
-                db, user, problem_rating=1500, session_id=session.id,
-                topic_id=topic.id, solved=True, attempts=1,
+                db,
+                user,
+                problem_rating=1500,
+                session_id=session.id,
+                topic_id=topic.id,
+                solved=True,
+                attempts=1,
                 problem_id="100A",
             )
         elo_with_hint = result_hint["global_elo_change"]
 
         assert elo_no_hint > 0, "AC should produce positive Global Elo change"
         assert elo_with_hint > 0, "Attenuated should still be positive"
-        assert elo_with_hint < elo_no_hint, \
-            f"With hint ({elo_with_hint}) should be less than without ({elo_no_hint})"
+        assert elo_with_hint < elo_no_hint, f"With hint ({elo_with_hint}) should be less than without ({elo_no_hint})"
 
     @pytest.mark.asyncio
     async def test_melo_attenuation(self, training_db):
@@ -690,10 +737,16 @@ class TestTrainingHintAttenuation:
         await db.flush()
 
         from app.services import training_service as ts_mod
+
         with patch.object(ts_mod.HintService, "get_max_hint_level", AsyncMock(return_value=2)):
             result = await training_svc_module.TrainingService._calculate_training_elo(
-                db, user, problem_rating=1500, session_id=session.id,
-                topic_id=topic.id, solved=True, attempts=1,
+                db,
+                user,
+                problem_rating=1500,
+                session_id=session.id,
+                topic_id=topic.id,
+                solved=True,
+                attempts=1,
                 problem_id="100A",
             )
 
@@ -713,18 +766,23 @@ class TestTrainingHintAttenuation:
         await db.flush()
 
         from app.services import training_service as ts_mod
+
         with patch.object(ts_mod.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             result = await training_svc_module.TrainingService._calculate_training_elo(
-                db, user, problem_rating=1500, session_id=session.id,
-                topic_id=topic.id, solved=True, attempts=1,
+                db,
+                user,
+                problem_rating=1500,
+                session_id=session.id,
+                topic_id=topic.id,
+                solved=True,
+                attempts=1,
                 problem_id="100A",
             )
 
         # Compute raw value: k_train=8, global_coeff=0.5, expected_score
         expected = 1.0 / (1.0 + 10.0 ** ((1500 - 1000) / 400.0))
         raw = round(8 * (1.0 - expected) * 0.5)
-        assert result["global_elo_change"] == raw, \
-            f"No hint: expected {raw}, got {result['global_elo_change']}"
+        assert result["global_elo_change"] == raw, f"No hint: expected {raw}, got {result['global_elo_change']}"
 
     @pytest.mark.asyncio
     async def test_shield_priority_over_attenuation(self, training_db):
@@ -747,16 +805,21 @@ class TestTrainingHintAttenuation:
         await db.flush()
 
         from app.services import training_service as ts_mod
+
         with patch.object(ts_mod.HintService, "get_max_hint_level", AsyncMock(return_value=3)):
             result = await training_svc_module.TrainingService._calculate_training_elo(
-                db, user, problem_rating=1500, session_id=session.id,
-                topic_id=topic.id, solved=False, attempts=3,
+                db,
+                user,
+                problem_rating=1500,
+                session_id=session.id,
+                topic_id=topic.id,
+                solved=False,
+                attempts=3,
                 problem_id="100A",
             )
 
         assert result["shield_active"] is True
-        assert result["global_elo_change"] is None, \
-            "Shield should prevent any Elo change on failure"
+        assert result["global_elo_change"] is None, "Shield should prevent any Elo change on failure"
         assert result["melo_change"] is None
 
     @pytest.mark.asyncio
@@ -780,24 +843,36 @@ class TestTrainingHintAttenuation:
         await db.flush()
 
         from app.services import training_service as ts_mod
+
         # Failure (solved=False, s_value=0)
         with patch.object(ts_mod.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             result_no_hint = await training_svc_module.TrainingService._calculate_training_elo(
-                db, user, problem_rating=800, session_id=session.id,
-                topic_id=topic.id, solved=False, attempts=3,
+                db,
+                user,
+                problem_rating=800,
+                session_id=session.id,
+                topic_id=topic.id,
+                solved=False,
+                attempts=3,
                 problem_id="100A",
             )
 
         user.elo = 2000  # Reset
         with patch.object(ts_mod.HintService, "get_max_hint_level", AsyncMock(return_value=3)):
             result_with_hint = await training_svc_module.TrainingService._calculate_training_elo(
-                db, user, problem_rating=800, session_id=session.id,
-                topic_id=topic.id, solved=False, attempts=3,
+                db,
+                user,
+                problem_rating=800,
+                session_id=session.id,
+                topic_id=topic.id,
+                solved=False,
+                attempts=3,
                 problem_id="100A",
             )
 
-        assert result_no_hint["global_elo_change"] == result_with_hint["global_elo_change"], \
+        assert result_no_hint["global_elo_change"] == result_with_hint["global_elo_change"], (
             "Failure Elo should be same with/without hints in training"
+        )
 
     @pytest.mark.asyncio
     async def test_pp_not_affected_by_hints(self, training_db):
@@ -831,15 +906,18 @@ class TestTrainingHintAttenuation:
         with (
             patch.object(training_svc_module.PPService, "record_pp", _track_pp),
             patch.object(training_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=2)),
+            contextlib.suppress(Exception),
         ):
-            try:
-                await training_svc_module.TrainingService.submit_problem(
-                    db=db, user=user, session_id=session.id,
-                    problem_id="100A", solved=True, attempts=1,
-                    time_spent=60.0, cf_service=cf_mock,
-                )
-            except Exception:
-                pass  # Some inner patches may not be perfect; PP call is what matters
+            await training_svc_module.TrainingService.submit_problem(
+                db=db,
+                user=user,
+                session_id=session.id,
+                problem_id="100A",
+                solved=True,
+                attempts=1,
+                time_spent=60.0,
+                cf_service=cf_mock,
+            )
 
         # Verify PP was called with user's Elo (not attenuated)
         if pp_calls:
@@ -863,6 +941,7 @@ async def contest_db(async_engine):
 
     async def _mock_get_config(db, key):
         from app.core.default_config import DEFAULT_CONFIG
+
         return DEFAULT_CONFIG.get("elo", {})
 
     async def _mock_get_submission_count(db, user_id):
@@ -875,10 +954,10 @@ async def contest_db(async_engine):
         pass
 
     from app.services import config_service as config_svc_module
+    from app.services import contest_simulation_service as sim_svc_module
     from app.services import elo_service as elo_svc_module
     from app.services import hint_service as hint_svc_module
     from app.services import pp_service as pp_svc_module
-    from app.services import contest_simulation_service as sim_svc_module
 
     async with session_factory() as session:
         with (
@@ -910,7 +989,11 @@ async def contest_db(async_engine):
                 "calculate_performance_rating",
                 AsyncMock(return_value=1600),
             ),
-            patch.object(sim_svc_module.ContestSimulationService, "build_leaderboard", AsyncMock(side_effect=Exception("no leaderboard in test"))),
+            patch.object(
+                sim_svc_module.ContestSimulationService,
+                "build_leaderboard",
+                AsyncMock(side_effect=Exception("no leaderboard in test")),
+            ),
         ):
             yield session
 
@@ -952,9 +1035,12 @@ class TestContestHintAttenuation:
 
         # Get unattenuated result
         from app.services import hint_service as hint_svc_module
+
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_no_hint = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
             )
 
@@ -963,18 +1049,18 @@ class TestContestHintAttenuation:
         # With hint level 2
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=2)):
             elo_with_hint = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
             )
 
         assert elo_no_hint > 0, "PR=1600 > user.elo=1200 should produce positive change"
         assert elo_with_hint > 0
-        assert elo_with_hint < elo_no_hint, \
-            f"With hint ({elo_with_hint}) should be less than without ({elo_no_hint})"
+        assert elo_with_hint < elo_no_hint, f"With hint ({elo_with_hint}) should be less than without ({elo_no_hint})"
         # Level 2 attenuation = 0.50
         expected_attenuated = round(elo_no_hint * 0.50)
-        assert elo_with_hint == expected_attenuated, \
-            f"Level 2 should halve: {elo_with_hint} vs {expected_attenuated}"
+        assert elo_with_hint == expected_attenuated, f"Level 2 should halve: {elo_with_hint} vs {expected_attenuated}"
 
     @pytest.mark.asyncio
     async def test_no_hint_no_attenuation(self, contest_db):
@@ -986,9 +1072,12 @@ class TestContestHintAttenuation:
         await db.flush()
 
         from app.services import hint_service as hint_svc_module
+
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_change = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
             )
 
@@ -1007,9 +1096,12 @@ class TestContestHintAttenuation:
         await db.flush()
 
         from app.services import hint_service as hint_svc_module
+
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_no_hint = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
             )
 
@@ -1017,13 +1109,16 @@ class TestContestHintAttenuation:
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=3)):
             elo_with_hint = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
             )
 
         assert elo_no_hint < 0, "PR < user Elo should produce negative change"
-        assert elo_with_hint == elo_no_hint, \
+        assert elo_with_hint == elo_no_hint, (
             f"Negative change should not be attenuated: {elo_with_hint} vs {elo_no_hint}"
+        )
 
     @pytest.mark.asyncio
     async def test_all_hint_levels_decrease(self, contest_db):
@@ -1040,13 +1135,16 @@ class TestContestHintAttenuation:
 
             with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=level)):
                 elo_change = await contest_svc_module.ContestService._settle_with_pr(
-                    db=db, user=user, session=contest_session,
+                    db=db,
+                    user=user,
+                    session=contest_session,
                     contest_id=contest_session.id,
                 )
             results_by_level[level] = elo_change
 
-        assert results_by_level[0] > results_by_level[1] > results_by_level[2] > results_by_level[3], \
+        assert results_by_level[0] > results_by_level[1] > results_by_level[2] > results_by_level[3], (
             f"Elo should decrease with hint level: {results_by_level}"
+        )
 
     @pytest.mark.asyncio
     async def test_contest_checks_max_hint_across_problems(self, contest_db):
@@ -1067,7 +1165,9 @@ class TestContestHintAttenuation:
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", _hint_by_problem):
             elo_change = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
             )
 
@@ -1075,8 +1175,7 @@ class TestContestHintAttenuation:
         # K=40 (newbie), PR=1600, user.elo=1200
         # raw = round(40 * (1600-1200) / 400) = 40
         # attenuated = round(40 * 0.25) = 10
-        assert elo_change == round(40 * 0.25), \
-            f"Should use max hint level 3 (0.25): {elo_change} vs {round(40 * 0.25)}"
+        assert elo_change == round(40 * 0.25), f"Should use max hint level 3 (0.25): {elo_change} vs {round(40 * 0.25)}"
 
     @pytest.mark.asyncio
     async def test_pp_not_affected_in_contest(self, contest_db):
@@ -1093,13 +1192,20 @@ class TestContestHintAttenuation:
 
         # _settle_with_pr should not call PPService at all
         from app.services import pp_service as pp_svc_module
+
         with (
-            patch.object(pp_svc_module.PPService, "record_pp", AsyncMock(side_effect=AssertionError("PP should not be called in _settle_with_pr"))) as bad_pp,
+            patch.object(
+                pp_svc_module.PPService,
+                "record_pp",
+                AsyncMock(side_effect=AssertionError("PP should not be called in _settle_with_pr")),
+            ) as _bad_pp,
             patch.object(contest_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=2)),
         ):
             # This should NOT raise AssertionError because PP is not called
             await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
             )
         # If we reach here, PP was not called -- which is correct
@@ -1116,6 +1222,7 @@ class TestReachability:
     def test_pve_submit_calls_hint_service(self):
         """PvE submit_result imports and calls HintService.get_max_hint_level."""
         import inspect
+
         source = inspect.getsource(pve_svc_module.PvEChallengeService.submit_result)
         assert "HintService" in source, "submit_result should reference HintService"
         assert "get_max_hint_level" in source, "submit_result should call get_max_hint_level"
@@ -1124,6 +1231,7 @@ class TestReachability:
     def test_training_elo_calls_hint_service(self):
         """Training _calculate_training_elo imports and calls HintService."""
         import inspect
+
         source = inspect.getsource(training_svc_module.TrainingService._calculate_training_elo)
         assert "HintService" in source
         assert "get_max_hint_level" in source
@@ -1132,6 +1240,7 @@ class TestReachability:
     def test_contest_settle_calls_hint_service(self):
         """Contest _settle_with_pr imports and calls HintService."""
         import inspect
+
         source = inspect.getsource(contest_svc_module.ContestService._settle_with_pr)
         assert "HintService" in source
         assert "get_max_hint_level" in source
@@ -1140,6 +1249,7 @@ class TestReachability:
     def test_pve_submit_result_callable_from_api(self):
         """Verify submit_result is reachable from the PvE API router."""
         import importlib
+
         router = importlib.import_module("app.api.v1.pve_challenge")
         # Check that the router module imports PvEChallengeService
         assert hasattr(router, "PvEChallengeService") or "PvEChallengeService" in dir(router)
@@ -1147,11 +1257,13 @@ class TestReachability:
     def test_training_submit_callable_from_api(self):
         """Verify training submit is reachable from the training API router."""
         import importlib
+
         router = importlib.import_module("app.api.v1.training")
         assert hasattr(router, "TrainingService") or "TrainingService" in dir(router)
 
     def test_contest_end_callable_from_api(self):
         """Verify contest end_contest -> _settle_with_pr is reachable."""
         import importlib
+
         router = importlib.import_module("app.api.v1.contest")
         assert hasattr(router, "ContestService") or "ContestService" in dir(router)
