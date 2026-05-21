@@ -41,7 +41,17 @@
   },
   "radar": {
     "title": "技能雷达",
-    "empty": "暂无 M-Elo 数据，开始训练来构建你的技能画像！"
+    "empty": "暂无 M-Elo 数据，开始训练来构建你的技能画像！",
+    "dim": {
+      "dp": "动态规划",
+      "graphs": "图论",
+      "math": "数学",
+      "ds": "数据结构",
+      "strings": "字符串",
+      "greedy": "贪心与构造",
+      "search": "搜索与排序",
+      "geometry": "计算几何"
+    }
   },
   "recommendedTopics": {
     "title": "推荐训练",

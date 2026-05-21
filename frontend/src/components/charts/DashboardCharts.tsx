@@ -24,21 +24,20 @@ import { StatsPanel } from "./StatsPanel";
 // Data transformation helpers
 // ---------------------------------------------------------------------------
 
-/** Map CF tag names to training locale topic keys. */
-const CF_TAG_TO_SLUG: Record<string, string> = {
-  dp: "dp",
-  greedy: "greedy",
-  math: "math",
-  graphs: "graphs",
-  strings: "strings",
-  "data structures": "data_structures",
-  "binary search": "binary_search",
-  sortings: "sorting",
-  "constructive algorithms": "constructive",
-  "number theory": "number_theory",
-  trees: "trees",
-  geometry: "geometry",
-};
+/**
+ * 8 core radar dimensions (FR-22.1).
+ * Each dimension aggregates one or more CF tags via averaged M-Elo.
+ */
+const RADAR_DIMENSIONS = [
+  { key: "dp", tags: ["dp"] },
+  { key: "graphs", tags: ["graphs", "trees"] },
+  { key: "math", tags: ["math", "number theory"] },
+  { key: "ds", tags: ["data structures"] },
+  { key: "strings", tags: ["strings"] },
+  { key: "greedy", tags: ["greedy", "constructive algorithms"] },
+  { key: "search", tags: ["binary search", "sortings"] },
+  { key: "geometry", tags: ["geometry"] },
+] as const;
 
 function buildRadarDataFromMElo(
   melos: { tag: string; elo: number; shield_active: boolean }[],
@@ -47,12 +46,27 @@ function buildRadarDataFromMElo(
 ): RadarDataPoint[] {
   if (melos.length === 0) return [];
 
-  const raw = melos.map((m) => {
-    const slug = CF_TAG_TO_SLUG[m.tag];
-    const label = slug ? t(`training:topic.${slug}`, m.tag) : m.tag;
+  // Build lookup: CF tag -> effective elo
+  const eloByTag = new Map<string, number>();
+  for (const m of melos) {
+    eloByTag.set(m.tag, m.shield_active ? globalElo : m.elo);
+  }
+
+  const fallbackElo = globalElo || 1200;
+
+  // Aggregate each dimension: average of available tags, fallback if none
+  const raw: RadarDataPoint[] = RADAR_DIMENSIONS.map((dim) => {
+    const values = dim.tags
+      .map((tag) => eloByTag.get(tag))
+      .filter((v): v is number => v !== undefined);
+
+    const value = values.length > 0
+      ? values.reduce((a, b) => a + b, 0) / values.length
+      : fallbackElo;
+
     return {
-      topic: label.length > 8 ? label.slice(0, 7) + "." : label,
-      value: m.shield_active ? globalElo : m.elo,
+      topic: t(`training:radar.dim.${dim.key}`),
+      value,
       fullMark: 0, // placeholder, computed below
     };
   });

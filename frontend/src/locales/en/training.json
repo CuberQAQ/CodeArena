@@ -41,7 +41,17 @@
   },
   "radar": {
     "title": "Skill Radar",
-    "empty": "No M-Elo data yet. Start training to build your skill profile!"
+    "empty": "No M-Elo data yet. Start training to build your skill profile!",
+    "dim": {
+      "dp": "Dynamic Programming",
+      "graphs": "Graph Theory",
+      "math": "Mathematics",
+      "ds": "Data Structures",
+      "strings": "Strings",
+      "greedy": "Greedy & Constructive",
+      "search": "Search & Sorting",
+      "geometry": "Geometry"
+    }
   },
   "recommendedTopics": {
     "title": "Recommended Training",
