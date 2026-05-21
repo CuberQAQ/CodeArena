@@ -44,6 +44,8 @@
   "waitingForOpponent": "Waiting for Opponent...",
   "waitingForOpponentDesc": "You've joined the matchmaking queue. Searching for a suitable opponent.",
   "waitingForOpponentResult": "Waiting for opponent to submit...",
+  "settling": "Settling...",
+  "settlingDesc": "Calculating rating changes, please wait.",
   "pve": {
     "title": "Random Challenge (Solo)",
     "description": "Face a mystery problem with hidden difficulty and tags. Solve it to earn Elo, PP, and tokens -- with bonus rewards for beating problems above your level!",

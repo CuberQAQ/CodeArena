@@ -171,6 +171,7 @@ async def submit_result(
         time_spent=body.time_spent,
         attempts=body.attempts,
         cf_service=cf_service,
+        background_settle=True,
     )
     return success_response(
         data=result.model_dump(mode="json"),

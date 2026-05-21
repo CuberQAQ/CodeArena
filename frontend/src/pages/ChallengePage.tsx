@@ -343,11 +343,12 @@ export default function ChallengePage() {
       if (data.settled) {
         if (timerRef.current) clearInterval(timerRef.current);
         if (trackingPollRef.current) clearInterval(trackingPollRef.current);
-        // Fetch final details
+        // Fetch details -- settlement may still be processing in background
         const detailRes = await api.get<ApiResponse<ChallengeDetail>>(
           `/challenge/${sessionId}`,
         );
-        setChallenge(detailRes.data.data);
+        const detail = detailRes.data.data;
+        setChallenge(detail);
         setEloTriggerKey((k) => k + 1);
         if (data.elo_change != null && data.elo_change > 0 && data.result === "win") {
           setShowCelebration(true);
@@ -357,6 +358,28 @@ export default function ChallengePage() {
           setTimeout(() => setShowAchievements(true), 1500);
         }
         setPhase("result");
+        // If background settlement not yet complete, poll until it is
+        if (detail.status !== "completed") {
+          if (submitPollRef.current) clearInterval(submitPollRef.current);
+          submitPollRef.current = setInterval(async () => {
+            try {
+              const pollRes = await api.get<ApiResponse<ChallengeDetail>>(
+                `/challenge/${sessionId}`,
+              );
+              const pollDetail = pollRes.data.data;
+              if (pollDetail.status === "completed") {
+                if (submitPollRef.current) clearInterval(submitPollRef.current);
+                setChallenge(pollDetail);
+                setEloTriggerKey((k) => k + 1);
+                if (pollDetail.elo_change != null && pollDetail.elo_change > 0) {
+                  setShowCelebration(true);
+                }
+              }
+            } catch {
+              // Continue polling
+            }
+          }, 1500);
+        }
       } else {
         // Waiting for opponent -- stay in in_progress, show waiting state
         setHasSubmitted(true);
@@ -752,6 +775,21 @@ export default function ChallengePage() {
 
   // -- RESULT --
   if (phase === "result" && challenge) {
+    // Settlement still processing in background
+    if (!challenge.result) {
+      return (
+        <div className="mx-auto max-w-2xl text-center">
+          <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-primary/10">
+            <Loader2 className="size-10 animate-spin text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground">{t("settling")}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {t("settlingDesc")}
+          </p>
+        </div>
+      );
+    }
+
     const isWin = challenge.result === "win";
     const isDraw = challenge.result === "draw";
     const isQuit = challenge.result === "quit" || challenge.status === "quit";

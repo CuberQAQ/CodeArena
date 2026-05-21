@@ -464,10 +464,13 @@ class ChallengeService:
         time_spent: float,
         attempts: int,
         cf_service: CFApiService | None = None,
+        background_settle: bool = False,
     ) -> SubmitResultResponse:
         """Submit a player's challenge result.
 
-        If both players have submitted, the challenge is settled immediately.
+        If both players have submitted, the challenge is settled.
+        When background_settle is True and both submitted, settlement runs
+        in a background task so the API returns immediately.
         """
         session = await db.get(ChallengeSession, session_id)
         if session is None:
@@ -500,6 +503,37 @@ class ChallengeService:
         both_submitted = session.challenger_time is not None and session.opponent_time is not None
 
         if both_submitted:
+            if background_settle:
+                from app.core.database import async_session_factory
+
+                # Commit player result before spawning background task so the
+                # background session can read both players' data.
+                await db.commit()
+
+                async def _bg_settle() -> None:
+                    async with async_session_factory() as bg_db:
+                        try:
+                            bg_session = await bg_db.get(ChallengeSession, session_id)
+                            if bg_session is None:
+                                logger.error("Background settlement: session %s not found", session_id)
+                                return
+                            await _settle_challenge(bg_db, bg_session, submitting_user_id=user.id, cf_service=cf_service)
+                            await bg_db.commit()
+                        except Exception:
+                            logger.exception("Background settlement failed for session %s", session_id)
+                            await bg_db.rollback()
+
+                import asyncio
+
+                asyncio.create_task(_bg_settle())
+
+                return SubmitResultResponse(
+                    session_id=session.id,
+                    solved=solved,
+                    status="settling",
+                    settled=True,
+                )
+
             return await _settle_challenge(db, session, submitting_user_id=user.id, cf_service=cf_service)
 
         return SubmitResultResponse(

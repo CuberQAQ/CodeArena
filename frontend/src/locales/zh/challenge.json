@@ -44,6 +44,8 @@
   "waitingForOpponent": "等待对手中...",
   "waitingForOpponentDesc": "已加入匹配队列，正在为你寻找合适的对手。",
   "waitingForOpponentResult": "等待对手提交结果...",
+  "settling": "结算中...",
+  "settlingDesc": "正在计算评分变化，请稍候。",
   "pve": {
     "title": "随机挑战（单人）",
     "description": "面对隐藏难度和标签的神秘题目。解题可赢得 Elo、PP 和代币 -- 击败超出你水平的题目还有额外奖励！",
