@@ -445,7 +445,7 @@ export default function ProfilePage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate("/leaderboard")}
+            onClick={() => navigate("/ranking")}
           >
             {t("profile:viewLeaderboard")}
           </Button>

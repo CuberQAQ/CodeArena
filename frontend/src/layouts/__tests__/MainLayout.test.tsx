@@ -88,7 +88,7 @@ describe("MainLayout", () => {
     expect(screen.getByText("nav:dashboard")).toBeInTheDocument();
     expect(screen.getByText("nav:challenge")).toBeInTheDocument();
     expect(screen.getByText("nav:training")).toBeInTheDocument();
-    expect(screen.getByText("nav:leaderboard")).toBeInTheDocument();
+    expect(screen.getByText("nav:ranking")).toBeInTheDocument();
     expect(screen.getByText("nav:profile")).toBeInTheDocument();
     expect(screen.getByText("nav:settings")).toBeInTheDocument();
   });

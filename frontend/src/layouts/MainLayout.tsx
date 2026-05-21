@@ -11,7 +11,6 @@ import {
   Home,
   Compass,
   Settings,
-  Globe,
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -31,8 +30,7 @@ const navItems = [
   { to: "/free-play", labelKey: "nav:freePlay", icon: Compass },
   { to: "/training", labelKey: "nav:training", icon: Dumbbell },
   { to: "/contest", labelKey: "nav:contest", icon: Trophy },
-  { to: "/leaderboard", labelKey: "nav:leaderboard", icon: BarChart3 },
-  { to: "/global-ranking", labelKey: "nav:globalRanking", icon: Globe },
+  { to: "/ranking", labelKey: "nav:ranking", icon: BarChart3 },
   { to: "/profile", labelKey: "nav:profile", icon: User },
   { to: "/settings", labelKey: "nav:settings", icon: Settings },
 ];

@@ -5,7 +5,7 @@
   "freePlay": "Free Play",
   "training": "Training",
   "contest": "Contest",
-  "leaderboard": "Leaderboard",
+  "ranking": "Ranking",
   "profile": "Profile",
   "logout": "Logout",
   "eloTokens": "Elo: {{elo}} | Tokens: {{tokens}}",
@@ -15,6 +15,5 @@
   "backToApp": "Back to App",
   "administrator": "Administrator",
   "unauthorized": "Unauthorized",
-  "settings": "Settings",
-  "globalRanking": "Global Ranking"
+  "settings": "Settings"
 }

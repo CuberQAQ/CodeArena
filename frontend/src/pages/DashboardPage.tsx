@@ -56,7 +56,7 @@ const quickActions: QuickAction[] = [
     color: "text-yellow-400",
   },
   {
-    to: "/leaderboard",
+    to: "/ranking",
     labelKey: "dashboard:leaderboard",
     descKey: "dashboard:seeTopPlayers",
     icon: TrendingUp,

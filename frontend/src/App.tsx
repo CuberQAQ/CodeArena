@@ -23,8 +23,7 @@ import ContestPage from "@/pages/ContestPage";
 import ContestDetailPage from "@/pages/ContestDetailPage";
 import ProfilePage from "@/pages/ProfilePage";
 import CFBindPage from "@/pages/CFBindPage";
-import LeaderboardPage from "@/pages/LeaderboardPage";
-import GlobalRankingPage from "@/pages/GlobalRankingPage";
+import RankingPage from "@/pages/RankingPage";
 import AdminOverviewPage from "@/pages/AdminOverviewPage";
 import AdminConfigPage from "@/pages/AdminConfigPage";
 import SettingsPage from "@/pages/SettingsPage";
@@ -71,8 +70,9 @@ function App() {
               <Route path="/contest/:id" element={<ContestDetailPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/profile/cf-bind" element={<CFBindPage />} />
-              <Route path="/leaderboard" element={<LeaderboardPage />} />
-              <Route path="/global-ranking" element={<GlobalRankingPage />} />
+              <Route path="/ranking" element={<RankingPage />} />
+              <Route path="/leaderboard" element={<Navigate to="/ranking" replace />} />
+              <Route path="/global-ranking" element={<Navigate to="/ranking" replace />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
 

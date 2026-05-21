@@ -312,7 +312,7 @@ describe("DashboardPage", () => {
     expect(hrefs).toContain("/challenge");
     expect(hrefs).toContain("/training");
     expect(hrefs).toContain("/contest");
-    expect(hrefs).toContain("/leaderboard");
+    expect(hrefs).toContain("/ranking");
   });
 
   // 9. Refresh button re-fetches transactions

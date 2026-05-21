@@ -5,7 +5,7 @@
   "freePlay": "自由选题",
   "training": "训练",
   "contest": "比赛",
-  "leaderboard": "排行榜",
+  "ranking": "排名",
   "profile": "个人资料",
   "logout": "登出",
   "eloTokens": "Elo: {{elo}} | 代币: {{tokens}}",
@@ -15,6 +15,5 @@
   "backToApp": "返回应用",
   "administrator": "管理员",
   "unauthorized": "未授权",
-  "settings": "设置",
-  "globalRanking": "全球排名"
+  "settings": "设置"
 }

@@ -354,7 +354,7 @@ describe("ProfilePage", () => {
     });
 
     await user.click(screen.getByText("profile:viewLeaderboard"));
-    expect(mockNavigate).toHaveBeenCalledWith("/leaderboard");
+    expect(mockNavigate).toHaveBeenCalledWith("/ranking");
   });
 
   // 12. Navigate to CF bind
