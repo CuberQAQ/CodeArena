@@ -19,6 +19,11 @@ passlib[bcrypt]>=1.7.4
 # HTTP client (for Codeforces API)
 httpx>=0.28.0
 
+# Web scraping (for CF problem statement pages)
+playwright>=1.50.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
 # Redis (shared state for match queue and pending matches)
 redis[hiredis]>=5.0.0
 
