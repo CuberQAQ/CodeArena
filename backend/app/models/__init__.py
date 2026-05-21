@@ -1,4 +1,5 @@
 from app.models.base import Base
+from app.models.check_in import CheckIn
 from app.models.challenge_session import ChallengeSession
 from app.models.contest_bot import ContestBot
 from app.models.contest_medal import ContestMedal
@@ -25,6 +26,7 @@ __all__ = [
     "UserSettings",
     "EloHistory",
     "PPRecord",
+    "CheckIn",
     "ChallengeSession",
     "TopicCategory",
     "TrainingSession",

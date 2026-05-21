@@ -64,6 +64,7 @@ class User(Base, UUIDPrimaryKeyMixin):
     )
     contest_medals = relationship("ContestMedal", back_populates="user", cascade="all, delete-orphan")
     settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    check_ins = relationship("CheckIn", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, username={self.username})>"

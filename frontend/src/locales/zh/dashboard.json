@@ -25,6 +25,31 @@
   "leaderboard": "排行榜",
   "seeTopPlayers": "查看顶尖选手",
   "analytics": "数据分析",
+  "checkin": {
+    "title": "每日签到",
+    "checkedIn": "今日已签到",
+    "streak": "连续签到：{{days}} 天",
+    "streakShort": "{{days}} 天连续",
+    "checkin": "签到",
+    "makeup": "补签",
+    "makeupUsed": "补签次数：{{used}}/{{limit}}",
+    "reward": "+{{tokens}} 代币",
+    "nextReward": "下次：+{{tokens}} 代币",
+    "alreadyCheckedIn": "已签到",
+    "makeupLimitReached": "本周补签次数已用完",
+    "errorLoad": "加载签到状态失败",
+    "errorCheckin": "签到失败",
+    "errorMakeup": "补签失败",
+    "days": {
+      "mon": "一",
+      "tue": "二",
+      "wed": "三",
+      "thu": "四",
+      "fri": "五",
+      "sat": "六",
+      "sun": "日"
+    }
+  },
   "charts": {
     "eloTrend": "Elo 趋势",
     "noEloHistory": "暂无 Elo 历史记录。开始对战以查看你的进步！",

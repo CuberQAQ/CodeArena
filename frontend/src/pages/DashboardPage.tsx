@@ -20,6 +20,7 @@ import { DashboardCharts } from "@/components/charts/DashboardCharts";
 import { getRatingColor, getDifficultyLabelKey } from "@/utils";
 import { MedalBadge } from "@/components/medal";
 import { Avatar } from "@/components/Avatar";
+import { CheckInCard } from "@/components/CheckInCard";
 import api from "@/services/api";
 import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo, UserSettingsData, MedalInfo } from "@/types";
 
@@ -175,6 +176,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Daily Check-in */}
+      <CheckInCard />
 
       {/* Active Contest Banner */}
       {activeContest && (

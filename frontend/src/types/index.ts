@@ -637,3 +637,26 @@ export interface UserMedalPublicResponse {
 export interface UserSettingsData {
   display_mode: "medal" | "cf_tier";
 }
+
+// ---------------------------------------------------------------------------
+// Check-in
+// ---------------------------------------------------------------------------
+
+export interface CheckInStatusData {
+  checked_in_today: boolean;
+  streak_days: number;
+  last_checkin_date: string | null;
+  makeup_used_this_week: number;
+  makeup_limit: number;
+  next_reward: number;
+  can_makeup: boolean;
+  checked_dates_this_week: string[];
+}
+
+export interface CheckInResponseData {
+  checkin_date: string;
+  streak_days: number;
+  tokens_awarded: number;
+  is_makeup: boolean;
+  tokens_balance: number;
+}

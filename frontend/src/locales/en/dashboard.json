@@ -25,6 +25,31 @@
   "leaderboard": "Leaderboard",
   "seeTopPlayers": "See top players",
   "analytics": "Analytics",
+  "checkin": {
+    "title": "Daily Check-in",
+    "checkedIn": "Checked in today",
+    "streak": "Streak: {{days}} days",
+    "streakShort": "{{days}}d streak",
+    "checkin": "Check In",
+    "makeup": "Make-up",
+    "makeupUsed": "Make-up used: {{used}}/{{limit}}",
+    "reward": "+{{tokens}} tokens",
+    "nextReward": "Next: +{{tokens}} tokens",
+    "alreadyCheckedIn": "Already checked in",
+    "makeupLimitReached": "Weekly make-up limit reached",
+    "errorLoad": "Failed to load check-in status",
+    "errorCheckin": "Check-in failed",
+    "errorMakeup": "Make-up check-in failed",
+    "days": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    }
+  },
   "charts": {
     "eloTrend": "Elo Trend",
     "noEloHistory": "No Elo history yet. Start playing to see your progress!",
