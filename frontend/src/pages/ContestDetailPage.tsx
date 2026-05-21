@@ -414,7 +414,7 @@ export default function ContestDetailPage() {
     return (
       <div className="mx-auto max-w-5xl space-y-5">
         {/* Header with timer */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <button
             onClick={() => navigate("/contest")}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -428,22 +428,22 @@ export default function ContestDetailPage() {
               {wsState === "connected" ? (
                 <>
                   <Wifi className="size-3.5 text-green-400" />
-                  <span className="text-green-400">{t("live")}</span>
+                  <span className="hidden sm:inline text-green-400">{t("live")}</span>
                 </>
               ) : wsState === "connecting" ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin text-yellow-400" />
-                  <span className="text-yellow-400">{t("connecting")}</span>
+                  <span className="hidden sm:inline text-yellow-400">{t("connecting")}</span>
                 </>
               ) : wsState === "error" ? (
                 <>
                   <WifiOff className="size-3.5 text-red-400" />
-                  <span className="text-red-400">{t("disconnected")}</span>
+                  <span className="hidden sm:inline text-red-400">{t("disconnected")}</span>
                 </>
               ) : (
                 <>
                   <WifiOff className="size-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">{t("offline")}</span>
+                  <span className="hidden sm:inline text-muted-foreground">{t("offline")}</span>
                 </>
               )}
             </div>
@@ -470,7 +470,7 @@ export default function ContestDetailPage() {
         )}
 
         {/* Stats row */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-border bg-card p-4 text-center">
             <p className="text-xs text-muted-foreground">{t("common:solved", { ns: "common" })}</p>
             <p className="mt-1 text-xl font-bold text-green-400">{contest.problems_solved}</p>

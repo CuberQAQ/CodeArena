@@ -65,5 +65,10 @@
     "invalidFormat": "仅支持 JPG 和 PNG 格式的图片",
     "fileTooLarge": "文件大小不能超过 2 MB",
     "uploadFailed": "头像上传失败"
+  },
+  "theme": {
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
   }
 }

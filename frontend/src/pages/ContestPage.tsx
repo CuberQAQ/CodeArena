@@ -4,6 +4,8 @@ import { Trophy, Loader2, Target, ShieldCheck, Crown, Play, Zap, Eye } from "luc
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { PageHeader } from "@/components/PageHeader";
+import { ErrorMessage } from "@/components/ErrorMessage";
 import { extractApiError } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, TierInfo, ContestHistoryItem, ContestSessionInfo } from "@/types";
@@ -92,17 +94,10 @@ export default function ContestPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t("virtualContest")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("virtualContestDesc")}
-        </p>
-      </div>
+      <PageHeader title={t("virtualContest")} description={t("virtualContestDesc")} />
 
       {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
+        <ErrorMessage message={error} />
       )}
 
       {/* Active contest resume banner */}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Globe, ShieldCheck, BarChart3, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
 import api from "@/services/api";
 import type { ApiResponse, GlobalRankingItem, ArenaRankingItem, RankingPageData } from "@/types";
 
@@ -149,10 +150,7 @@ export default function RankingPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t("description")}</p>
-      </div>
+      <PageHeader title={t("title")} description={t("description")} />
 
       {/* Tab + Filter bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -257,7 +255,7 @@ export default function RankingPage() {
           <p className="mt-3 text-sm text-muted-foreground">{t("noData")}</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border bg-card">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
           {/* Header row */}
           <div
             className={`items-center border-b border-border px-5 py-2.5 text-xs font-medium text-muted-foreground ${
@@ -351,7 +349,7 @@ export default function RankingPage() {
 
       {/* Pagination */}
       {!loading && total > 0 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm text-muted-foreground">
             {t("totalUsers", { count: total })}
           </span>

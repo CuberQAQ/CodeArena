@@ -19,6 +19,7 @@ import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/Avatar";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // ---------------------------------------------------------------------------
 // Navigation items
@@ -109,6 +110,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           <div className="mb-3 text-xs text-muted-foreground">
             {t("nav:eloTokens", { elo: user?.elo ?? 1200, tokens: user?.tokens ?? 0 })}
           </div>
+          <ThemeToggle />
           <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={handleLogout}>
             <LogOut className="size-4" />
             {t("nav:logout")}
@@ -143,7 +145,8 @@ export function MainLayout() {
           <Link to="/dashboard" className="text-lg font-bold text-foreground lg:hidden">
             {t("nav:brand")}
           </Link>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <ThemeToggle />
             <LanguageSwitcher />
           </div>
         </header>

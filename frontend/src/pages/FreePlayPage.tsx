@@ -26,6 +26,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { PageHeader } from "@/components/PageHeader";
+import { ErrorMessage } from "@/components/ErrorMessage";
 import { getRatingColor } from "@/utils";
 import * as freePlayApi from "@/services/freePlayApi";
 import type { FreePlayProblemInfo } from "@/types";
@@ -426,10 +428,7 @@ export default function FreePlayPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t("description")}</p>
-      </div>
+      <PageHeader title={t("title")} description={t("description")} />
 
       {/* Tab switcher */}
       <div className="flex gap-1 rounded-lg border border-border bg-muted/50 p-1">
@@ -464,9 +463,8 @@ export default function FreePlayPage() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
           >
-            {error}
+            <ErrorMessage message={error} />
           </motion.div>
         )}
       </AnimatePresence>

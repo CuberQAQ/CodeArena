@@ -15,6 +15,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { PageHeader } from "@/components/PageHeader";
+import { ErrorMessage } from "@/components/ErrorMessage";
 import { EloChart } from "@/components/charts/EloChart";
 import { extractApiError, getRatingColor, getDifficultyLabelKey, formatDate } from "@/utils";
 import { MedalBadge } from "@/components/medal";
@@ -70,19 +72,17 @@ function ProfileForm({
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">{t("profile:profile")}</h1>
-        {!editing && (
+      <PageHeader
+        title={t("profile:profile")}
+        actions={!editing ? (
           <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
             {t("profile:editProfile")}
           </Button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
+        <ErrorMessage message={error} />
       )}
       {success && (
         <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">

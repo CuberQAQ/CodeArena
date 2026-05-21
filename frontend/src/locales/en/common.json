@@ -65,5 +65,10 @@
     "invalidFormat": "Only JPG and PNG images are allowed",
     "fileTooLarge": "File size must be less than 2 MB",
     "uploadFailed": "Failed to upload avatar"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
   }
 }

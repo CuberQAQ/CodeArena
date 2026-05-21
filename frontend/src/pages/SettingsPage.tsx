@@ -3,6 +3,8 @@ import { Settings, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { PageHeader } from "@/components/PageHeader";
+import { ErrorMessage } from "@/components/ErrorMessage";
 import { extractApiError } from "@/utils";
 import api from "@/services/api";
 import type { ApiResponse, UserSettingsData } from "@/types";
@@ -48,19 +50,10 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-          <Settings className="size-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("medal:settings.title")}</h1>
-        </div>
-      </div>
+      <PageHeader title={t("medal:settings.title")} />
 
       {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
+        <ErrorMessage message={error} />
       )}
       {success && (
         <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">

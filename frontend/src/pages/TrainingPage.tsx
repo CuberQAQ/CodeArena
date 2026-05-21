@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { Dumbbell, BookOpen, Sparkles, Target } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { ErrorMessage } from "@/components/ErrorMessage";
+import { PageHeader } from "@/components/PageHeader";
 import api from "@/services/api";
 import { getRecommendedTopics } from "@/services/trainingApi";
 import type { ApiResponse, TopicInfo, UserSettingsData, RecommendedTopic } from "@/types";
@@ -75,22 +77,15 @@ export default function TrainingPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-4xl text-center">
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
+      <div className="mx-auto max-w-4xl">
+        <ErrorMessage message={error} />
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t("topicTraining")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("topicTrainingDesc")}
-        </p>
-      </div>
+      <PageHeader title={t("topicTraining")} description={t("topicTrainingDesc")} />
 
       {/* Recommended topics section */}
       {recommendedTopics.length > 0 && (
