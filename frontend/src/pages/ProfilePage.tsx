@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  User,
   Mail,
   Trophy,
   Star,
@@ -21,6 +20,7 @@ import { MedalBadge } from "@/components/medal";
 import { MedalCabinet } from "@/components/medal";
 import { SkillMedalWall } from "@/components/medal";
 import { AvatarUpload } from "@/components/Avatar";
+import { ProfileCardExport } from "@/components/ProfileCard";
 import api from "@/services/api";
 import type {
   EloHistoryPoint,
@@ -29,6 +29,7 @@ import type {
   MedalInfo,
   MedalStatsResponse,
   SkillMedalItem,
+  CheckInStatusData,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -190,6 +191,10 @@ export default function ProfilePage() {
   const [totalMedals, setTotalMedals] = useState(0);
   const [skillMedals, setSkillMedals] = useState<SkillMedalItem[]>([]);
 
+  // Card export data
+  const [totalSolved, setTotalSolved] = useState(0);
+  const [streakDays, setStreakDays] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
     api
@@ -232,6 +237,19 @@ export default function ProfilePage() {
       .get<ApiResponse<{ skills: SkillMedalItem[] }>>("/medal/skills")
       .then((res) => setSkillMedals(res.data.data.skills))
       .catch(() => {});
+    // Fetch total solved from M-Elo API
+    api
+      .get<ApiResponse<{ melos: { tag: string; elo: number; total_submissions: number }[] }>>("/melo/list")
+      .then((res) => {
+        const solved = res.data.data.melos.reduce((sum, m) => sum + m.total_submissions, 0);
+        setTotalSolved(solved);
+      })
+      .catch(() => {});
+    // Fetch check-in streak days
+    api
+      .get<ApiResponse<CheckInStatusData>>("/checkin/status")
+      .then((res) => setStreakDays(res.data.data.streak_days))
+      .catch(() => {});
   }, []);
 
   if (!user) {
@@ -242,6 +260,25 @@ export default function ProfilePage() {
     <div className="mx-auto max-w-3xl space-y-6">
       {/* Key on user.id so form resets when user data changes */}
       <ProfileForm key={user.id} user={user} onSave={handleSave} />
+
+      {/* Export card button */}
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4">
+        <div>
+          <p className="text-sm font-medium text-foreground">{t("profile:exportCard")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("profile:cardTitle")}
+          </p>
+        </div>
+        <ProfileCardExport
+          user={user}
+          displayMode={displayMode}
+          overallMedal={overallMedal}
+          totalMedals={totalMedals}
+          skillMedals={skillMedals}
+          totalSolved={totalSolved}
+          streakDays={streakDays}
+        />
+      </div>
 
       {!user.cf_handle && (
         <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4">

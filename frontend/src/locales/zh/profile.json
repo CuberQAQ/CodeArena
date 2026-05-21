@@ -19,5 +19,12 @@
   "ppRanking": "PP 排名",
   "ppRankingDesc": "PP 排名将在排行榜页面提供。",
   "viewLeaderboard": "查看排行榜",
-  "loadingProfile": "加载个人资料中..."
+  "loadingProfile": "加载个人资料中...",
+  "exportCard": "导出卡片",
+  "exporting": "导出中...",
+  "exportFailed": "导出卡片失败",
+  "cardSolved": "已解题",
+  "cardCheckins": "签到天数",
+  "cardSkillMedals": "技能勋章",
+  "cardTitle": "Code Arena 个人卡片"
 }

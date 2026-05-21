@@ -19,5 +19,12 @@
   "ppRanking": "PP Ranking",
   "ppRankingDesc": "PP ranking will be available on the leaderboard page.",
   "viewLeaderboard": "View Leaderboard",
-  "loadingProfile": "Loading profile..."
+  "loadingProfile": "Loading profile...",
+  "exportCard": "Export Card",
+  "exporting": "Exporting...",
+  "exportFailed": "Failed to export card",
+  "cardSolved": "Solved",
+  "cardCheckins": "Check-in Days",
+  "cardSkillMedals": "Skill Medals",
+  "cardTitle": "Code Arena Profile"
 }
