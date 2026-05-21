@@ -180,6 +180,7 @@ async def db(async_engine):
             patch.object(training_svc_module, "TokenTransaction", _TestTokenTransaction),
             patch.object(training_svc_module, "EloHistory", _TestEloHistory),
             patch.object(training_svc_module, "HintService", _mock_hint_service),
+            patch.object(training_svc_module.SubmissionTracker, "register_pending", AsyncMock()),
             patch.object(economy_svc_module, "award_tokens", _mock_award_tokens),
             patch.object(training_svc_module, "TimeFactorService") as mock_tf_cls,
         ):
