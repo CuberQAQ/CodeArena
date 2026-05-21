@@ -69,6 +69,16 @@ vi.mock("@/services/freePlayApi", () => ({
 
 import FreePlayPage from "../FreePlayPage";
 
+const SAMPLE_PROBLEM = {
+  name: "Two Sum",
+  contest_id: 1,
+  index: "A",
+  rating: 1200,
+  tags: ["dp"],
+  url: "https://codeforces.com/1/A",
+  difficulty_label: "Easy",
+};
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -127,14 +137,7 @@ describe("FreePlayPage", () => {
   it("shows problem card after successful search", async () => {
     mockFreePlaySearch.mockResolvedValue({
       found: true,
-      problem: {
-        name: "Two Sum",
-        contest_id: "1",
-        index: "A",
-        rating: 1200,
-        tags: ["dp"],
-        url: "https://codeforces.com/1/A",
-      },
+      problems: [SAMPLE_PROBLEM],
     });
     const user = userEvent.setup();
     renderPage();
@@ -152,6 +155,7 @@ describe("FreePlayPage", () => {
   it("shows error when no problem found", async () => {
     mockFreePlaySearch.mockResolvedValue({
       found: false,
+      problems: [],
       message: "No problem found for given criteria",
     });
     const user = userEvent.setup();
@@ -181,14 +185,17 @@ describe("FreePlayPage", () => {
   it("shows problem card after successful recommendation", async () => {
     mockFreePlayRecommend.mockResolvedValue({
       found: true,
-      problem: {
-        name: "Binary Search",
-        contest_id: "2",
-        index: "B",
-        rating: 1500,
-        tags: ["binary search"],
-        url: "https://codeforces.com/2/B",
-      },
+      problems: [
+        {
+          name: "Binary Search",
+          contest_id: 2,
+          index: "B",
+          rating: 1500,
+          tags: ["binary search"],
+          url: "https://codeforces.com/2/B",
+          difficulty_label: "Easy",
+        },
+      ],
       recommended_tag: "binary search",
     });
     const user = userEvent.setup();
@@ -219,15 +226,7 @@ describe("FreePlayPage", () => {
 
   // 10. Start session after finding problem
   it("starts a session and navigates to session page", async () => {
-    const problem = {
-      name: "Two Sum",
-      contest_id: "1",
-      index: "A",
-      rating: 1200,
-      tags: ["dp"],
-      url: "https://codeforces.com/1/A",
-    };
-    mockFreePlaySearch.mockResolvedValue({ found: true, problem });
+    mockFreePlaySearch.mockResolvedValue({ found: true, problems: [SAMPLE_PROBLEM] });
     mockFreePlayStart.mockResolvedValue({ session_id: "sess1" });
     const user = userEvent.setup();
     renderPage();
@@ -243,22 +242,14 @@ describe("FreePlayPage", () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith(
         "/free-play/session/sess1",
-        expect.objectContaining({ state: { problem } }),
+        expect.objectContaining({ state: { problem: SAMPLE_PROBLEM } }),
       );
     });
   });
 
   // 11. Start session failure
   it("shows error when starting session fails", async () => {
-    const problem = {
-      name: "Two Sum",
-      contest_id: "1",
-      index: "A",
-      rating: 1200,
-      tags: ["dp"],
-      url: "https://codeforces.com/1/A",
-    };
-    mockFreePlaySearch.mockResolvedValue({ found: true, problem });
+    mockFreePlaySearch.mockResolvedValue({ found: true, problems: [SAMPLE_PROBLEM] });
     mockFreePlayStart.mockRejectedValue(new Error("Start failed"));
     const user = userEvent.setup();
     renderPage();
@@ -283,5 +274,72 @@ describe("FreePlayPage", () => {
 
     await user.click(screen.getByText("moreTags"));
     expect(screen.getByText("moreTagsTitle")).toBeInTheDocument();
+  });
+
+  // 13. Search returns 3 problems side by side (FR-8.2)
+  it("displays up to 3 problem cards after search", async () => {
+    mockFreePlaySearch.mockResolvedValue({
+      found: true,
+      problems: [
+        { ...SAMPLE_PROBLEM, name: "Easy Problem", contest_id: 1, index: "A", rating: 1200, difficulty_label: "Easy" },
+        { ...SAMPLE_PROBLEM, name: "Medium Problem", contest_id: 2, index: "B", rating: 1400, difficulty_label: "Medium" },
+        { ...SAMPLE_PROBLEM, name: "Hard Problem", contest_id: 3, index: "C", rating: 1600, difficulty_label: "Hard" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("searchProblems"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Easy Problem")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Medium Problem")).toBeInTheDocument();
+    expect(screen.getByText("Hard Problem")).toBeInTheDocument();
+  });
+
+  // 14. Each problem card has its own Start button (FR-8.2)
+  it("each problem card has an independent start button", async () => {
+    mockFreePlaySearch.mockResolvedValue({
+      found: true,
+      problems: [
+        { ...SAMPLE_PROBLEM, name: "P1", contest_id: 1, index: "A", difficulty_label: "Easy" },
+        { ...SAMPLE_PROBLEM, name: "P2", contest_id: 2, index: "B", difficulty_label: "Medium" },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("searchProblems"));
+
+    await waitFor(() => {
+      // Should have 2 start buttons (one per card)
+      const startButtons = screen.getAllByText("free_play:startProblem");
+      expect(startButtons.length).toBe(2);
+    });
+  });
+
+  // 15. Recommendation returns 3 problems with difficulty labels (FR-8.3)
+  it("displays 3 recommended problems with difficulty labels", async () => {
+    mockFreePlayRecommend.mockResolvedValue({
+      found: true,
+      problems: [
+        { ...SAMPLE_PROBLEM, name: "Easy Rec", rating: 1200, difficulty_label: "Easy" },
+        { ...SAMPLE_PROBLEM, name: "Medium Rec", contest_id: 2, index: "B", rating: 1400, difficulty_label: "Medium" },
+        { ...SAMPLE_PROBLEM, name: "Hard Rec", contest_id: 3, index: "C", rating: 1600, difficulty_label: "Hard" },
+      ],
+      recommended_tag: "dp",
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("tabs.recommend"));
+    await user.click(screen.getByText("recommendProblem"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Easy Rec")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Medium Rec")).toBeInTheDocument();
+    expect(screen.getByText("Hard Rec")).toBeInTheDocument();
   });
 });

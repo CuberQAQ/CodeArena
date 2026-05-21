@@ -104,9 +104,11 @@ class TestSearchProblems:
             )
 
         assert result.found is True
-        assert result.problem is not None
-        assert result.problem.rating in (1400, 1500)
-        assert "dp" in result.problem.tags
+        assert len(result.problems) > 0
+        # At least one problem should be in [1400, 1500] and have dp tag
+        ratings = [p.rating for p in result.problems]
+        assert all(r in (1400, 1500) for r in ratings)
+        assert all("dp" in p.tags for p in result.problems)
 
     @pytest.mark.asyncio
     async def test_search_no_matching_rating(self):
@@ -137,7 +139,7 @@ class TestSearchProblems:
             )
 
         assert result.found is False
-        assert result.problem is None
+        assert len(result.problems) == 0
         assert "No unsolved" in result.message
 
     @pytest.mark.asyncio
@@ -170,8 +172,10 @@ class TestSearchProblems:
             )
 
         assert result.found is True
-        assert result.problem is not None
-        assert result.problem.contest_id != 1920 or result.problem.index != "A"
+        assert len(result.problems) > 0
+        # None of the returned problems should be 1920A
+        for p in result.problems:
+            assert p.contest_id != 1920 or p.index != "A"
 
     @pytest.mark.asyncio
     async def test_search_cf_api_unavailable(self):
@@ -242,13 +246,14 @@ class TestRecommendProblem:
                     cf_service=cf_service,
                 )
 
-        # DP tag has lower M-Elo (1000), so [1000-100, 1000+200] = [900, 1200]
-        # The DP problem at 1100 is in range
+        # DP tag has lower M-Elo (1000), so ranges are:
+        # Easy: [900, 1100], Medium: [1100, 1200], Hard: [1200, 1300]
+        # Only the DP problem at 1100 is in the tag pool
         assert result.found is True
+        assert len(result.problems) > 0
         # With weighted random, DP should be chosen with much higher probability
         # (weight = 1500 - 1000 + 100 = 600 vs 1500 - 1500 + 100 = 100)
-        # We just verify a result was found
-        assert result.problem is not None
+        assert all("dp" in p.tags for p in result.problems)
 
     @pytest.mark.asyncio
     async def test_recommend_no_melo_fallback(self):
@@ -278,8 +283,11 @@ class TestRecommendProblem:
                 )
 
         assert result.found is True
-        # User elo 1200, range [1100, 1400]
-        assert result.problem.rating in (1100, 1300)
+        # User elo 1200, gradient ranges: [1100,1300], [1300,1400], [1400,1500]
+        # Fallback range is [1000, 1600], so both 1100 and 1300 should be in pool
+        assert len(result.problems) > 0
+        for p in result.problems:
+            assert p.rating in (1100, 1300)
 
     @pytest.mark.asyncio
     async def test_recommend_no_suitable_problem(self):
@@ -312,6 +320,7 @@ class TestRecommendProblem:
                 )
 
         assert result.found is False
+        assert len(result.problems) == 0
         assert "No suitable problem" in result.message
 
 
@@ -904,3 +913,247 @@ class TestBuildProblemInfo:
 
         assert info.contest_id == 0
         assert info.url == ""
+
+
+# ---------------------------------------------------------------------------
+# Three-problem selection tests (FR-8.2, FR-8.3)
+# ---------------------------------------------------------------------------
+
+
+class TestPickEvenlyDistributed:
+    """Tests for FreePlayService._pick_evenly_distributed."""
+
+    def test_returns_up_to_3_from_many(self):
+        """With many candidates, returns exactly 3."""
+        candidates = [_make_problem(contest_id=i, index="A", rating=800 + i * 100) for i in range(20)]
+        result = FreePlayService._pick_evenly_distributed(candidates, count=3)
+        assert len(result) == 3
+
+    def test_ratings_spread_across_range(self):
+        """The 3 selected problems should span low/mid/high ratings."""
+        candidates = [_make_problem(contest_id=i, index="A", rating=800 + i * 100) for i in range(20)]
+        result = FreePlayService._pick_evenly_distributed(candidates, count=3)
+        ratings = sorted(p.get("rating") for p in result)
+        # Low should be in first third, high in last third
+        assert ratings[0] < 1600  # in low range
+        assert ratings[-1] >= 2000  # in high range
+
+    def test_returns_fewer_when_not_enough(self):
+        """With only 2 candidates, returns 2."""
+        candidates = [
+            _make_problem(contest_id=1, index="A", rating=1000),
+            _make_problem(contest_id=2, index="B", rating=1200),
+        ]
+        result = FreePlayService._pick_evenly_distributed(candidates, count=3)
+        assert len(result) == 2
+
+    def test_returns_empty_when_no_candidates(self):
+        """Empty input returns empty list."""
+        result = FreePlayService._pick_evenly_distributed([], count=3)
+        assert result == []
+
+    def test_no_duplicates(self):
+        """Selected problems must all be distinct."""
+        candidates = [_make_problem(contest_id=i, index=chr(65 + i), rating=800 + i * 200) for i in range(10)]
+        for _ in range(20):  # run multiple times due to randomness
+            result = FreePlayService._pick_evenly_distributed(candidates, count=3)
+            ids = [f"{p.get('contestId', 0)}{p.get('index', '')}" for p in result]
+            assert len(ids) == len(set(ids)), f"Duplicate found: {ids}"
+
+
+class TestPickGradientProblems:
+    """Tests for FreePlayService._pick_gradient_problems."""
+
+    def test_returns_3_at_correct_difficulty(self):
+        """With problems in all 3 ranges, returns 3 with ascending difficulty."""
+        melo = 1200
+        candidates = [
+            # Easy range: [1100, 1300]
+            _make_problem(contest_id=1, index="A", rating=1200),
+            # Medium range: [1300, 1400]
+            _make_problem(contest_id=2, index="B", rating=1350),
+            # Hard range: [1400, 1500]
+            _make_problem(contest_id=3, index="C", rating=1450),
+            # Extra filler
+            _make_problem(contest_id=4, index="D", rating=1100),
+            _make_problem(contest_id=5, index="E", rating=1500),
+        ]
+        result = FreePlayService._pick_gradient_problems(candidates, melo)
+        assert len(result) == 3
+        ratings = [p.get("rating") for p in result]
+        assert ratings[0] <= 1300  # Easy
+        assert 1300 < ratings[1] <= 1400  # Medium
+        assert 1400 < ratings[2] <= 1500  # Hard
+
+    def test_expands_range_when_empty(self):
+        """When a range is empty, expands outward to find problems."""
+        melo = 1200
+        candidates = [
+            _make_problem(contest_id=1, index="A", rating=1200),
+            # No problems in [1300, 1400] -- will expand
+            _make_problem(contest_id=3, index="C", rating=1500),
+        ]
+        result = FreePlayService._pick_gradient_problems(candidates, melo)
+        assert len(result) >= 2
+
+    def test_returns_fewer_when_insufficient(self):
+        """When only 1 candidate exists, returns 1."""
+        melo = 1200
+        candidates = [
+            _make_problem(contest_id=1, index="A", rating=1200),
+        ]
+        result = FreePlayService._pick_gradient_problems(candidates, melo)
+        assert len(result) == 1
+
+    def test_no_duplicates_between_selections(self):
+        """The same problem cannot appear twice in the result."""
+        melo = 1200
+        candidates = [
+            _make_problem(contest_id=1, index="A", rating=1200),
+            _make_problem(contest_id=2, index="B", rating=1350),
+            _make_problem(contest_id=3, index="C", rating=1450),
+        ]
+        result = FreePlayService._pick_gradient_problems(candidates, melo)
+        ids = [f"{p.get('contestId', 0)}{p.get('index', '')}" for p in result]
+        assert len(ids) == len(set(ids))
+
+
+class TestSearchReturnsThree:
+    """Tests verifying search_problems returns up to 3 problems (FR-8.2)."""
+
+    @pytest.mark.asyncio
+    async def test_search_returns_up_to_3_problems(self):
+        """Search with enough candidates returns up to 3 problems."""
+        db = AsyncMock(spec=AsyncSession)
+        user = _make_user()
+        cf_service = AsyncMock()
+
+        problems = [
+            _make_problem(contest_id=i, index=chr(65 + i), rating=1200 + i * 100, tags=["dp"]) for i in range(8)
+        ]
+
+        with patch.object(FreePlayService, "_get_solved_problem_ids", return_value=set()):
+            cf_service.get_problemset_problems.return_value = _make_cf_response(problems)
+            result = await FreePlayService.search_problems(
+                db=db,
+                user=user,
+                min_rating=1200,
+                max_rating=2000,
+                tags=["dp"],
+                cf_service=cf_service,
+            )
+
+        assert result.found is True
+        assert len(result.problems) <= 3
+        assert len(result.problems) >= 1
+
+    @pytest.mark.asyncio
+    async def test_search_problems_have_difficulty_labels(self):
+        """Each returned problem has a difficulty_label."""
+        db = AsyncMock(spec=AsyncSession)
+        user = _make_user()
+        cf_service = AsyncMock()
+
+        problems = [
+            _make_problem(contest_id=i, index=chr(65 + i), rating=1200 + i * 100, tags=["dp"]) for i in range(8)
+        ]
+
+        with patch.object(FreePlayService, "_get_solved_problem_ids", return_value=set()):
+            cf_service.get_problemset_problems.return_value = _make_cf_response(problems)
+            result = await FreePlayService.search_problems(
+                db=db,
+                user=user,
+                min_rating=1200,
+                max_rating=2000,
+                tags=["dp"],
+                cf_service=cf_service,
+            )
+
+        labels = {"Easy", "Medium", "Hard"}
+        for p in result.problems:
+            assert p.difficulty_label in labels
+
+    @pytest.mark.asyncio
+    async def test_search_returns_fewer_when_not_enough(self):
+        """Search with only 1 candidate returns 1 problem."""
+        db = AsyncMock(spec=AsyncSession)
+        user = _make_user()
+        cf_service = AsyncMock()
+
+        with patch.object(FreePlayService, "_get_solved_problem_ids", return_value=set()):
+            cf_service.get_problemset_problems.return_value = _make_cf_response(
+                [_make_problem(rating=1500, tags=["dp"])],
+            )
+            result = await FreePlayService.search_problems(
+                db=db,
+                user=user,
+                min_rating=1400,
+                max_rating=1600,
+                tags=["dp"],
+                cf_service=cf_service,
+            )
+
+        assert result.found is True
+        assert len(result.problems) == 1
+
+
+class TestRecommendReturnsThree:
+    """Tests verifying recommend_problem returns up to 3 problems (FR-8.3)."""
+
+    @pytest.mark.asyncio
+    async def test_recommend_returns_gradient_problems(self):
+        """Recommendation returns 3 problems at Easy/Medium/Hard difficulty."""
+        db = AsyncMock(spec=AsyncSession)
+        user = _make_user(elo=1200)
+        cf_service = AsyncMock()
+
+        melo_dp = MagicMock()
+        melo_dp.tag = "dp"
+        melo_dp.elo = 1200
+
+        problems = [
+            _make_problem(contest_id=1, index="A", rating=1200, tags=["dp"]),
+            _make_problem(contest_id=2, index="B", rating=1350, tags=["dp"]),
+            _make_problem(contest_id=3, index="C", rating=1450, tags=["dp"]),
+        ]
+
+        with patch("app.services.free_play_service.MEloService") as mock_melo:
+            mock_melo.get_all_melos = AsyncMock(return_value=[melo_dp])
+            with patch.object(FreePlayService, "_get_solved_problem_ids", return_value=set()):
+                cf_service.get_problemset_problems.return_value = _make_cf_response(problems)
+                result = await FreePlayService.recommend_problem(
+                    db=db,
+                    user=user,
+                    cf_service=cf_service,
+                )
+
+        assert result.found is True
+        assert len(result.problems) == 3
+        labels = [p.difficulty_label for p in result.problems]
+        assert labels == ["Easy", "Medium", "Hard"]
+        # Ratings should be ascending
+        ratings = [p.rating for p in result.problems]
+        assert ratings == sorted(ratings)
+
+    @pytest.mark.asyncio
+    async def test_recommend_fallback_returns_multiple(self):
+        """Fallback recommendation (no M-Elo) returns multiple problems."""
+        db = AsyncMock(spec=AsyncSession)
+        user = _make_user(elo=1200)
+        cf_service = AsyncMock()
+
+        problems = [_make_problem(contest_id=i, index=chr(65 + i), rating=1100 + i * 100) for i in range(6)]
+
+        with patch("app.services.free_play_service.MEloService") as mock_melo:
+            mock_melo.get_all_melos = AsyncMock(return_value=[])
+            with patch.object(FreePlayService, "_get_solved_problem_ids", return_value=set()):
+                cf_service.get_problemset_problems.return_value = _make_cf_response(problems)
+                result = await FreePlayService.recommend_problem(
+                    db=db,
+                    user=user,
+                    cf_service=cf_service,
+                )
+
+        assert result.found is True
+        assert len(result.problems) >= 1
+        assert len(result.problems) <= 3

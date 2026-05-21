@@ -113,14 +113,17 @@ def _make_response_model(data_dict):
 
 def _search_response_dict(**overrides):
     d = {
-        "problem": {
-            "contest_id": 1234,
-            "index": "A",
-            "name": "Test Problem",
-            "rating": 1500,
-            "tags": ["dp"],
-            "url": "https://codeforces.com/contest/1234/problem/A",
-        },
+        "problems": [
+            {
+                "contest_id": 1234,
+                "index": "A",
+                "name": "Test Problem",
+                "rating": 1500,
+                "tags": ["dp"],
+                "url": "https://codeforces.com/contest/1234/problem/A",
+                "difficulty_label": "Easy",
+            },
+        ],
         "found": True,
         "message": "Problem found",
     }
@@ -130,14 +133,17 @@ def _search_response_dict(**overrides):
 
 def _recommend_response_dict(**overrides):
     d = {
-        "problem": {
-            "contest_id": 1234,
-            "index": "B",
-            "name": "Recommended Problem",
-            "rating": 1400,
-            "tags": ["greedy"],
-            "url": "https://codeforces.com/contest/1234/problem/B",
-        },
+        "problems": [
+            {
+                "contest_id": 1234,
+                "index": "B",
+                "name": "Recommended Problem",
+                "rating": 1400,
+                "tags": ["greedy"],
+                "url": "https://codeforces.com/contest/1234/problem/B",
+                "difficulty_label": "Easy",
+            },
+        ],
         "found": True,
         "message": "Recommended",
         "recommended_tag": "greedy",
@@ -220,7 +226,7 @@ class TestSearchProblems:
     @patch("app.api.v1.free_play.FreePlayService")
     def test_search_not_found(self, mock_svc, mock_cf, app_client):
         result = _make_response_model(
-            _search_response_dict(problem=None, found=False, message="No problems found"),
+            _search_response_dict(problems=[], found=False, message="No problems found"),
         )
         mock_svc.search_problems = AsyncMock(return_value=result)
 
@@ -298,7 +304,7 @@ class TestRecommendProblem:
     @patch("app.api.v1.free_play.FreePlayService")
     def test_recommend_not_found(self, mock_svc, mock_cf, app_client):
         result = _make_response_model(
-            _recommend_response_dict(problem=None, found=False, message="No suitable problem"),
+            _recommend_response_dict(problems=[], found=False, message="No suitable problem"),
         )
         mock_svc.recommend_problem = AsyncMock(return_value=result)
 

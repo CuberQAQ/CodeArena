@@ -18,6 +18,11 @@
   "recommending": "推荐中...",
   "recommendReason": "基于你的 {{tag}} M-Elo {{elo}} 推荐",
   "noProblemFound": "未找到题目，请调整筛选条件。",
+  "difficulty": {
+    "Easy": "简单",
+    "Medium": "中等",
+    "Hard": "困难"
+  },
   "problemInfo": "题目信息",
   "startProblem": "开始做题",
   "starting": "开始中...",

@@ -557,16 +557,17 @@ export interface FreePlayProblemInfo {
   rating: number | null;
   tags: string[];
   url: string;
+  difficulty_label: string;
 }
 
 export interface FreePlaySearchResponse {
-  problem: FreePlayProblemInfo | null;
+  problems: FreePlayProblemInfo[];
   found: boolean;
   message: string;
 }
 
 export interface FreePlayRecommendResponse {
-  problem: FreePlayProblemInfo | null;
+  problems: FreePlayProblemInfo[];
   found: boolean;
   message: string;
   recommended_tag: string | null;

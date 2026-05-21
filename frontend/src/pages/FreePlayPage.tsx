@@ -4,8 +4,9 @@
  *   1. Manual Filter  - rating range slider + tag chips -> search
  *   2. Adaptive Rec.   - one-click recommendation based on M-Elo
  *
- * After a problem is selected/found the user clicks "Start Problem" and is
- * redirected to /free-play/session/:id.
+ * After search/recommend returns up to 3 problems displayed side-by-side,
+ * the user clicks one to start a session and is redirected to
+ * /free-play/session/:id.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -76,6 +77,13 @@ const ALL_TAGS = [...PRESET_TAGS, ...EXTRA_TAGS];
 
 const RATING_MIN = 800;
 const RATING_MAX = 3500;
+
+// Difficulty label badge colors
+const DIFFICULTY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
+  Easy: { bg: "bg-green-500/15", text: "text-green-400", border: "border-green-500/30" },
+  Medium: { bg: "bg-yellow-500/15", text: "text-yellow-400", border: "border-yellow-500/30" },
+  Hard: { bg: "bg-red-500/15", text: "text-red-400", border: "border-red-500/30" },
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -190,7 +198,7 @@ function MoreTagsDialog({
 }
 
 // ---------------------------------------------------------------------------
-// ProblemCard -- shown after search/recommend returns a problem
+// ProblemCard -- one of the 3 problem cards
 // ---------------------------------------------------------------------------
 
 function ProblemCard({
@@ -203,24 +211,38 @@ function ProblemCard({
   starting: boolean;
 }) {
   const { t } = useTranslation(["free_play", "common"]);
+  const diffStyle = DIFFICULTY_STYLES[problem.difficulty_label] ?? {
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+    border: "border-border",
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-xl border-2 border-primary/30 bg-card p-5"
+      className="flex flex-col rounded-xl border-2 border-primary/30 bg-card p-5"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-bold text-foreground">{problem.name}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
+      {/* Difficulty label */}
+      {problem.difficulty_label && (
+        <span
+          className={`mb-2 inline-flex w-fit items-center rounded-md border px-2 py-0.5 text-xs font-bold ${diffStyle.bg} ${diffStyle.text} ${diffStyle.border}`}
+        >
+          {t(`free_play:difficulty.${problem.difficulty_label}`, problem.difficulty_label)}
+        </span>
+      )}
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-base font-bold text-foreground">{problem.name}</h3>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {problem.contest_id}
             {problem.index}
           </p>
         </div>
         {problem.rating != null && (
           <span
-            className="shrink-0 rounded-lg px-3 py-1 text-sm font-bold"
+            className="shrink-0 rounded-lg px-2.5 py-1 text-sm font-bold"
             style={{
               color: getRatingColor(problem.rating),
               backgroundColor: `${getRatingColor(problem.rating)}20`,
@@ -232,28 +254,33 @@ function ProblemCard({
       </div>
 
       {problem.tags.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {problem.tags.map((tag) => (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {problem.tags.slice(0, 4).map((tag) => (
             <span
               key={tag}
-              className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+              className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
             >
               {tag}
             </span>
           ))}
+          {problem.tags.length > 4 && (
+            <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+              +{problem.tags.length - 4}
+            </span>
+          )}
         </div>
       )}
 
-      <div className="mt-4 flex items-center gap-3">
-        <Button onClick={onStart} disabled={starting}>
+      <div className="mt-auto flex items-center gap-2 pt-4">
+        <Button onClick={onStart} disabled={starting} size="sm" className="flex-1">
           {starting ? (
             <>
-              <Loader2 className="mr-2 size-4 animate-spin" />
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
               {t("free_play:starting")}
             </>
           ) : (
             <>
-              <Star className="mr-2 size-4" />
+              <Star className="mr-1.5 size-3.5" />
               {t("free_play:startProblem")}
             </>
           )}
@@ -265,7 +292,7 @@ function ProblemCard({
           className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
         >
           <ExternalLink className="size-3" />
-          {t("common:openOnCodeforces", { defaultValue: "Open on Codeforces" })}
+          CF
         </a>
       </div>
     </motion.div>
@@ -289,11 +316,11 @@ export default function FreePlayPage() {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [moreTagsOpen, setMoreTagsOpen] = useState(false);
 
-  // Shared state
-  const [problem, setProblem] = useState<FreePlayProblemInfo | null>(null);
+  // Shared state -- up to 3 problems
+  const [problems, setProblems] = useState<FreePlayProblemInfo[]>([]);
   const [recommendTag, setRecommendTag] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [starting, setStarting] = useState(false);
+  const [startingId, setStartingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   // ---- Tag toggle ----
@@ -313,7 +340,7 @@ export default function FreePlayPage() {
   const handleSearch = useCallback(async () => {
     setLoading(true);
     setError("");
-    setProblem(null);
+    setProblems([]);
     setRecommendTag(null);
     try {
       const res = await freePlayApi.freePlaySearch(
@@ -321,8 +348,8 @@ export default function FreePlayPage() {
         maxRating,
         Array.from(selectedTags),
       );
-      if (res.found && res.problem) {
-        setProblem(res.problem);
+      if (res.found && res.problems.length > 0) {
+        setProblems(res.problems);
       } else {
         setError(res.message || t("noProblemFound"));
       }
@@ -337,12 +364,12 @@ export default function FreePlayPage() {
   const handleRecommend = useCallback(async () => {
     setLoading(true);
     setError("");
-    setProblem(null);
+    setProblems([]);
     setRecommendTag(null);
     try {
       const res = await freePlayApi.freePlayRecommend();
-      if (res.found && res.problem) {
-        setProblem(res.problem);
+      if (res.found && res.problems.length > 0) {
+        setProblems(res.problems);
         setRecommendTag(res.recommended_tag);
       } else {
         setError(res.message || t("noProblemFound"));
@@ -354,26 +381,30 @@ export default function FreePlayPage() {
     }
   }, [t]);
 
-  // ---- Start session ----
-  const handleStart = useCallback(async () => {
-    if (!problem) return;
-    setStarting(true);
-    setError("");
-    try {
-      const res = await freePlayApi.freePlayStart({
-        problem_contest_id: problem.contest_id,
-        problem_index: problem.index,
-        problem_rating: problem.rating ?? 1200,
-        problem_tags: problem.tags,
-        problem_name: problem.name,
-      });
-      navigate(`/free-play/session/${res.session_id}`, { state: { problem, started_at: res.started_at } });
-    } catch {
-      setError(t("error.startFailed"));
-    } finally {
-      setStarting(false);
-    }
-  }, [problem, navigate, t]);
+  // ---- Start session for a specific problem ----
+  const handleStart = useCallback(
+    async (problem: FreePlayProblemInfo) => {
+      // Use contest_id + index as a unique key for the starting state
+      const problemKey = `${problem.contest_id}${problem.index}`;
+      setStartingId(problemKey);
+      setError("");
+      try {
+        const res = await freePlayApi.freePlayStart({
+          problem_contest_id: problem.contest_id,
+          problem_index: problem.index,
+          problem_rating: problem.rating ?? 1200,
+          problem_tags: problem.tags,
+          problem_name: problem.name,
+        });
+        navigate(`/free-play/session/${res.session_id}`, { state: { problem, started_at: res.started_at } });
+      } catch {
+        setError(t("error.startFailed"));
+      } finally {
+        setStartingId(null);
+      }
+    },
+    [navigate, t],
+  );
 
   // ---- Slider handlers ----
   const handleMinSlider = useCallback(
@@ -393,7 +424,7 @@ export default function FreePlayPage() {
   );
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
@@ -560,9 +591,9 @@ export default function FreePlayPage() {
         </div>
       )}
 
-      {/* Problem card (shared by both tabs) */}
+      {/* Problem cards (up to 3, side by side) */}
       <AnimatePresence>
-        {problem && (
+        {problems.length > 0 && (
           <>
             {/* Recommendation reason */}
             {tab === "recommend" && recommendTag && (
@@ -571,20 +602,31 @@ export default function FreePlayPage() {
                 animate={{ opacity: 1 }}
                 className="text-sm text-muted-foreground"
               >
-                {t("recommendReason", { tag: recommendTag.toUpperCase(), elo: problem.rating ?? "-" })}
+                {t("recommendReason", {
+                  tag: recommendTag.toUpperCase(),
+                  elo: problems[0]?.rating ?? "-",
+                })}
               </motion.p>
             )}
-            <ProblemCard
-              problem={problem}
-              onStart={handleStart}
-              starting={starting}
-            />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {problems.map((problem) => {
+                const problemKey = `${problem.contest_id}${problem.index}`;
+                return (
+                  <ProblemCard
+                    key={problemKey}
+                    problem={problem}
+                    onStart={() => handleStart(problem)}
+                    starting={startingId === problemKey}
+                  />
+                );
+              })}
+            </div>
           </>
         )}
       </AnimatePresence>
 
       {/* Loading spinner (full-page overlay for recommend) */}
-      {loading && !problem && tab === "recommend" && (
+      {loading && problems.length === 0 && tab === "recommend" && (
         <LoadingSpinner text={t("recommending")} className="py-12" />
       )}
 

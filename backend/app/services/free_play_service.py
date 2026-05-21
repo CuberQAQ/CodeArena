@@ -80,7 +80,8 @@ class FreePlayService:
         """Search for problems by rating range and optional tags.
 
         Fetches problems from CF API, filters by rating range and tags,
-        excludes already-solved problems, and returns a random match.
+        excludes already-solved problems, and returns up to 3 problems
+        with evenly distributed difficulty (low / medium / high).
         """
         # Get solved problem IDs
         solved_ids = await FreePlayService._get_solved_problem_ids(db, user.id)
@@ -91,7 +92,7 @@ class FreePlayService:
         except Exception:
             logger.warning("CF API unavailable for free play search")
             return FreePlaySearchResponse(
-                problem=None,
+                problems=[],
                 found=False,
                 message="Codeforces API unavailable. Please try again later.",
             )
@@ -99,7 +100,7 @@ class FreePlayService:
         problems = data.get("problems", [])
         if not problems:
             return FreePlaySearchResponse(
-                problem=None,
+                problems=[],
                 found=False,
                 message="No problems found matching the given tags.",
             )
@@ -119,19 +120,24 @@ class FreePlayService:
 
         if not candidates:
             return FreePlaySearchResponse(
-                problem=None,
+                problems=[],
                 found=False,
                 message="No unsolved problems found in the specified rating range.",
             )
 
-        # Return a random candidate
-        chosen = random.choice(candidates)
-        problem_info = FreePlayService._build_problem_info(chosen)
+        # Pick up to 3 problems with evenly distributed difficulty
+        chosen = FreePlayService._pick_evenly_distributed(candidates, count=3)
+        problem_infos = []
+        labels = ["Easy", "Medium", "Hard"]
+        for i, p in enumerate(chosen):
+            info = FreePlayService._build_problem_info(p)
+            info.difficulty_label = labels[i] if i < len(labels) else ""
+            problem_infos.append(info)
 
         return FreePlaySearchResponse(
-            problem=problem_info,
+            problems=problem_infos,
             found=True,
-            message="Problem found.",
+            message=f"{len(problem_infos)} problem(s) found.",
         )
 
     # ------------------------------------------------------------------
@@ -144,14 +150,17 @@ class FreePlayService:
         user: User,
         cf_service: CFApiService,
     ) -> FreePlayRecommendResponse:
-        """Recommend a problem based on the user's weakest tags (M-Elo).
+        """Recommend problems based on the user's weakest tags (M-Elo).
 
         Algorithm:
         1. Get all user M-Elo records
         2. Calculate weights: w(tag) = max_melo - melo(tag) + offset
         3. Weighted random select a tag
-        4. In that tag's [M-Elo-100, M-Elo+200] range, find an unsolved problem
-        5. Up to 3 rounds; fallback message if none found
+        4. In that tag, find 3 problems at ascending difficulty:
+           - Easy:   [M-Elo - 100, M-Elo + 100]
+           - Medium: [M-Elo + 100, M-Elo + 200]
+           - Hard:   [M-Elo + 200, M-Elo + 300]
+        5. Each range expands outward if empty; up to 3 rounds for tag selection
         """
         # Get user M-Elo records
         melos = await MEloService.get_all_melos(db, user.id)
@@ -180,7 +189,7 @@ class FreePlayService:
         except Exception:
             logger.warning("CF API unavailable for free play recommendation")
             return FreePlayRecommendResponse(
-                problem=None,
+                problems=[],
                 found=False,
                 message="Codeforces API unavailable. Please try again later.",
             )
@@ -188,7 +197,7 @@ class FreePlayService:
         all_problems = data.get("problems", [])
         if not all_problems:
             return FreePlayRecommendResponse(
-                problem=None,
+                problems=[],
                 found=False,
                 message="No problems available from Codeforces.",
             )
@@ -211,34 +220,38 @@ class FreePlayService:
                     selected_melo = melo
                     break
 
-            # Find unsolved problems in [M-Elo-100, M-Elo+200] with this tag
-            min_r = int(selected_melo + _RECOMMEND_RATING_OFFSET_LOW)
-            max_r = int(selected_melo + _RECOMMEND_RATING_OFFSET_HIGH)
-
-            candidates = []
+            # Build candidate pool for this tag (unsolved, with the tag)
+            tag_candidates = []
             for p in all_problems:
                 rating = p.get("rating")
                 if rating is None:
                     continue
-                if not (min_r <= rating <= max_r):
-                    continue
-                tags = p.get("tags", [])
-                if selected_tag not in tags:
+                if selected_tag not in p.get("tags", []):
                     continue
                 problem_id = f"{p.get('contestId', 0)}{p.get('index', '')}"
                 if problem_id in solved_ids:
                     continue
-                candidates.append(p)
+                tag_candidates.append(p)
 
-            if candidates:
-                chosen = random.choice(candidates)
-                problem_info = FreePlayService._build_problem_info(chosen)
-                return FreePlayRecommendResponse(
-                    problem=problem_info,
-                    found=True,
-                    message="Recommended problem found.",
-                    recommended_tag=selected_tag,
+            if tag_candidates:
+                # Find 3 problems at ascending difficulty
+                chosen = FreePlayService._pick_gradient_problems(
+                    tag_candidates,
+                    selected_melo,
                 )
+                if chosen:
+                    problem_infos = []
+                    labels = ["Easy", "Medium", "Hard"]
+                    for i, p in enumerate(chosen):
+                        info = FreePlayService._build_problem_info(p)
+                        info.difficulty_label = labels[i] if i < len(labels) else ""
+                        problem_infos.append(info)
+                    return FreePlayRecommendResponse(
+                        problems=problem_infos,
+                        found=True,
+                        message=f"{len(problem_infos)} problem(s) recommended.",
+                        recommended_tag=selected_tag,
+                    )
 
             # Remove this tag from further rounds and try again
             tag_weights = [(t, m, w) for t, m, w in tag_weights if t != selected_tag]
@@ -246,7 +259,7 @@ class FreePlayService:
                 break
 
         return FreePlayRecommendResponse(
-            problem=None,
+            problems=[],
             found=False,
             message="No suitable problem found for recommendation. Try searching manually.",
         )
@@ -739,6 +752,99 @@ class FreePlayService:
         )
 
     @staticmethod
+    def _pick_evenly_distributed(
+        candidates: list[dict],
+        count: int = 3,
+    ) -> list[dict]:
+        """Pick *count* problems with evenly distributed ratings.
+
+        Sorts candidates by rating and picks from low / medium / high thirds.
+        Returns fewer than *count* if not enough candidates.
+        Guarantees no duplicate problems.
+        """
+        if not candidates:
+            return []
+
+        sorted_candidates = sorted(candidates, key=lambda p: p.get("rating", 0))
+        n = len(sorted_candidates)
+        if n <= count:
+            return sorted_candidates
+
+        chosen: list[dict] = []
+        seen_ids: set[str] = set()
+
+        # Divide into thirds
+        third = n // 3
+        ranges = [
+            sorted_candidates[: third + 1],  # low
+            sorted_candidates[third + 1 : 2 * third + 1],  # medium
+            sorted_candidates[2 * third + 1 :],  # high
+        ]
+
+        for bucket in ranges:
+            if not bucket:
+                continue
+            random.shuffle(bucket)
+            for p in bucket:
+                pid = f"{p.get('contestId', 0)}{p.get('index', '')}"
+                if pid not in seen_ids:
+                    chosen.append(p)
+                    seen_ids.add(pid)
+                    break
+            if len(chosen) >= count:
+                break
+
+        return chosen[:count]
+
+    @staticmethod
+    def _pick_gradient_problems(
+        candidates: list[dict],
+        melo: int,
+    ) -> list[dict]:
+        """Pick 3 problems at ascending difficulty relative to *melo*.
+
+        Ranges (initial):
+          Easy:   [melo - 100, melo + 100]
+          Medium: [melo + 100, melo + 200]
+          Hard:   [melo + 200, melo + 300]
+
+        If a range is empty, expand by 100 in both directions up to 3 times.
+        Guarantees no duplicate problems between the 3 selections.
+        """
+        sorted_candidates = sorted(candidates, key=lambda p: p.get("rating", 0))
+        ranges = [
+            (melo - 100, melo + 100),  # Easy
+            (melo + 100, melo + 200),  # Medium
+            (melo + 200, melo + 300),  # Hard
+        ]
+
+        chosen: list[dict] = []
+        seen_ids: set[str] = set()
+
+        for lo, hi in ranges:
+            found = None
+            cur_lo, cur_hi = lo, hi
+            for _ in range(4):  # initial + 3 expansions
+                for p in sorted_candidates:
+                    rating = p.get("rating", 0)
+                    if cur_lo <= rating <= cur_hi:
+                        pid = f"{p.get('contestId', 0)}{p.get('index', '')}"
+                        if pid not in seen_ids:
+                            found = p
+                            seen_ids.add(pid)
+                            break
+                if found is not None:
+                    break
+                # Expand range by 100 in both directions
+                cur_lo -= 100
+                cur_hi += 100
+
+            if found is not None:
+                chosen.append(found)
+
+        return chosen
+
+    @staticmethod
     async def _fallback_recommend(
         db: AsyncSession,
         user: User,
@@ -746,7 +852,7 @@ class FreePlayService:
     ) -> FreePlayRecommendResponse:
         """Fallback recommendation when no M-Elo data exists.
 
-        Uses the user's global Elo range [elo-100, elo+200].
+        Uses the user's global Elo and gradient selection.
         """
         solved_ids = await FreePlayService._get_solved_problem_ids(db, user.id)
 
@@ -754,14 +860,16 @@ class FreePlayService:
             data = await cf_service.get_problemset_problems()
         except Exception:
             return FreePlayRecommendResponse(
-                problem=None,
+                problems=[],
                 found=False,
                 message="Codeforces API unavailable. Please try again later.",
             )
 
         problems = data.get("problems", [])
-        min_r = user.elo - 100
-        max_r = user.elo + 200
+
+        # Use wider range for fallback: [elo-200, elo+400]
+        min_r = user.elo - 200
+        max_r = user.elo + 400
 
         candidates = []
         for p in problems:
@@ -777,16 +885,27 @@ class FreePlayService:
 
         if not candidates:
             return FreePlayRecommendResponse(
-                problem=None,
+                problems=[],
                 found=False,
                 message="No suitable problem found. Try searching manually.",
             )
 
-        chosen = random.choice(candidates)
-        problem_info = FreePlayService._build_problem_info(chosen)
+        # Use gradient picker with user's global Elo
+        chosen = FreePlayService._pick_gradient_problems(candidates, user.elo)
+        if not chosen:
+            # Fallback to evenly distributed
+            chosen = FreePlayService._pick_evenly_distributed(candidates, count=3)
+
+        problem_infos = []
+        labels = ["Easy", "Medium", "Hard"]
+        for i, p in enumerate(chosen):
+            info = FreePlayService._build_problem_info(p)
+            info.difficulty_label = labels[i] if i < len(labels) else ""
+            problem_infos.append(info)
+
         return FreePlayRecommendResponse(
-            problem=problem_info,
+            problems=problem_infos,
             found=True,
-            message="Recommended problem found.",
+            message=f"{len(problem_infos)} problem(s) recommended.",
             recommended_tag=None,
         )

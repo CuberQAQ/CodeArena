@@ -57,12 +57,13 @@ class FreePlayProblemInfo(BaseModel):
     rating: int | None = None
     tags: list[str] = []
     url: str
+    difficulty_label: str = ""  # "Easy", "Medium", or "Hard"
 
 
 class FreePlaySearchResponse(BaseModel):
     """Response after searching problems."""
 
-    problem: FreePlayProblemInfo | None = None
+    problems: list[FreePlayProblemInfo] = []
     found: bool = False
     message: str = ""
 
@@ -70,7 +71,7 @@ class FreePlaySearchResponse(BaseModel):
 class FreePlayRecommendResponse(BaseModel):
     """Response after getting a recommendation."""
 
-    problem: FreePlayProblemInfo | None = None
+    problems: list[FreePlayProblemInfo] = []
     found: bool = False
     message: str = ""
     recommended_tag: str | None = None

@@ -18,6 +18,11 @@
   "recommending": "Recommending...",
   "recommendReason": "Based on your {{tag}} M-Elo {{elo}}",
   "noProblemFound": "No problem found. Try adjusting your filters.",
+  "difficulty": {
+    "Easy": "Easy",
+    "Medium": "Medium",
+    "Hard": "Hard"
+  },
   "problemInfo": "Problem Info",
   "startProblem": "Start Problem",
   "starting": "Starting...",
