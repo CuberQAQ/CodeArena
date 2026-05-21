@@ -50,5 +50,6 @@
   "newContest": "New Contest",
   "dashboard": "Dashboard",
   "waitingForCFResult": "Waiting for Codeforces result...",
-  "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result."
+  "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result.",
+  "trackingTimedOut": "Submission tracking timed out. Please try quitting the current session."
 }

@@ -311,6 +311,11 @@ export default function ContestDetailPage() {
           `/submission-tracking/status?session_type=contest&session_id=${contestId}`,
         );
         const tracking = res.data?.data;
+        if (tracking && tracking.status === "timeout") {
+          if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+          setError(t("contest:trackingTimedOut"));
+          return;
+        }
         if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {
           if (trackingPollRef.current) clearInterval(trackingPollRef.current);
           // Refresh contest status to show updated problem results

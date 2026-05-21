@@ -151,6 +151,11 @@ export default function ChallengePage() {
           `/submission-tracking/status?session_type=pvp&session_id=${sessionId}`,
         );
         const tracking = res.data?.data;
+        if (tracking && tracking.status === "timeout") {
+          if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+          setError(t("challenge:trackingTimedOut"));
+          return;
+        }
         if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {
           if (trackingPollRef.current) clearInterval(trackingPollRef.current);
           // Fetch updated challenge details and transition to result

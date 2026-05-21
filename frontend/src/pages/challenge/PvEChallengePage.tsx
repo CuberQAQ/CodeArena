@@ -140,13 +140,17 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
       try {
         const res = await api.get(`/submission-tracking/status?session_type=pve&session_id=${sessionId}`);
         const tracking = res.data?.data;
+        if (tracking && tracking.status === "timeout") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setError(t("challenge:trackingTimedOut"));
+          return;
+        }
         if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {
           if (pollRef.current) clearInterval(pollRef.current);
           // Fetch final challenge details and transition to result
           const detail = await pveApi.getChallenge(sessionId);
           // Check if challenge was completed by auto-settlement
           if (detail.status === "completed" || detail.status === "quit") {
-            usePvEChallengeStore.getState().submitResultAction && undefined;
             // Use the store to refresh and go to result
             const store = usePvEChallengeStore.getState();
             if (store.challenge?.status === "completed" || store.challenge?.status === "quit") {

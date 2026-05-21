@@ -76,6 +76,11 @@ export default function TrainingDetailPage() {
           `/submission-tracking/status?session_type=training&session_id=${session.id}`,
         );
         const tracking = res.data?.data;
+        if (tracking && tracking.status === "timeout") {
+          if (trackingPollRef.current) clearInterval(trackingPollRef.current);
+          setError(t("training:trackingTimedOut"));
+          return;
+        }
         if (tracking && (tracking.status === "matched" || tracking.status === "settled")) {
           if (trackingPollRef.current) clearInterval(trackingPollRef.current);
           // Refresh topic details to show updated solved status

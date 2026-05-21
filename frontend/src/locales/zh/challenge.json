@@ -39,6 +39,7 @@
   "backToDashboard": "返回仪表盘",
   "waitingForCFResult": "等待 Codeforces 结果...",
   "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。",
+  "trackingTimedOut": "提交追踪已超时，请尝试退出当前会话。",
   "cfResultDetected": "已检测到 Codeforces 结果",
   "pve": {
     "title": "随机挑战（单人）",

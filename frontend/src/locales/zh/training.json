@@ -23,5 +23,6 @@
   "trainAgain": "再次训练",
   "notStarted": "未开始",
   "waitingForCFResult": "等待 Codeforces 结果...",
-  "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。"
+  "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。",
+  "trackingTimedOut": "提交追踪已超时，请尝试退出当前会话。"
 }
