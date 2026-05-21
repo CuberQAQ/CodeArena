@@ -660,3 +660,13 @@ export interface CheckInResponseData {
   is_makeup: boolean;
   tokens_balance: number;
 }
+
+// ---------------------------------------------------------------------------
+// PP Rank
+// ---------------------------------------------------------------------------
+
+export interface PPRankData {
+  rank: number | null;
+  total_users: number;
+  top_percent: number | null;
+}

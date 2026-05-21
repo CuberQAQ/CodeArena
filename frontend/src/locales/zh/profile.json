@@ -26,5 +26,13 @@
   "cardSolved": "已解题",
   "cardCheckins": "签到天数",
   "cardSkillMedals": "技能勋章",
-  "cardTitle": "Code Arena 个人卡片"
+  "cardTitle": "Code Arena 个人卡片",
+  "ppRankValue": "第 {{rank}} 名",
+  "ppRankPercentile": "前 {{percentile}}%",
+  "ppRankUnranked": "未入榜",
+  "ppRankOf": "共 {{total}} 名用户",
+  "ppGlobalRanking": "PP 全球排名",
+  "ppGlobalRank": "全球排名",
+  "ppPercentile": "百分位",
+  "ppTotalPlayers": "总用户数"
 }

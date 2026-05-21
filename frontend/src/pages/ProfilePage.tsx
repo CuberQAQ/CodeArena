@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Loader2,
   Save,
+  Globe,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import type {
   MedalStatsResponse,
   SkillMedalItem,
   CheckInStatusData,
+  PPRankData,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -195,6 +197,9 @@ export default function ProfilePage() {
   const [totalSolved, setTotalSolved] = useState(0);
   const [streakDays, setStreakDays] = useState(0);
 
+  // PP rank data
+  const [ppRankData, setPpRankData] = useState<PPRankData | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     api
@@ -250,6 +255,11 @@ export default function ProfilePage() {
       .get<ApiResponse<CheckInStatusData>>("/checkin/status")
       .then((res) => setStreakDays(res.data.data.streak_days))
       .catch(() => {});
+    // Fetch PP rank
+    api
+      .get<ApiResponse<PPRankData>>("/auth/pp-rank")
+      .then((res) => setPpRankData(res.data.data))
+      .catch(() => {});
   }, []);
 
   if (!user) {
@@ -277,6 +287,7 @@ export default function ProfilePage() {
           skillMedals={skillMedals}
           totalSolved={totalSolved}
           streakDays={streakDays}
+          ppRank={ppRankData?.rank ?? null}
         />
       </div>
 
@@ -368,20 +379,77 @@ export default function ProfilePage() {
       {/* Skill Medal Wall */}
       <SkillMedalWall skills={skillMedals} />
 
-      {/* PP Ranking Placeholder */}
+      {/* PP Global Ranking */}
       <div className="rounded-xl border border-border bg-card p-5">
-        <h3 className="text-sm font-semibold text-foreground">{t("profile:ppRanking")}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("profile:ppRankingDesc")}
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          onClick={() => navigate("/leaderboard")}
-        >
-          {t("profile:viewLeaderboard")}
-        </Button>
+        <h3 className="text-sm font-semibold text-foreground">{t("profile:ppGlobalRanking")}</h3>
+        {ppRankData && ppRankData.rank != null ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-background/50 p-3">
+              <div className="flex size-9 items-center justify-center rounded-md bg-yellow-500/10">
+                <Globe className="size-4 text-yellow-400" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {t("profile:ppGlobalRank")}
+                </p>
+                <p className="text-lg font-bold text-foreground">
+                  {t("profile:ppRankValue", { rank: ppRankData.rank })}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-background/50 p-3">
+              <div className="flex size-9 items-center justify-center rounded-md bg-primary/10">
+                <Trophy className="size-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {t("profile:ppPercentile")}
+                </p>
+                <p className="text-lg font-bold text-primary">
+                  {ppRankData.top_percent != null
+                    ? t("profile:ppRankPercentile", { percentile: ppRankData.top_percent })
+                    : "--"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-background/50 p-3">
+              <div className="flex size-9 items-center justify-center rounded-md bg-muted">
+                <Star className="size-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {t("profile:ppTotalPlayers")}
+                </p>
+                <p className="text-lg font-bold text-foreground">
+                  {ppRankData.total_users}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 flex items-center gap-3 rounded-lg border border-border bg-background/50 p-3">
+            <div className="flex size-9 items-center justify-center rounded-md bg-muted">
+              <Globe className="size-4 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">{t("profile:ppRankUnranked")}</p>
+              {ppRankData && ppRankData.total_users > 0 && (
+                <p className="text-xs text-muted-foreground/70">
+                  {t("profile:ppRankOf", { total: ppRankData.total_users })}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/leaderboard")}
+          >
+            {t("profile:viewLeaderboard")}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -10,11 +10,12 @@ Mounts endpoints under ``/api/v1/auth/``:
   GET  /avatar/{user_id} -- serve avatar image (public)
   GET  /settings   -- get user settings (auth required)
   PUT  /settings   -- update user settings (auth required)
+  GET  /pp-rank    -- get user PP ranking and percentile (auth required)
 """
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -263,6 +264,60 @@ async def get_pp_contributions(
             }
             for r in records
         ],
+    )
+
+
+@router.get("/pp-rank")
+async def get_pp_rank(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the authenticated user's PP global ranking and percentile.
+
+    Calculates rank by counting users with higher PP, then derives percentile.
+    Users with PP == 0 are considered unranked.
+    """
+    user_pp = current_user.pp or 0
+
+    # Count total active users
+    total_result = await db.execute(
+        select(func.count(User.id)).where(User.is_active.is_(True))
+    )
+    total_users = total_result.scalar() or 0
+
+    if total_users == 0 or user_pp <= 0:
+        return success_response(
+            data={
+                "rank": None,
+                "total_users": total_users,
+                "top_percent": None,
+            },
+            message="PP rank retrieved",
+        )
+
+    # Count users with strictly higher PP (same PP broken by earlier creation)
+    higher_result = await db.execute(
+        select(func.count(User.id)).where(
+            User.is_active.is_(True),
+            (
+                (User.pp > user_pp)
+                | ((User.pp == user_pp) & (User.created_at < current_user.created_at))
+            ),
+        )
+    )
+    higher_count = higher_result.scalar() or 0
+    rank = higher_count + 1
+
+    # Top percent: what percentage of the leaderboard the user occupies from the top
+    top_percent = round(rank / total_users * 100, 1)
+
+    return success_response(
+        data={
+            "rank": rank,
+            "total_users": total_users,
+            "top_percent": top_percent,
+        },
+        message="PP rank retrieved",
     )
 
 

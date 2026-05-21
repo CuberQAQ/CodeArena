@@ -26,5 +26,13 @@
   "cardSolved": "Solved",
   "cardCheckins": "Check-in Days",
   "cardSkillMedals": "Skill Medals",
-  "cardTitle": "Code Arena Profile"
+  "cardTitle": "Code Arena Profile",
+  "ppRankValue": "#{{rank}}",
+  "ppRankPercentile": "Top {{percentile}}%",
+  "ppRankUnranked": "Unranked",
+  "ppRankOf": "out of {{total}} users",
+  "ppGlobalRanking": "PP Global Ranking",
+  "ppGlobalRank": "Global Rank",
+  "ppPercentile": "Percentile",
+  "ppTotalPlayers": "Total Players"
 }
