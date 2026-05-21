@@ -1,7 +1,7 @@
 """add time_factor to elo_history
 
-Revision ID: k1l2m3n4o5p6
-Revises: i9j0k1l2m3n4
+Revision ID: n4o5p6q7r8s9
+Revises: m3n4o5p6q7r8
 Create Date: 2026-05-21 00:00:00.000000
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "k1l2m3n4o5p6"
-down_revision: str | None = "i9j0k1l2m3n4"
+revision: str = "n4o5p6q7r8s9"
+down_revision: str | None = "m3n4o5p6q7r8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
