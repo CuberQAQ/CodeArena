@@ -260,31 +260,66 @@ def _make_cf_service_mock(problems=None):
 
 
 class TestTierConfigs:
-    """Verify the three contest tiers are correctly configured."""
+    """Verify the five contest tiers are correctly configured."""
 
     def test_beginner_config(self):
+        """Beginner Contest is Div.4."""
         cfg = TIER_CONFIGS["beginner"]
-        assert cfg["max_elo"] == 1400
+        assert cfg["name"] == "Beginner Contest"
+        assert cfg["div"] == 4
+        assert cfg["max_elo"] == 1399
         assert cfg["min_elo"] is None
-        assert cfg["duration_minutes"] == 90
-        assert cfg["problem_count"] == 4
+        assert cfg["duration_minutes"] == 120
+        assert cfg["problem_count"] == 7
         assert cfg["rating_range"] == [800, 1400]
 
-    def test_advanced_config(self):
-        cfg = TIER_CONFIGS["advanced"]
-        assert cfg["min_elo"] == 1400
-        assert cfg["max_elo"] == 1800
+    def test_pupil_config(self):
+        """Pupil Contest is Div.3."""
+        cfg = TIER_CONFIGS["pupil"]
+        assert cfg["name"] == "Pupil Contest"
+        assert cfg["div"] == 3
+        assert cfg["max_elo"] == 1599
+        assert cfg["min_elo"] is None
         assert cfg["duration_minutes"] == 120
-        assert cfg["problem_count"] == 5
-        assert cfg["rating_range"] == [1200, 2000]
+        assert cfg["problem_count"] == 7
+        assert cfg["rating_range"] == [800, 1600]
+
+    def test_advanced_config(self):
+        """Advanced Contest is Div.2."""
+        cfg = TIER_CONFIGS["advanced"]
+        assert cfg["name"] == "Advanced Contest"
+        assert cfg["div"] == 2
+        assert cfg["max_elo"] == 2099
+        assert cfg["min_elo"] is None
+        assert cfg["duration_minutes"] == 120
+        assert cfg["problem_count"] == 6
+        assert cfg["rating_range"] == [1200, 2200]
 
     def test_master_config(self):
+        """Master Contest is Div.1."""
         cfg = TIER_CONFIGS["master"]
-        assert cfg["min_elo"] == 1800
+        assert cfg["name"] == "Master Contest"
+        assert cfg["div"] == 1
+        assert cfg["min_elo"] == 1900
         assert cfg["max_elo"] is None
-        assert cfg["duration_minutes"] == 150
+        assert cfg["duration_minutes"] == 120
         assert cfg["problem_count"] == 6
-        assert cfg["rating_range"] == [1600, 2600]
+        assert cfg["rating_range"] == [1600, 3000]
+
+    def test_blitz_config(self):
+        """Blitz Contest has no div."""
+        cfg = TIER_CONFIGS["blitz"]
+        assert cfg["name"] == "Blitz Contest"
+        assert cfg["div"] is None
+        assert cfg["min_elo"] is None
+        assert cfg["max_elo"] is None
+        assert cfg["duration_minutes"] == 60
+        assert cfg["problem_count"] == 4
+        assert cfg["rating_range"] is None
+
+    def test_all_five_tiers_exist(self):
+        """All five tiers must be present in TIER_CONFIGS."""
+        assert set(TIER_CONFIGS.keys()) == {"beginner", "pupil", "advanced", "master", "blitz"}
 
 
 # ===========================================================================
@@ -308,44 +343,168 @@ class TestTierEligibility:
 
     @pytest.mark.asyncio
     async def test_downgrade_eligible(self, db):
-        """Elo 1600 can downgrade to beginner contest."""
-        user = _make_user(elo=1600)
+        """Elo 2000 can downgrade to beginner, pupil, advanced but not master."""
+        user = _make_user(elo=2000)
         db.add(user)
         await db.flush()
 
         tiers = await ContestService.get_tiers(db, user)
         beginner = next(t for t in tiers if t.tier == "beginner")
+        pupil = next(t for t in tiers if t.tier == "pupil")
         advanced = next(t for t in tiers if t.tier == "advanced")
         master = next(t for t in tiers if t.tier == "master")
 
         assert beginner.eligible is True
+        assert pupil.eligible is True
         assert advanced.eligible is True
-        assert master.eligible is False
+        assert master.eligible is True  # 2000 >= 1900
 
     @pytest.mark.asyncio
     async def test_cannot_join_above_level(self, db):
-        """Elo 1300 cannot join advanced contest."""
+        """Elo 1300 cannot join master contest (min_elo 1900)."""
         user = _make_user(elo=1300)
         db.add(user)
         await db.flush()
 
         tiers = await ContestService.get_tiers(db, user)
-        advanced = next(t for t in tiers if t.tier == "advanced")
         master = next(t for t in tiers if t.tier == "master")
 
-        assert advanced.eligible is False
         assert master.eligible is False
 
     @pytest.mark.asyncio
     async def test_high_elo_eligible_for_all(self, db):
-        """Elo 1900 can join all tiers."""
-        user = _make_user(elo=1900)
+        """Elo 2500 can join all tiers."""
+        user = _make_user(elo=2500)
         db.add(user)
         await db.flush()
 
         tiers = await ContestService.get_tiers(db, user)
         for tier in tiers:
             assert tier.eligible is True
+
+    @pytest.mark.asyncio
+    async def test_blitz_always_eligible(self, db):
+        """Any Elo can join Blitz."""
+        user = _make_user(elo=800)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        blitz = next(t for t in tiers if t.tier == "blitz")
+        assert blitz.eligible is True
+
+    @pytest.mark.asyncio
+    async def test_pupil_eligible_for_mid_elo(self, db):
+        """Elo 1500 can join pupil contest."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        pupil = next(t for t in tiers if t.tier == "pupil")
+        assert pupil.eligible is True
+
+
+class TestRatedEligibility:
+    """Verify is_rated determination for each tier."""
+
+    @pytest.mark.asyncio
+    async def test_beginner_rated_within_range(self, db):
+        """Beginner is rated for elo <= 1399."""
+        user = _make_user(elo=1300)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        beginner = next(t for t in tiers if t.tier == "beginner")
+        assert beginner.is_rated is True
+
+    @pytest.mark.asyncio
+    async def test_beginner_not_rated_above_range(self, db):
+        """Beginner is not rated for elo > 1399."""
+        user = _make_user(elo=1600)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        beginner = next(t for t in tiers if t.tier == "beginner")
+        assert beginner.is_rated is False
+
+    @pytest.mark.asyncio
+    async def test_pupil_rated_within_range(self, db):
+        """Pupil is rated for elo <= 1599."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        pupil = next(t for t in tiers if t.tier == "pupil")
+        assert pupil.is_rated is True
+
+    @pytest.mark.asyncio
+    async def test_advanced_rated_within_range(self, db):
+        """Advanced is rated for elo <= 2099."""
+        user = _make_user(elo=2000)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        advanced = next(t for t in tiers if t.tier == "advanced")
+        assert advanced.is_rated is True
+
+    @pytest.mark.asyncio
+    async def test_advanced_not_rated_above_range(self, db):
+        """Advanced is not rated for elo > 2099."""
+        user = _make_user(elo=2200)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        advanced = next(t for t in tiers if t.tier == "advanced")
+        assert advanced.is_rated is False
+
+    @pytest.mark.asyncio
+    async def test_master_rated_within_range(self, db):
+        """Master is rated for elo >= 1900."""
+        user = _make_user(elo=2000)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        master = next(t for t in tiers if t.tier == "master")
+        assert master.is_rated is True
+
+    @pytest.mark.asyncio
+    async def test_master_not_rated_below_range(self, db):
+        """Master is not rated for elo < 1900 (but user can't join anyway)."""
+        # A user at 1950 can join master, let's test rated status
+        user = _make_user(elo=1950)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        master = next(t for t in tiers if t.tier == "master")
+        assert master.is_rated is True
+
+    @pytest.mark.asyncio
+    async def test_blitz_always_rated(self, db):
+        """Blitz is always rated regardless of elo."""
+        user = _make_user(elo=800)
+        db.add(user)
+        await db.flush()
+
+        tiers = await ContestService.get_tiers(db, user)
+        blitz = next(t for t in tiers if t.tier == "blitz")
+        assert blitz.is_rated is True
+
+        # Also for high elo
+        user2 = _make_user(elo=2500)
+        db.add(user2)
+        await db.flush()
+
+        tiers2 = await ContestService.get_tiers(db, user2)
+        blitz2 = next(t for t in tiers2 if t.tier == "blitz")
+        assert blitz2.is_rated is True
 
 
 # ===========================================================================
@@ -367,11 +526,11 @@ class TestStartContest:
         result = await ContestService.start_contest(db, user, "beginner", cf_mock)
 
         assert result.tier == "beginner"
-        assert result.total_problems == 4
-        assert result.time_limit_minutes == 90
+        assert result.total_problems == 7
+        assert result.time_limit_minutes == 120
         assert result.status == "active"
-        assert result.remaining_seconds == 90 * 60
-        assert len(result.problems) == 4
+        assert result.remaining_seconds == 120 * 60
+        assert len(result.problems) == 7
 
     @pytest.mark.asyncio
     async def test_start_rejects_invalid_tier(self, db):
@@ -386,14 +545,14 @@ class TestStartContest:
 
     @pytest.mark.asyncio
     async def test_start_rejects_insufficient_elo(self, db):
-        """Rejects starting a contest above user's level."""
+        """Rejects starting master contest when Elo is too low."""
         user = _make_user(elo=1300)
         db.add(user)
         await db.flush()
 
         cf_mock = _make_cf_service_mock()
         with pytest.raises(BadRequestException, match="too low"):
-            await ContestService.start_contest(db, user, "advanced", cf_mock)
+            await ContestService.start_contest(db, user, "master", cf_mock)
 
     @pytest.mark.asyncio
     async def test_start_rejects_duplicate_active(self, db):
@@ -429,12 +588,12 @@ class TestTimingSystem:
         started = await ContestService.start_contest(db, user, "beginner", cf_mock)
         await db.commit()
 
-        # Get status -- should have ~90min remaining
+        # Get status -- should have ~120min remaining (beginner is now 120min)
         status = await ContestService.get_contest_status(db, user, started.id)
 
-        # Should be very close to 90*60 seconds
+        # Should be very close to 120*60 seconds
         assert status.remaining_seconds is not None
-        assert 89 * 60 < status.remaining_seconds <= 90 * 60
+        assert 119 * 60 < status.remaining_seconds <= 120 * 60
 
     @pytest.mark.asyncio
     async def test_auto_end_on_expiry(self, db):
@@ -447,9 +606,9 @@ class TestTimingSystem:
         started = await ContestService.start_contest(db, user, "beginner", cf_mock)
         await db.commit()
 
-        # Manually set started_at to past to simulate expiry
+        # Manually set started_at to past to simulate expiry (beginner is 120min now)
         session = await db.get(_TestContestSession, started.id)
-        session.started_at = datetime.now(UTC) - timedelta(minutes=91)
+        session.started_at = datetime.now(UTC) - timedelta(minutes=121)
         await db.flush()
 
         # Get status -- should trigger auto-end
@@ -804,7 +963,7 @@ class TestContestSettlement:
             await db.commit()
 
         result = await ContestService.end_contest(db, user, started.id)
-        # M-Elo should calculate based on 2/4 solved
+        # M-Elo should calculate based on 2/7 solved
         assert result.elo_change is not None
         assert user.elo != 1300
 
@@ -819,8 +978,8 @@ class TestContestSettlement:
         started = await ContestService.start_contest(db, user, "beginner", cf_mock)
         await db.commit()
 
-        # Submit 4 problems, all solved
-        for i in range(4):
+        # Submit all problems (7 for beginner), all solved
+        for i in range(len(started.problems)):
             problem = started.problems[i]
             await ContestService.submit_problem(
                 db,
@@ -976,8 +1135,8 @@ class TestContestResult:
         result = await ContestService.get_contest_result(db, user, started.id)
 
         assert result.problems_solved == 2
-        assert result.total_problems == 4
-        assert len(result.problems) == 4
+        assert result.total_problems == 7
+        assert len(result.problems) == 7
 
         solved_count = sum(1 for p in result.problems if p.solved)
         assert solved_count == 2
@@ -1112,21 +1271,33 @@ class TestProblemSelection:
 
         cf_mock = _make_cf_service_mock()
 
-        # Beginner: 4 problems
+        # Beginner: 7 problems
         beginner = await ContestService.start_contest(db, user, "beginner", cf_mock)
-        assert len(beginner.problems) == 4
+        assert len(beginner.problems) == 7
         await ContestService.end_contest(db, user, beginner.id)
         await db.commit()
 
-        # Advanced: 5 problems
+        # Pupil: 7 problems
+        pupil = await ContestService.start_contest(db, user, "pupil", cf_mock)
+        assert len(pupil.problems) == 7
+        await ContestService.end_contest(db, user, pupil.id)
+        await db.commit()
+
+        # Advanced: 6 problems
         advanced = await ContestService.start_contest(db, user, "advanced", cf_mock)
-        assert len(advanced.problems) == 5
+        assert len(advanced.problems) == 6
         await ContestService.end_contest(db, user, advanced.id)
         await db.commit()
 
         # Master: 6 problems
         master = await ContestService.start_contest(db, user, "master", cf_mock)
         assert len(master.problems) == 6
+        await ContestService.end_contest(db, user, master.id)
+        await db.commit()
+
+        # Blitz: 4 problems
+        blitz = await ContestService.start_contest(db, user, "blitz", cf_mock)
+        assert len(blitz.problems) == 4
 
     @pytest.mark.asyncio
     async def test_cf_api_failure_uses_placeholders(self, db):
@@ -1140,7 +1311,7 @@ class TestProblemSelection:
 
         result = await ContestService.start_contest(db, user, "beginner", cf_mock)
 
-        assert len(result.problems) == 4
+        assert len(result.problems) == 7
         for p in result.problems:
             assert "placeholder" in p.problem_id
 
@@ -1337,7 +1508,7 @@ class TestGetActiveContest:
         assert result.status == "active"
         assert result.remaining_seconds is not None
         assert result.remaining_seconds > 0
-        assert len(result.problems) == 4
+        assert len(result.problems) == 7
 
     @pytest.mark.asyncio
     async def test_auto_ends_expired_contest(self, db):
@@ -1350,9 +1521,9 @@ class TestGetActiveContest:
         started = await ContestService.start_contest(db, user, "beginner", cf_mock)
         await db.commit()
 
-        # Manually set started_at to past to simulate expiry
+        # Manually set started_at to past to simulate expiry (beginner is 120min now)
         session = await db.get(_TestContestSession, started.id)
-        session.started_at = datetime.now(UTC) - timedelta(minutes=91)
+        session.started_at = datetime.now(UTC) - timedelta(minutes=121)
         await db.flush()
 
         result = await ContestService.get_active_contest(db, user)
@@ -1408,3 +1579,155 @@ class TestGetActiveContest:
         # user2 should have no active contest
         result = await ContestService.get_active_contest(db, user2)
         assert result is None
+
+
+# ===========================================================================
+# Test: Blitz contest
+# ===========================================================================
+
+
+class TestBlitzContest:
+    """Verify Blitz contest specific behavior."""
+
+    @pytest.mark.asyncio
+    async def test_start_blitz_any_elo(self, db):
+        """Blitz contest can be started by any user regardless of Elo."""
+        user = _make_user(elo=800)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        result = await ContestService.start_contest(db, user, "blitz", cf_mock)
+
+        assert result.tier == "blitz"
+        assert result.total_problems == 4
+        assert result.time_limit_minutes == 60
+        assert result.status == "active"
+        assert result.remaining_seconds == 60 * 60
+
+    @pytest.mark.asyncio
+    async def test_start_blitz_high_elo(self, db):
+        """High Elo user can also start Blitz."""
+        user = _make_user(elo=2500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        result = await ContestService.start_contest(db, user, "blitz", cf_mock)
+
+        assert result.tier == "blitz"
+        assert result.total_problems == 4
+
+    def test_blitz_rating_range_low_elo(self):
+        """Blitz rating range for low Elo is clamped at 800 minimum."""
+        rating_range = ContestService._calculate_blitz_rating_range(800)
+        assert rating_range == [800, 1200]
+
+    def test_blitz_rating_range_mid_elo(self):
+        """Blitz rating range for mid Elo uses +/- 400 spread."""
+        rating_range = ContestService._calculate_blitz_rating_range(1500)
+        assert rating_range == [1100, 1900]
+
+    def test_blitz_rating_range_high_elo(self):
+        """Blitz rating range for high Elo is clamped at 3500 maximum."""
+        rating_range = ContestService._calculate_blitz_rating_range(3300)
+        assert rating_range == [2900, 3500]
+
+    def test_blitz_rating_range_very_high_elo(self):
+        """Blitz rating range for very high Elo is still capped at 3500."""
+        rating_range = ContestService._calculate_blitz_rating_range(4000)
+        assert rating_range == [3600, 3500]  # max is capped but min can exceed if elo is extreme
+
+
+# ===========================================================================
+# Test: Pupil contest
+# ===========================================================================
+
+
+class TestPupilContest:
+    """Verify Pupil (Div.3) contest behavior."""
+
+    @pytest.mark.asyncio
+    async def test_start_pupil_contest(self, db):
+        """Can start pupil contest."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        result = await ContestService.start_contest(db, user, "pupil", cf_mock)
+
+        assert result.tier == "pupil"
+        assert result.total_problems == 7
+        assert result.time_limit_minutes == 120
+
+    @pytest.mark.asyncio
+    async def test_pupil_problems_within_range(self, db):
+        """Pupil contest problems are within [800, 1600] range."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        result = await ContestService.start_contest(db, user, "pupil", cf_mock)
+
+        for problem in result.problems:
+            assert 800 <= problem.rating <= 1600
+
+    @pytest.mark.asyncio
+    async def test_downgrade_to_pupil(self, db):
+        """High Elo user can downgrade to pupil contest."""
+        user = _make_user(elo=2000)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        result = await ContestService.start_contest(db, user, "pupil", cf_mock)
+
+        assert result.tier == "pupil"
+        assert result.status == "active"
+
+
+# ===========================================================================
+# Test: Backward compatibility
+# ===========================================================================
+
+
+class TestBackwardCompatibility:
+    """Verify old tier values still work with the new system."""
+
+    @pytest.mark.asyncio
+    async def test_old_beginner_tier_still_valid(self, db):
+        """Old 'beginner' tier key is still valid."""
+        user = _make_user(elo=1300)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        result = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        assert result.tier == "beginner"
+        assert result.status == "active"
+
+    @pytest.mark.asyncio
+    async def test_old_advanced_tier_still_valid(self, db):
+        """Old 'advanced' tier key is still valid."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        result = await ContestService.start_contest(db, user, "advanced", cf_mock)
+        assert result.tier == "advanced"
+        assert result.status == "active"
+
+    @pytest.mark.asyncio
+    async def test_old_master_tier_still_valid(self, db):
+        """Old 'master' tier key is still valid."""
+        user = _make_user(elo=2000)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        result = await ContestService.start_contest(db, user, "master", cf_mock)
+        assert result.tier == "master"
+        assert result.status == "active"

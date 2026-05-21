@@ -12,6 +12,7 @@ Handles the virtual contest lifecycle:
 import logging
 import random
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -54,27 +55,48 @@ logger = logging.getLogger("code_arena.contest")
 TIER_CONFIGS: dict[str, dict] = {
     "beginner": {
         "name": "Beginner Contest",
-        "max_elo": 1400,
+        "div": 4,
+        "max_elo": 1399,
         "min_elo": None,
-        "duration_minutes": 90,
-        "problem_count": 4,
+        "duration_minutes": 120,
+        "problem_count": 7,
         "rating_range": [800, 1400],
+    },
+    "pupil": {
+        "name": "Pupil Contest",
+        "div": 3,
+        "max_elo": 1599,
+        "min_elo": None,
+        "duration_minutes": 120,
+        "problem_count": 7,
+        "rating_range": [800, 1600],
     },
     "advanced": {
         "name": "Advanced Contest",
-        "min_elo": 1400,
-        "max_elo": 1800,
+        "div": 2,
+        "max_elo": 2099,
+        "min_elo": None,
         "duration_minutes": 120,
-        "problem_count": 5,
-        "rating_range": [1200, 2000],
+        "problem_count": 6,
+        "rating_range": [1200, 2200],
     },
     "master": {
         "name": "Master Contest",
-        "min_elo": 1800,
+        "div": 1,
+        "min_elo": 1900,
         "max_elo": None,
-        "duration_minutes": 150,
+        "duration_minutes": 120,
         "problem_count": 6,
-        "rating_range": [1600, 2600],
+        "rating_range": [1600, 3000],
+    },
+    "blitz": {
+        "name": "Blitz Contest",
+        "div": None,
+        "min_elo": None,
+        "max_elo": None,
+        "duration_minutes": 60,
+        "problem_count": 4,
+        "rating_range": None,  # Dynamic, based on participant average
     },
 }
 
@@ -119,46 +141,67 @@ class ContestService:
 
     @staticmethod
     async def get_tiers(db: AsyncSession, user: User) -> list[TierInfo]:
-        """Return all tiers with eligibility info for the user.
+        """Return all tiers with eligibility and rated info for the user.
 
-        A user can join tiers at their level or below, but not above.
+        Eligibility: users can join tiers at their level or below (downgrade).
+        They cannot join tiers above their level (cannot upgrade).
+
+        Rated: determines whether the contest is rated for this user.
+        - Div.4 (beginner): rated only if elo <= 1399
+        - Div.3 (pupil): rated only if elo <= 1599
+        - Div.2 (advanced): rated only if elo <= 2099
+        - Div.1 (master): rated only if elo >= 1900
+        - Blitz: always rated
         """
         tiers: list[TierInfo] = []
         for tier_key, cfg in TIER_CONFIGS.items():
             min_elo = cfg.get("min_elo")
             max_elo = cfg.get("max_elo")
 
-            # Eligibility: user Elo must be >= min (if set) and < max (if set)
-            # Users can join lower tiers (downgrade allowed) but not higher
-            eligible = True
-            if min_elo is not None and user.elo < min_elo:
-                eligible = False
-            if max_elo is not None and user.elo >= max_elo:
-                eligible = False
-
-            # Also allow users to downgrade: check if user elo meets the max
-            # For "beginner": elo < 1400 directly, OR elo >= 1400 means downgrade allowed
-            # For "advanced": 1400 <= elo < 1800 directly, OR elo >= 1800 downgrade allowed
-            # For "master": elo >= 1800 directly
-            #
-            # Rule: can join if elo >= min_elo (if set). max_elo is the upper bound
-            # for the tier's target audience but doesn't block higher-Elo users.
+            # Eligibility: users can downgrade (join lower tiers) but not upgrade.
+            # Only min_elo blocks entry. max_elo is the target audience ceiling.
             eligible = not (min_elo is not None and user.elo < min_elo)
+
+            # Determine if contest is rated for this user
+            is_rated = ContestService._is_rated_for_user(tier_key, user.elo)
 
             tiers.append(
                 TierInfo(
                     tier=tier_key,
                     name=cfg["name"],
+                    div=cfg.get("div"),
                     min_elo=min_elo,
                     max_elo=max_elo,
                     duration_minutes=cfg["duration_minutes"],
                     problem_count=cfg["problem_count"],
-                    rating_range=cfg["rating_range"],
+                    rating_range=cfg.get("rating_range"),
                     eligible=eligible,
+                    is_rated=is_rated,
                 )
             )
 
         return tiers
+
+    @staticmethod
+    def _is_rated_for_user(tier_key: str, user_elo: int) -> bool:
+        """Determine if a contest is rated for the given user Elo.
+
+        Rules:
+        - beginner (Div.4): rated if elo <= 1399
+        - pupil (Div.3): rated if elo <= 1599
+        - advanced (Div.2): rated if elo <= 2099
+        - master (Div.1): rated if elo >= 1900
+        - blitz: always rated
+        """
+        rated_rules: dict[str, Callable[[int], bool]] = {
+            "beginner": lambda elo: elo <= 1399,
+            "pupil": lambda elo: elo <= 1599,
+            "advanced": lambda elo: elo <= 2099,
+            "master": lambda elo: elo >= 1900,
+            "blitz": lambda _: True,
+        }
+        rule = rated_rules.get(tier_key)
+        return rule(user_elo) if rule else False
 
     # ------------------------------------------------------------------
     # 2. Start contest
@@ -177,7 +220,7 @@ class ContestService:
 
         cfg = TIER_CONFIGS[tier]
 
-        # Check eligibility
+        # Check eligibility (only min_elo blocks entry; users can downgrade)
         min_elo = cfg.get("min_elo")
         if min_elo is not None and user.elo < min_elo:
             raise BadRequestException(message=f"Elo {user.elo} is too low for {tier} contest (min: {min_elo})")
@@ -192,12 +235,18 @@ class ContestService:
         if active_session is not None:
             raise BadRequestException(message="You already have an active contest session")
 
+        # Determine rating range for problem selection
+        rating_range = cfg.get("rating_range")
+        if rating_range is None and tier == "blitz":
+            # Blitz: dynamic rating range based on user's Elo
+            rating_range = ContestService._calculate_blitz_rating_range(user.elo)
+
         # Select problems from CF API
         problems = await ContestService._select_problems(
             cf_service=cf_service,
             user_id=user.id,
             db=db,
-            rating_range=cfg["rating_range"],
+            rating_range=rating_range,
             count=cfg["problem_count"],
         )
 
@@ -1002,6 +1051,17 @@ class ContestService:
                 )
             )
         return problems
+
+    @staticmethod
+    def _calculate_blitz_rating_range(user_elo: int) -> list[int]:
+        """Calculate dynamic rating range for Blitz contests.
+
+        Based on the user's Elo rating with a +/- 400 spread,
+        clamped to reasonable bounds.
+        """
+        min_rating = max(800, user_elo - 400)
+        max_rating = min(3500, user_elo + 400)
+        return [min_rating, max_rating]
 
     @staticmethod
     async def _build_problem_infos(

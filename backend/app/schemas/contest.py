@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 class StartContestRequest(BaseModel):
     """Request body for starting a contest session."""
 
-    tier: str = Field(description="Contest tier: beginner, advanced, or master")
+    tier: str = Field(description="Contest tier: beginner, pupil, advanced, master, or blitz")
 
 
 class SubmitContestProblemRequest(BaseModel):
@@ -35,12 +35,14 @@ class TierInfo(BaseModel):
 
     tier: str
     name: str
+    div: int | None = None
     min_elo: int | None = None
     max_elo: int | None = None
     duration_minutes: int
     problem_count: int
-    rating_range: list[int]
+    rating_range: list[int] | None = None
     eligible: bool = False
+    is_rated: bool = False
 
 
 class ContestProblemInfo(BaseModel):
