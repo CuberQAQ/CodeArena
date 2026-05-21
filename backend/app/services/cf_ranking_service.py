@@ -31,17 +31,18 @@ logger = logging.getLogger("code_arena.cf_ranking")
 # Configuration
 # ---------------------------------------------------------------------------
 
-BUCKET_SIZE = 200        # rating bucket width
+BUCKET_SIZE = 200  # rating bucket width
 SAMPLES_PER_BUCKET = 100  # target samples per bucket
-DEFAULT_DEGREE = 2        # polynomial regression degree
-NOISE_MAG_MIN = 0.005      # 0.5 % minimum noise magnitude
-NOISE_MAG_MAX = 0.02       # 2 % maximum noise magnitude
+DEFAULT_DEGREE = 2  # polynomial regression degree
+NOISE_MAG_MIN = 0.005  # 0.5 % minimum noise magnitude
+NOISE_MAG_MAX = 0.02  # 2 % maximum noise magnitude
 DEFAULT_TIME_MINUTES = 30.0  # default time approximation for CF submissions
 
 
 # ---------------------------------------------------------------------------
 # In-memory pipeline state (module-level singleton)
 # ---------------------------------------------------------------------------
+
 
 class PipelineState:
     """Tracks the running state of the sampling pipeline."""
@@ -229,8 +230,8 @@ def _fit_polynomial(xs: list[float], ys: list[float], degree: int = DEFAULT_DEGR
     rhs = [0.0] * n
 
     for x, y in zip(xs, ys, strict=True):
-        powers = [x ** p for p in range(2 * n - 1)]  # x^0 .. x^(2n-2)
-        y_powers = [y * (x ** p) for p in range(n)]
+        powers = [x**p for p in range(2 * n - 1)]  # x^0 .. x^(2n-2)
+        y_powers = [y * (x**p) for p in range(n)]
         for i in range(n):
             for j in range(n):
                 mat[i][j] += powers[i + j]
@@ -336,9 +337,7 @@ async def run_sampling_pipeline(
             return {"error": state.error, "state": state.to_dict()}
 
         # --- Step 2: Determine batch number (resume incomplete batch or start new) ---
-        max_batch_result = await db.execute(
-            select(func.coalesce(func.max(CFSampleUser.sample_batch), 0))
-        )
+        max_batch_result = await db.execute(select(func.coalesce(func.max(CFSampleUser.sample_batch), 0)))
         max_batch = max_batch_result.scalar_one()
 
         # Check for incomplete batch: has records but no regression coefficients
@@ -365,9 +364,7 @@ async def run_sampling_pipeline(
 
         # --- Step 4: Check for already-processed handles in this batch (resume support) ---
         existing_result = await db.execute(
-            select(CFSampleUser.cf_handle).where(
-                CFSampleUser.sample_batch == current_batch
-            )
+            select(CFSampleUser.cf_handle).where(CFSampleUser.sample_batch == current_batch)
         )
         processed_handles = {row[0] for row in existing_result.all()}
 
@@ -497,9 +494,7 @@ async def get_regression_model(db: AsyncSession) -> dict[str, Any] | None:
     Looks up the most recent batch that has regression coefficients stored.
     """
     # Get max batch first
-    max_batch = await db.scalar(
-        select(func.max(CFSampleUser.sample_batch))
-    )
+    max_batch = await db.scalar(select(func.max(CFSampleUser.sample_batch)))
     if max_batch is None:
         return None
 

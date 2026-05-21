@@ -6,16 +6,13 @@ with zero PP or an empty user base.
 
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import patch
 
 import pytest
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.core.response import success_response
 from app.core.security import hash_password
-from app.models.user import User
 
 # ---------------------------------------------------------------------------
 # Lightweight SQLite-compatible test models
@@ -112,9 +109,7 @@ async def _calculate_pp_rank(user: _TestUser, db: AsyncSession):
 
     user_pp = user.pp or 0
 
-    total_result = await db.execute(
-        select(func.count(_TestUser.id)).where(_TestUser.is_active.is_(True))
-    )
+    total_result = await db.execute(select(func.count(_TestUser.id)).where(_TestUser.is_active.is_(True)))
     total_users = total_result.scalar() or 0
 
     if total_users == 0 or user_pp <= 0:
@@ -123,10 +118,7 @@ async def _calculate_pp_rank(user: _TestUser, db: AsyncSession):
     higher_result = await db.execute(
         select(func.count(_TestUser.id)).where(
             _TestUser.is_active.is_(True),
-            (
-                (_TestUser.pp > user_pp)
-                | ((_TestUser.pp == user_pp) & (_TestUser.created_at < user.created_at))
-            ),
+            ((_TestUser.pp > user_pp) | ((_TestUser.pp == user_pp) & (_TestUser.created_at < user.created_at))),
         )
     )
     higher_count = higher_result.scalar() or 0
@@ -186,6 +178,7 @@ class TestPPRank:
 
         # The 3rd user (index 2, pp=800) should be rank 3
         from sqlalchemy import select
+
         result = await db.execute(select(_TestUser).where(_TestUser.username == "user2"))
         user2 = result.scalar_one()
         rank_info = await _calculate_pp_rank(user2, db)
@@ -211,6 +204,7 @@ class TestPPRank:
         await _make_user(db, "inactive", "inactive@test.com", pp=9999.0, is_active=False)
 
         from sqlalchemy import select
+
         result = await db.execute(select(_TestUser).where(_TestUser.username == "active"))
         active_user = result.scalar_one()
         rank_info = await _calculate_pp_rank(active_user, db)
@@ -219,7 +213,7 @@ class TestPPRank:
 
     async def test_empty_database(self, db):
         """Edge case: no users at all (should not happen in practice)."""
-        user = _TestUser(
+        _TestUser(
             username="ghost",
             email="ghost@test.com",
             password_hash=hash_password("TestPass123"),
@@ -232,9 +226,7 @@ class TestPPRank:
         # the total_users == 0 guard path.
         from sqlalchemy import func, select
 
-        total_result = await db.execute(
-            select(func.count(_TestUser.id)).where(_TestUser.is_active.is_(True))
-        )
+        total_result = await db.execute(select(func.count(_TestUser.id)).where(_TestUser.is_active.is_(True)))
         total_users = total_result.scalar() or 0
         assert total_users == 0
 
@@ -250,6 +242,7 @@ class TestPPRank:
             )
 
         from sqlalchemy import select
+
         result = await db.execute(select(_TestUser).where(_TestUser.username == "u0"))
         top_user = result.scalar_one()
         rank_info = await _calculate_pp_rank(top_user, db)
@@ -268,6 +261,7 @@ class TestPPRank:
             )
 
         from sqlalchemy import select
+
         result = await db.execute(select(_TestUser).where(_TestUser.username == "u4"))
         last_user = result.scalar_one()
         rank_info = await _calculate_pp_rank(last_user, db)

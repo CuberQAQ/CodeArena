@@ -61,10 +61,12 @@ class UserMedalStatsResponse(BaseModel):
 
     stats: dict[str, dict[str, int]] = Field(
         description="Medal counts grouped by level and type",
-        examples=[{
-            "regional": {"gold": 3, "silver": 1},
-            "provincial": {"gold": 2},
-        }],
+        examples=[
+            {
+                "regional": {"gold": 3, "silver": 1},
+                "provincial": {"gold": 2},
+            }
+        ],
     )
     total_medals: int = Field(description="Total number of medals earned")
 

@@ -31,9 +31,9 @@ logger = logging.getLogger("code_arena.time_factor")
 # Constants
 # ---------------------------------------------------------------------------
 
-BUCKET_SIZE: int = 200          # rating bucket width in points
-MIN_BUCKET_SIZE: int = 5        # minimum data points per bucket before expansion
-MIN_CONTEST_ID: int = 1         # minimum valid contest ID
+BUCKET_SIZE: int = 200  # rating bucket width in points
+MIN_BUCKET_SIZE: int = 5  # minimum data points per bucket before expansion
+MIN_CONTEST_ID: int = 1  # minimum valid contest ID
 TIME_FACTOR_MIN: float = 0.5
 TIME_FACTOR_MAX: float = 1.5
 SECONDS_PER_MINUTE: float = 60.0
@@ -42,6 +42,7 @@ SECONDS_PER_MINUTE: float = 60.0
 # ---------------------------------------------------------------------------
 # Helper: extract contestId from problem_id
 # ---------------------------------------------------------------------------
+
 
 def _extract_contest_id(problem_id: str) -> int | None:
     """Extract the numeric contestId from a problem_id string.
@@ -62,6 +63,7 @@ def _extract_contest_id(problem_id: str) -> int | None:
 # Helper: determine the bucket key for a given rating
 # ---------------------------------------------------------------------------
 
+
 def _rating_bucket(rating: int) -> int:
     """Return the lower bound of the 200-point bucket for *rating*.
 
@@ -73,6 +75,7 @@ def _rating_bucket(rating: int) -> int:
 # ---------------------------------------------------------------------------
 # Helper: compute median of a sorted list
 # ---------------------------------------------------------------------------
+
 
 def _median(values: list[float]) -> float | None:
     """Return the median of a list of floats.  Returns ``None`` if empty."""
@@ -154,10 +157,12 @@ class TimeFactorService:
             return TimeFactorService._fallback_expected_time(problem_rating, user_rating)
 
         # Parse the problem index from problem_id (the letter suffix)
-        index = problem_id[re.match(r"\d+", problem_id).end():] if re.match(r"\d+", problem_id) else ""
+        index = problem_id[re.match(r"\d+", problem_id).end() :] if re.match(r"\d+", problem_id) else ""
 
         bucket_data = TimeFactorService._calculate_focused_times(
-            submissions, rating_changes, index,
+            submissions,
+            rating_changes,
+            index,
         )
 
         if not bucket_data:

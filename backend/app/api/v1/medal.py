@@ -67,11 +67,7 @@ async def get_medal_stats(
     stats = await MedalService.get_user_medal_stats(db, current_user.id)
 
     # Calculate total medals
-    total = sum(
-        count
-        for level_stats in stats.values()
-        for count in level_stats.values()
-    )
+    total = sum(count for level_stats in stats.values() for count in level_stats.values())
 
     return success_response(
         data={
@@ -108,11 +104,7 @@ async def get_public_user_medal(
     overall = MedalService.calculate_overall_medal(target_user.elo)
     stats = await MedalService.get_user_medal_stats(db, uid)
 
-    total = sum(
-        count
-        for level_stats in stats.values()
-        for count in level_stats.values()
-    )
+    total = sum(count for level_stats in stats.values() for count in level_stats.values())
 
     return success_response(
         data={

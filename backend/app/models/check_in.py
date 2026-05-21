@@ -24,19 +24,12 @@ class CheckIn(Base, UUIDPrimaryKeyMixin):
     )
     checkin_date: Mapped[date] = mapped_column(Date, nullable=False)
     streak_days: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_makeup: Mapped[bool] = mapped_column(
-        Boolean, server_default="false", nullable=False
-    )
+    is_makeup: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     tokens_awarded: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="check_ins")
 
     def __repr__(self) -> str:
-        return (
-            f"<CheckIn(id={self.id}, user_id={self.user_id}, "
-            f"date={self.checkin_date}, streak={self.streak_days})>"
-        )
+        return f"<CheckIn(id={self.id}, user_id={self.user_id}, date={self.checkin_date}, streak={self.streak_days})>"

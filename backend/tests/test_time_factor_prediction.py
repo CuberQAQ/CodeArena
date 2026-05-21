@@ -152,7 +152,7 @@ class TestTimeFactorPredictionEndpoint:
         for i in range(len(points) - 1):
             assert points[i]["elo_change_estimate"] >= points[i + 1]["elo_change_estimate"], (
                 f"Elo at {points[i]['minutes']}min ({points[i]['elo_change_estimate']}) "
-                f"should be >= Elo at {points[i+1]['minutes']}min ({points[i+1]['elo_change_estimate']})"
+                f"should be >= Elo at {points[i + 1]['minutes']}min ({points[i + 1]['elo_change_estimate']})"
             )
 
     def test_expected_time_call_args(self, mock_calculate_expected_time):

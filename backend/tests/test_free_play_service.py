@@ -11,7 +11,6 @@ Covers:
 """
 
 import uuid
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,14 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.models.free_play_session import FreePlaySession
 from app.models.user import User
-from app.schemas.free_play import (
-    FreePlayProblemInfo,
-    FreePlaySearchResponse,
-    FreePlayStartResponse,
-    FreePlaySubmitResponse,
-)
 from app.services.free_play_service import FreePlayService
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -90,17 +82,25 @@ class TestSearchProblems:
 
         # Mock solved IDs
         with patch.object(
-            FreePlayService, "_get_solved_problem_ids", return_value=set(),
+            FreePlayService,
+            "_get_solved_problem_ids",
+            return_value=set(),
         ):
-            cf_service.get_problemset_problems.return_value = _make_cf_response([
-                _make_problem(rating=1400, tags=["dp"]),
-                _make_problem(contest_id=1921, index="B", rating=1600, tags=["greedy"]),
-                _make_problem(contest_id=1922, index="C", rating=1500, tags=["dp"]),
-            ])
+            cf_service.get_problemset_problems.return_value = _make_cf_response(
+                [
+                    _make_problem(rating=1400, tags=["dp"]),
+                    _make_problem(contest_id=1921, index="B", rating=1600, tags=["greedy"]),
+                    _make_problem(contest_id=1922, index="C", rating=1500, tags=["dp"]),
+                ]
+            )
 
             result = await FreePlayService.search_problems(
-                db=db, user=user, min_rating=1400, max_rating=1500,
-                tags=["dp"], cf_service=cf_service,
+                db=db,
+                user=user,
+                min_rating=1400,
+                max_rating=1500,
+                tags=["dp"],
+                cf_service=cf_service,
             )
 
         assert result.found is True
@@ -116,16 +116,24 @@ class TestSearchProblems:
         cf_service = AsyncMock()
 
         with patch.object(
-            FreePlayService, "_get_solved_problem_ids", return_value=set(),
+            FreePlayService,
+            "_get_solved_problem_ids",
+            return_value=set(),
         ):
-            cf_service.get_problemset_problems.return_value = _make_cf_response([
-                _make_problem(rating=1500),
-                _make_problem(rating=1600),
-            ])
+            cf_service.get_problemset_problems.return_value = _make_cf_response(
+                [
+                    _make_problem(rating=1500),
+                    _make_problem(rating=1600),
+                ]
+            )
 
             result = await FreePlayService.search_problems(
-                db=db, user=user, min_rating=3500, max_rating=3600,
-                tags=[], cf_service=cf_service,
+                db=db,
+                user=user,
+                min_rating=3500,
+                max_rating=3600,
+                tags=[],
+                cf_service=cf_service,
             )
 
         assert result.found is False
@@ -141,16 +149,24 @@ class TestSearchProblems:
 
         # User has solved 1920A
         with patch.object(
-            FreePlayService, "_get_solved_problem_ids", return_value={"1920A"},
+            FreePlayService,
+            "_get_solved_problem_ids",
+            return_value={"1920A"},
         ):
-            cf_service.get_problemset_problems.return_value = _make_cf_response([
-                _make_problem(contest_id=1920, index="A", rating=1500, tags=["dp"]),
-                _make_problem(contest_id=1921, index="B", rating=1500, tags=["dp"]),
-            ])
+            cf_service.get_problemset_problems.return_value = _make_cf_response(
+                [
+                    _make_problem(contest_id=1920, index="A", rating=1500, tags=["dp"]),
+                    _make_problem(contest_id=1921, index="B", rating=1500, tags=["dp"]),
+                ]
+            )
 
             result = await FreePlayService.search_problems(
-                db=db, user=user, min_rating=1400, max_rating=1600,
-                tags=["dp"], cf_service=cf_service,
+                db=db,
+                user=user,
+                min_rating=1400,
+                max_rating=1600,
+                tags=["dp"],
+                cf_service=cf_service,
             )
 
         assert result.found is True
@@ -166,11 +182,17 @@ class TestSearchProblems:
         cf_service.get_problemset_problems.side_effect = Exception("Network error")
 
         with patch.object(
-            FreePlayService, "_get_solved_problem_ids", return_value=set(),
+            FreePlayService,
+            "_get_solved_problem_ids",
+            return_value=set(),
         ):
             result = await FreePlayService.search_problems(
-                db=db, user=user, min_rating=1400, max_rating=1600,
-                tags=[], cf_service=cf_service,
+                db=db,
+                user=user,
+                min_rating=1400,
+                max_rating=1600,
+                tags=[],
+                cf_service=cf_service,
             )
 
         assert result.found is False
@@ -203,15 +225,21 @@ class TestRecommendProblem:
         with patch("app.services.free_play_service.MEloService") as mock_melo:
             mock_melo.get_all_melos = AsyncMock(return_value=[melo_dp, melo_graphs])
             with patch.object(
-                FreePlayService, "_get_solved_problem_ids", return_value=set(),
+                FreePlayService,
+                "_get_solved_problem_ids",
+                return_value=set(),
             ):
-                cf_service.get_problemset_problems.return_value = _make_cf_response([
-                    _make_problem(contest_id=100, index="A", rating=1100, tags=["dp"]),
-                    _make_problem(contest_id=200, index="B", rating=1500, tags=["graphs"]),
-                ])
+                cf_service.get_problemset_problems.return_value = _make_cf_response(
+                    [
+                        _make_problem(contest_id=100, index="A", rating=1100, tags=["dp"]),
+                        _make_problem(contest_id=200, index="B", rating=1500, tags=["graphs"]),
+                    ]
+                )
 
                 result = await FreePlayService.recommend_problem(
-                    db=db, user=user, cf_service=cf_service,
+                    db=db,
+                    user=user,
+                    cf_service=cf_service,
                 )
 
         # DP tag has lower M-Elo (1000), so [1000-100, 1000+200] = [900, 1200]
@@ -232,15 +260,21 @@ class TestRecommendProblem:
         with patch("app.services.free_play_service.MEloService") as mock_melo:
             mock_melo.get_all_melos = AsyncMock(return_value=[])
             with patch.object(
-                FreePlayService, "_get_solved_problem_ids", return_value=set(),
+                FreePlayService,
+                "_get_solved_problem_ids",
+                return_value=set(),
             ):
-                cf_service.get_problemset_problems.return_value = _make_cf_response([
-                    _make_problem(rating=1100),
-                    _make_problem(rating=1300),
-                ])
+                cf_service.get_problemset_problems.return_value = _make_cf_response(
+                    [
+                        _make_problem(rating=1100),
+                        _make_problem(rating=1300),
+                    ]
+                )
 
                 result = await FreePlayService.recommend_problem(
-                    db=db, user=user, cf_service=cf_service,
+                    db=db,
+                    user=user,
+                    cf_service=cf_service,
                 )
 
         assert result.found is True
@@ -261,14 +295,20 @@ class TestRecommendProblem:
         with patch("app.services.free_play_service.MEloService") as mock_melo:
             mock_melo.get_all_melos = AsyncMock(return_value=[melo_dp])
             with patch.object(
-                FreePlayService, "_get_solved_problem_ids", return_value=set(),
+                FreePlayService,
+                "_get_solved_problem_ids",
+                return_value=set(),
             ):
-                cf_service.get_problemset_problems.return_value = _make_cf_response([
-                    _make_problem(rating=800, tags=["math"]),
-                ])
+                cf_service.get_problemset_problems.return_value = _make_cf_response(
+                    [
+                        _make_problem(rating=800, tags=["math"]),
+                    ]
+                )
 
                 result = await FreePlayService.recommend_problem(
-                    db=db, user=user, cf_service=cf_service,
+                    db=db,
+                    user=user,
+                    cf_service=cf_service,
                 )
 
         assert result.found is False
@@ -334,20 +374,22 @@ class TestStartSession:
         db = AsyncMock(spec=AsyncSession)
         user = _make_user()
 
-        with patch.object(
-            FreePlayService,
-            "_assert_no_active_session",
-            side_effect=BadRequestException(message="You already have an active Free Play session"),
+        with (
+            patch.object(
+                FreePlayService,
+                "_assert_no_active_session",
+                side_effect=BadRequestException(message="You already have an active Free Play session"),
+            ),
+            pytest.raises(BadRequestException, match="already have an active"),
         ):
-            with pytest.raises(BadRequestException, match="already have an active"):
-                await FreePlayService.start_session(
-                    db=db,
-                    user=user,
-                    problem_contest_id=1920,
-                    problem_index="A",
-                    problem_rating=1500,
-                    problem_tags=["dp"],
-                )
+            await FreePlayService.start_session(
+                db=db,
+                user=user,
+                problem_contest_id=1920,
+                problem_index="A",
+                problem_rating=1500,
+                problem_tags=["dp"],
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -379,10 +421,14 @@ class TestSubmitResult:
 
         with patch.object(FreePlayService, "_get_session_or_raise", return_value=session):
             with patch("app.services.free_play_service.ConfigService") as mock_config:
-                mock_config.get_config = AsyncMock(return_value={
-                    "k_newbie": 40, "k_veteran": 20,
-                    "k_newbie_threshold": 20, "k_veteran_threshold": 100,
-                })
+                mock_config.get_config = AsyncMock(
+                    return_value={
+                        "k_newbie": 40,
+                        "k_veteran": 20,
+                        "k_newbie_threshold": 20,
+                        "k_veteran_threshold": 100,
+                    }
+                )
                 with patch("app.services.free_play_service.EloService") as mock_elo:
                     mock_elo.calculate_s_value.return_value = 1.0
                     mock_elo.calculate_k_factor.return_value = 32.0
@@ -407,9 +453,14 @@ class TestSubmitResult:
                                     mock_melo.batch_update_melo_for_problem = AsyncMock(return_value={"dp": 5})
 
                                     result = await FreePlayService.submit_result(
-                                        db=db, user=user, session_id=session_id,
-                                        solved=True, time_spent=300, attempts=1,
-                                        error_count=0, cf_service=None,
+                                        db=db,
+                                        user=user,
+                                        session_id=session_id,
+                                        solved=True,
+                                        time_spent=300,
+                                        attempts=1,
+                                        error_count=0,
+                                        cf_service=None,
                                     )
 
         assert result.solved is True
@@ -439,10 +490,14 @@ class TestSubmitResult:
 
         with patch.object(FreePlayService, "_get_session_or_raise", return_value=session):
             with patch("app.services.free_play_service.ConfigService") as mock_config:
-                mock_config.get_config = AsyncMock(return_value={
-                    "k_newbie": 40, "k_veteran": 20,
-                    "k_newbie_threshold": 20, "k_veteran_threshold": 100,
-                })
+                mock_config.get_config = AsyncMock(
+                    return_value={
+                        "k_newbie": 40,
+                        "k_veteran": 20,
+                        "k_newbie_threshold": 20,
+                        "k_veteran_threshold": 100,
+                    }
+                )
                 with patch("app.services.free_play_service.EloService") as mock_elo:
                     mock_elo.calculate_s_value.return_value = 0.0
                     mock_elo.calculate_k_factor.return_value = 32.0
@@ -462,9 +517,14 @@ class TestSubmitResult:
                                 mock_melo.batch_update_melo_for_problem = AsyncMock(return_value={"dp": -5})
 
                                 result = await FreePlayService.submit_result(
-                                    db=db, user=user, session_id=session_id,
-                                    solved=False, time_spent=600, attempts=3,
-                                    error_count=2, cf_service=None,
+                                    db=db,
+                                    user=user,
+                                    session_id=session_id,
+                                    solved=False,
+                                    time_spent=600,
+                                    attempts=3,
+                                    error_count=2,
+                                    cf_service=None,
                                 )
 
         assert result.solved is False
@@ -493,10 +553,14 @@ class TestSubmitResult:
 
         with patch.object(FreePlayService, "_get_session_or_raise", return_value=session):
             with patch("app.services.free_play_service.ConfigService") as mock_config:
-                mock_config.get_config = AsyncMock(return_value={
-                    "k_newbie": 40, "k_veteran": 20,
-                    "k_newbie_threshold": 20, "k_veteran_threshold": 100,
-                })
+                mock_config.get_config = AsyncMock(
+                    return_value={
+                        "k_newbie": 40,
+                        "k_veteran": 20,
+                        "k_newbie_threshold": 20,
+                        "k_veteran_threshold": 100,
+                    }
+                )
                 with patch("app.services.free_play_service.EloService") as mock_elo:
                     mock_elo.calculate_s_value.return_value = 1.0
                     mock_elo.calculate_k_factor.return_value = 32.0
@@ -521,9 +585,14 @@ class TestSubmitResult:
                                     mock_melo.batch_update_melo_for_problem = AsyncMock(return_value={"dp": 10})
 
                                     result = await FreePlayService.submit_result(
-                                        db=db, user=user, session_id=session_id,
-                                        solved=True, time_spent=300, attempts=1,
-                                        error_count=0, cf_service=None,
+                                        db=db,
+                                        user=user,
+                                        session_id=session_id,
+                                        solved=True,
+                                        time_spent=300,
+                                        attempts=1,
+                                        error_count=0,
+                                        cf_service=None,
                                     )
 
         assert result.overkill_multiplier == 2.0
@@ -550,10 +619,14 @@ class TestSubmitResult:
 
         with patch.object(FreePlayService, "_get_session_or_raise", return_value=session):
             with patch("app.services.free_play_service.ConfigService") as mock_config:
-                mock_config.get_config = AsyncMock(return_value={
-                    "k_newbie": 40, "k_veteran": 20,
-                    "k_newbie_threshold": 20, "k_veteran_threshold": 100,
-                })
+                mock_config.get_config = AsyncMock(
+                    return_value={
+                        "k_newbie": 40,
+                        "k_veteran": 20,
+                        "k_newbie_threshold": 20,
+                        "k_veteran_threshold": 100,
+                    }
+                )
                 with patch("app.services.free_play_service.EloService") as mock_elo:
                     mock_elo.calculate_s_value.return_value = 1.0
                     mock_elo.calculate_k_factor.return_value = 32.0
@@ -575,12 +648,19 @@ class TestSubmitResult:
                                 mock_econ.TIME_BONUS_THRESHOLD_SECONDS = 1200
 
                                 with patch("app.services.free_play_service.MEloService") as mock_melo:
-                                    mock_melo.batch_update_melo_for_problem = AsyncMock(return_value={"dp": 5, "greedy": 3})
+                                    mock_melo.batch_update_melo_for_problem = AsyncMock(
+                                        return_value={"dp": 5, "greedy": 3}
+                                    )
 
                                     result = await FreePlayService.submit_result(
-                                        db=db, user=user, session_id=session_id,
-                                        solved=True, time_spent=300, attempts=1,
-                                        error_count=0, cf_service=None,
+                                        db=db,
+                                        user=user,
+                                        session_id=session_id,
+                                        solved=True,
+                                        time_spent=300,
+                                        attempts=1,
+                                        error_count=0,
+                                        cf_service=None,
                                     )
 
                         # Verify M-Elo was called with coefficient=1.0
@@ -596,18 +676,24 @@ class TestSubmitResult:
         """Submitting to another user's session raises Forbidden."""
         db = AsyncMock(spec=AsyncSession)
         user = _make_user()
-        other_user_id = uuid.uuid4()
+        uuid.uuid4()
 
-        with patch.object(
-            FreePlayService,
-            "_get_session_or_raise",
-            side_effect=ForbiddenException(message="Not the owner"),
+        with (
+            patch.object(
+                FreePlayService,
+                "_get_session_or_raise",
+                side_effect=ForbiddenException(message="Not the owner"),
+            ),
+            pytest.raises(ForbiddenException),
         ):
-            with pytest.raises(ForbiddenException):
-                await FreePlayService.submit_result(
-                    db=db, user=user, session_id=uuid.uuid4(),
-                    solved=True, time_spent=300, attempts=1,
-                )
+            await FreePlayService.submit_result(
+                db=db,
+                user=user,
+                session_id=uuid.uuid4(),
+                solved=True,
+                time_spent=300,
+                attempts=1,
+            )
 
     @pytest.mark.asyncio
     async def test_submit_nonexistent_session_raises(self):
@@ -615,16 +701,22 @@ class TestSubmitResult:
         db = AsyncMock(spec=AsyncSession)
         user = _make_user()
 
-        with patch.object(
-            FreePlayService,
-            "_get_session_or_raise",
-            side_effect=NotFoundException(message="not found"),
+        with (
+            patch.object(
+                FreePlayService,
+                "_get_session_or_raise",
+                side_effect=NotFoundException(message="not found"),
+            ),
+            pytest.raises(NotFoundException),
         ):
-            with pytest.raises(NotFoundException):
-                await FreePlayService.submit_result(
-                    db=db, user=user, session_id=uuid.uuid4(),
-                    solved=True, time_spent=300, attempts=1,
-                )
+            await FreePlayService.submit_result(
+                db=db,
+                user=user,
+                session_id=uuid.uuid4(),
+                solved=True,
+                time_spent=300,
+                attempts=1,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -663,7 +755,9 @@ class TestQuitSession:
             db.flush = AsyncMock()
 
             result = await FreePlayService.quit_session(
-                db=db, user=user, session_id=session_id,
+                db=db,
+                user=user,
+                session_id=session_id,
             )
 
         assert result.status == "quit"
@@ -701,7 +795,9 @@ class TestQuitSession:
             db.flush = AsyncMock()
 
             result = await FreePlayService.quit_session(
-                db=db, user=user, session_id=session_id,
+                db=db,
+                user=user,
+                session_id=session_id,
             )
 
         assert result.status == "quit"
@@ -714,15 +810,19 @@ class TestQuitSession:
         db = AsyncMock(spec=AsyncSession)
         user = _make_user()
 
-        with patch.object(
-            FreePlayService,
-            "_get_session_or_raise",
-            side_effect=BadRequestException(message="not active"),
+        with (
+            patch.object(
+                FreePlayService,
+                "_get_session_or_raise",
+                side_effect=BadRequestException(message="not active"),
+            ),
+            pytest.raises(BadRequestException),
         ):
-            with pytest.raises(BadRequestException):
-                await FreePlayService.quit_session(
-                    db=db, user=user, session_id=uuid.uuid4(),
-                )
+            await FreePlayService.quit_session(
+                db=db,
+                user=user,
+                session_id=uuid.uuid4(),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -758,7 +858,9 @@ class TestSessionOwnership:
 
         with pytest.raises(ForbiddenException, match="Not the owner"):
             await FreePlayService._get_session_or_raise(
-                db, session_id, user_id,
+                db,
+                session_id,
+                user_id,
             )
 
     @pytest.mark.asyncio
@@ -769,7 +871,9 @@ class TestSessionOwnership:
 
         with pytest.raises(NotFoundException, match="not found"):
             await FreePlayService._get_session_or_raise(
-                db, uuid.uuid4(), uuid.uuid4(),
+                db,
+                uuid.uuid4(),
+                uuid.uuid4(),
             )
 
 

@@ -327,10 +327,16 @@ class TestContestMedalAwarding:
         contest2 = uuid.uuid4()
 
         medal1 = await MedalService.award_contest_medal(
-            db=db, user_id=user_id, contest_session_id=contest1, pr=2200,
+            db=db,
+            user_id=user_id,
+            contest_session_id=contest1,
+            pr=2200,
         )
         medal2 = await MedalService.award_contest_medal(
-            db=db, user_id=user_id, contest_session_id=contest2, pr=1800,
+            db=db,
+            user_id=user_id,
+            contest_session_id=contest2,
+            pr=1800,
         )
 
         assert medal1 is not None
@@ -347,7 +353,10 @@ class TestContestMedalAwarding:
 
         # PR exactly 1200 -> provincial bronze
         medal = await MedalService.award_contest_medal(
-            db=db, user_id=user_id, contest_session_id=uuid.uuid4(), pr=1200,
+            db=db,
+            user_id=user_id,
+            contest_session_id=uuid.uuid4(),
+            pr=1200,
         )
         assert medal is not None
         assert medal.medal_level == "provincial"
@@ -355,7 +364,10 @@ class TestContestMedalAwarding:
 
         # PR exactly 1199 -> no medal
         medal = await MedalService.award_contest_medal(
-            db=db, user_id=user_id, contest_session_id=uuid.uuid4(), pr=1199,
+            db=db,
+            user_id=user_id,
+            contest_session_id=uuid.uuid4(),
+            pr=1199,
         )
         assert medal is None
 
@@ -366,7 +378,10 @@ class TestContestMedalAwarding:
 
         # PR 2200 -> regional gold (medal based purely on PR value)
         medal = await MedalService.award_contest_medal(
-            db=db, user_id=user_id, contest_session_id=uuid.uuid4(), pr=2200,
+            db=db,
+            user_id=user_id,
+            contest_session_id=uuid.uuid4(),
+            pr=2200,
         )
         assert medal.medal_level == "regional"
         assert medal.medal_type == "gold"
@@ -395,16 +410,25 @@ class TestMedalStats:
         # Award 3 regional gold (PR 2200)
         for _ in range(3):
             await MedalService.award_contest_medal(
-                db=db, user_id=user_id, contest_session_id=uuid.uuid4(), pr=2200,
+                db=db,
+                user_id=user_id,
+                contest_session_id=uuid.uuid4(),
+                pr=2200,
             )
         # Award 1 regional silver (PR 2000)
         await MedalService.award_contest_medal(
-            db=db, user_id=user_id, contest_session_id=uuid.uuid4(), pr=2000,
+            db=db,
+            user_id=user_id,
+            contest_session_id=uuid.uuid4(),
+            pr=2000,
         )
         # Award 2 provincial gold (PR 1600)
         for _ in range(2):
             await MedalService.award_contest_medal(
-                db=db, user_id=user_id, contest_session_id=uuid.uuid4(), pr=1600,
+                db=db,
+                user_id=user_id,
+                contest_session_id=uuid.uuid4(),
+                pr=1600,
             )
 
         stats = await MedalService.get_user_medal_stats(db, user_id)
@@ -421,10 +445,16 @@ class TestMedalStats:
         user2 = uuid.uuid4()
 
         await MedalService.award_contest_medal(
-            db=db, user_id=user1, contest_session_id=uuid.uuid4(), pr=2200,
+            db=db,
+            user_id=user1,
+            contest_session_id=uuid.uuid4(),
+            pr=2200,
         )
         await MedalService.award_contest_medal(
-            db=db, user_id=user2, contest_session_id=uuid.uuid4(), pr=1600,
+            db=db,
+            user_id=user2,
+            contest_session_id=uuid.uuid4(),
+            pr=1600,
         )
 
         stats1 = await MedalService.get_user_medal_stats(db, user1)
@@ -542,8 +572,7 @@ class TestUserSettings:
 
         # Verify
         from sqlalchemy import select
-        result = await db.execute(
-            select(_TestUserSettings).where(_TestUserSettings.user_id == user_id)
-        )
+
+        result = await db.execute(select(_TestUserSettings).where(_TestUserSettings.user_id == user_id))
         fetched = result.scalar_one()
         assert fetched.display_mode == "cf_tier"

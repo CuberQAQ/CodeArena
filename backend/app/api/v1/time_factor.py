@@ -72,9 +72,7 @@ class PredictionResponse(BaseModel):
     """Full prediction response."""
 
     expected_time_minutes: float = Field(..., description="Expected solve time in minutes")
-    time_points: list[TimePoint] = Field(
-        ..., description="Predicted Elo change at each time milestone"
-    )
+    time_points: list[TimePoint] = Field(..., description="Predicted Elo change at each time milestone")
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +96,10 @@ async def get_time_factor_prediction(
 
     # Calculate expected time (seconds -> minutes)
     expected_time_seconds = await TimeFactorService.calculate_expected_time(
-        cf_service, problem_id, problem_rating, user_elo,
+        cf_service,
+        problem_id,
+        problem_rating,
+        user_elo,
     )
     expected_time_minutes = expected_time_seconds / SECONDS_PER_MINUTE
 
@@ -109,7 +110,9 @@ async def get_time_factor_prediction(
 
         # Use the same time_factor calculation as the actual settlement
         time_factor = TimeFactorService.calculate_time_factor(
-            effective_seconds, expected_time_seconds, s_value=1.0,
+            effective_seconds,
+            expected_time_seconds,
+            s_value=1.0,
         )
 
         # Elo change estimate: base * time_factor (approximate, for display only)

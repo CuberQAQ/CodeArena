@@ -16,29 +16,27 @@ Cross-cutting checks:
 """
 
 import json
-import math
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import DateTime, Float, Integer, String, TypeDecorator, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from app.services import contest_service as contest_svc_module
 from app.services import economy_service as economy_svc_module
 from app.services import pve_challenge_service as pve_svc_module
-from app.services import contest_service as contest_svc_module
 from app.services import training_service as training_svc_module
 from app.services.elo_service import EloService
-from app.services.hint_service import HintService
 from app.services.pp_service import PPService as _RealPPService
 from app.services.time_factor_service import TimeFactorService
-
 
 # ---------------------------------------------------------------------------
 # SQLite JSON type helper
 # ---------------------------------------------------------------------------
+
 
 class JSONText(TypeDecorator):
     impl = String(2000)
@@ -58,6 +56,7 @@ class JSONText(TypeDecorator):
 # ---------------------------------------------------------------------------
 # Shared lightweight test models
 # ---------------------------------------------------------------------------
+
 
 class _TestBase(DeclarativeBase):
     pass
@@ -213,6 +212,7 @@ class _TestUserTagElo(_TestBase):
 # Shared engine fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 async def async_engine():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
@@ -313,6 +313,7 @@ async def pve_db(async_engine):
 
     async def _mock_get_config(db, key):
         from app.core.default_config import DEFAULT_CONFIG
+
         return DEFAULT_CONFIG.get("elo", {})
 
     async def _mock_get_submission_count(db, user_id):
@@ -342,8 +343,7 @@ async def pve_db(async_engine):
             mock_elo_cls.get_submission_count = _mock_get_submission_count
             mock_elo_cls.calculate_s_value = staticmethod(
                 lambda is_solved, is_first_ac, error_count: (
-                    1.0 if is_solved and is_first_ac
-                    else (max(0.7, 1.0 - 0.05 * error_count) if is_solved else 0.0)
+                    1.0 if is_solved and is_first_ac else (max(0.7, 1.0 - 0.05 * error_count) if is_solved else 0.0)
                 )
             )
             mock_elo_cls.calculate_expected_score = staticmethod(
@@ -353,9 +353,7 @@ async def pve_db(async_engine):
             mock_elo_cls.record_elo_history = _mock_record_elo_history
             mock_elo_cls.apply_hint_attenuation = staticmethod(EloService.apply_hint_attenuation)
             mock_pp_cls.record_pp = _mock_record_pp
-            mock_pp_cls.calculate_overkill_multiplier = staticmethod(
-                _RealPPService.calculate_overkill_multiplier
-            )
+            mock_pp_cls.calculate_overkill_multiplier = staticmethod(_RealPPService.calculate_overkill_multiplier)
             mock_hint_cls.get_max_hint_level = AsyncMock(return_value=0)
             mock_ach_cls.check_overkill = staticmethod(lambda **kwargs: None)
             mock_ach_cls.check_personal_best_pp = staticmethod(lambda **kwargs: None)
@@ -395,8 +393,12 @@ class TestPvETimeFactor:
 
         # Expected time = 1800s, solve time = 600s -> factor = 1.5
         result_fast = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user, session_id=pve_session.id,
-            solved=True, time_spent=600.0, attempts=1,
+            db=db,
+            user=user,
+            session_id=pve_session.id,
+            solved=True,
+            time_spent=600.0,
+            attempts=1,
             cf_service=AsyncMock(),
         )
 
@@ -407,13 +409,18 @@ class TestPvETimeFactor:
         await db.flush()
 
         result_baseline = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user2, session_id=pve_session2.id,
-            solved=True, time_spent=600.0, attempts=1,
+            db=db,
+            user=user2,
+            session_id=pve_session2.id,
+            solved=True,
+            time_spent=600.0,
+            attempts=1,
             cf_service=None,
         )
 
-        assert result_fast.elo_change > result_baseline.elo_change, \
+        assert result_fast.elo_change > result_baseline.elo_change, (
             f"Fast solve ({result_fast.elo_change}) should give more Elo than baseline ({result_baseline.elo_change})"
+        )
 
     @pytest.mark.asyncio
     async def test_slow_solve_elo_reduction(self, pve_db):
@@ -426,8 +433,12 @@ class TestPvETimeFactor:
 
         # Expected time = 1800s, solve time = 3600s -> factor = 1800/3600 = 0.5
         result_slow = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user, session_id=pve_session.id,
-            solved=True, time_spent=3600.0, attempts=1,
+            db=db,
+            user=user,
+            session_id=pve_session.id,
+            solved=True,
+            time_spent=3600.0,
+            attempts=1,
             cf_service=AsyncMock(),
         )
 
@@ -438,13 +449,18 @@ class TestPvETimeFactor:
         await db.flush()
 
         result_baseline = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user2, session_id=pve_session2.id,
-            solved=True, time_spent=600.0, attempts=1,
+            db=db,
+            user=user2,
+            session_id=pve_session2.id,
+            solved=True,
+            time_spent=600.0,
+            attempts=1,
             cf_service=None,
         )
 
-        assert result_slow.elo_change < result_baseline.elo_change, \
+        assert result_slow.elo_change < result_baseline.elo_change, (
             f"Slow solve ({result_slow.elo_change}) should give less Elo than baseline ({result_baseline.elo_change})"
+        )
 
     @pytest.mark.asyncio
     async def test_failure_no_time_factor_effect(self, pve_db):
@@ -456,8 +472,12 @@ class TestPvETimeFactor:
         await db.flush()
 
         result_with_tf = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user, session_id=pve_session.id,
-            solved=False, time_spent=600.0, attempts=3,
+            db=db,
+            user=user,
+            session_id=pve_session.id,
+            solved=False,
+            time_spent=600.0,
+            attempts=3,
             cf_service=AsyncMock(),
         )
 
@@ -467,13 +487,18 @@ class TestPvETimeFactor:
         await db.flush()
 
         result_no_tf = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user2, session_id=pve_session2.id,
-            solved=False, time_spent=600.0, attempts=3,
+            db=db,
+            user=user2,
+            session_id=pve_session2.id,
+            solved=False,
+            time_spent=600.0,
+            attempts=3,
             cf_service=None,
         )
 
-        assert result_with_tf.elo_change == result_no_tf.elo_change, \
+        assert result_with_tf.elo_change == result_no_tf.elo_change, (
             f"Failure should be same with/without time factor: {result_with_tf.elo_change} vs {result_no_tf.elo_change}"
+        )
 
     @pytest.mark.asyncio
     async def test_wa_penalty_increases_effective_time(self, pve_db):
@@ -487,8 +512,13 @@ class TestPvETimeFactor:
         await db.flush()
 
         result_no_wa = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user1, session_id=pve_session1.id,
-            solved=True, time_spent=600.0, attempts=1, error_count=0,
+            db=db,
+            user=user1,
+            session_id=pve_session1.id,
+            solved=True,
+            time_spent=600.0,
+            attempts=1,
+            error_count=0,
             cf_service=AsyncMock(),
         )
 
@@ -499,13 +529,19 @@ class TestPvETimeFactor:
         await db.flush()
 
         result_with_wa = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user2, session_id=pve_session2.id,
-            solved=True, time_spent=600.0, attempts=4, error_count=3,
+            db=db,
+            user=user2,
+            session_id=pve_session2.id,
+            solved=True,
+            time_spent=600.0,
+            attempts=4,
+            error_count=3,
             cf_service=AsyncMock(),
         )
 
-        assert result_no_wa.elo_change > result_with_wa.elo_change, \
+        assert result_no_wa.elo_change > result_with_wa.elo_change, (
             f"No WA ({result_no_wa.elo_change}) should give more Elo than 3 WA ({result_with_wa.elo_change})"
+        )
 
     @pytest.mark.asyncio
     async def test_hint_attenuation_and_time_factor_stack(self, pve_db):
@@ -519,8 +555,12 @@ class TestPvETimeFactor:
         await db.flush()
 
         result_baseline = await pve_svc_module.PvEChallengeService.submit_result(
-            db=db, user=user1, session_id=pve_session1.id,
-            solved=True, time_spent=600.0, attempts=1,
+            db=db,
+            user=user1,
+            session_id=pve_session1.id,
+            solved=True,
+            time_spent=600.0,
+            attempts=1,
             cf_service=None,
         )
 
@@ -532,15 +572,21 @@ class TestPvETimeFactor:
 
         with patch.object(pve_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=2)):
             result_stacked = await pve_svc_module.PvEChallengeService.submit_result(
-                db=db, user=user2, session_id=pve_session2.id,
-                solved=True, time_spent=600.0, attempts=1,
+                db=db,
+                user=user2,
+                session_id=pve_session2.id,
+                solved=True,
+                time_spent=600.0,
+                attempts=1,
                 cf_service=AsyncMock(),
             )
 
         # Expected: baseline * 0.50 (hint) * 1.5 (time factor) = baseline * 0.75
         expected_stacked = round(result_baseline.elo_change * 0.50 * 1.5)
-        assert result_stacked.elo_change == expected_stacked, \
-            f"Stacked: {result_stacked.elo_change} vs expected {expected_stacked} (baseline={result_baseline.elo_change})"
+        assert result_stacked.elo_change == expected_stacked, (
+            f"Stacked: {result_stacked.elo_change} vs expected "
+            f"{expected_stacked} (baseline={result_baseline.elo_change})"
+        )
 
 
 # ===========================================================================
@@ -685,6 +731,7 @@ async def training_db(async_engine):
             mock_tf_cls.calculate_expected_time = AsyncMock(return_value=1800.0)
 
             from app.services import melo_service as melo_svc_module
+
             with (
                 patch.object(melo_svc_module, "UserTagElo", _TestUserTagElo),
                 patch.object(melo_svc_module, "User", _TestUser),
@@ -746,24 +793,37 @@ class TestTrainingTimeFactor:
 
         # With time factor (expected=1800, solve=600 -> factor=1.5)
         result_with_tf = await training_svc_module.TrainingService._calculate_training_elo(
-            db, user, problem_rating=1500, session_id=session.id,
-            topic_id=topic.id, solved=True, attempts=1,
-            problem_id="100A", time_spent=600.0, cf_service=AsyncMock(),
+            db,
+            user,
+            problem_rating=1500,
+            session_id=session.id,
+            topic_id=topic.id,
+            solved=True,
+            attempts=1,
+            problem_id="100A",
+            time_spent=600.0,
+            cf_service=AsyncMock(),
         )
         elo_with_tf = result_with_tf["global_elo_change"]
         user.elo = 1000  # Reset
 
         # Without time factor (cf_service=None)
         result_no_tf = await training_svc_module.TrainingService._calculate_training_elo(
-            db, user, problem_rating=1500, session_id=session.id,
-            topic_id=topic.id, solved=True, attempts=1,
-            problem_id="100A", time_spent=600.0, cf_service=None,
+            db,
+            user,
+            problem_rating=1500,
+            session_id=session.id,
+            topic_id=topic.id,
+            solved=True,
+            attempts=1,
+            problem_id="100A",
+            time_spent=600.0,
+            cf_service=None,
         )
         elo_no_tf = result_no_tf["global_elo_change"]
 
         assert elo_no_tf > 0, "AC should produce positive Global Elo change"
-        assert elo_with_tf > elo_no_tf, \
-            f"Fast solve ({elo_with_tf}) should give more Elo than no TF ({elo_no_tf})"
+        assert elo_with_tf > elo_no_tf, f"Fast solve ({elo_with_tf}) should give more Elo than no TF ({elo_no_tf})"
 
     @pytest.mark.asyncio
     async def test_slow_solve_elo_reduction(self, training_db):
@@ -777,23 +837,36 @@ class TestTrainingTimeFactor:
 
         # Slow solve: expected=1800, effective=3600 -> factor=0.5
         result_slow = await training_svc_module.TrainingService._calculate_training_elo(
-            db, user, problem_rating=1500, session_id=session.id,
-            topic_id=topic.id, solved=True, attempts=1,
-            problem_id="100A", time_spent=3600.0, cf_service=AsyncMock(),
+            db,
+            user,
+            problem_rating=1500,
+            session_id=session.id,
+            topic_id=topic.id,
+            solved=True,
+            attempts=1,
+            problem_id="100A",
+            time_spent=3600.0,
+            cf_service=AsyncMock(),
         )
         elo_slow = result_slow["global_elo_change"]
         user.elo = 1000  # Reset
 
         # Without time factor
         result_no_tf = await training_svc_module.TrainingService._calculate_training_elo(
-            db, user, problem_rating=1500, session_id=session.id,
-            topic_id=topic.id, solved=True, attempts=1,
-            problem_id="100A", time_spent=600.0, cf_service=None,
+            db,
+            user,
+            problem_rating=1500,
+            session_id=session.id,
+            topic_id=topic.id,
+            solved=True,
+            attempts=1,
+            problem_id="100A",
+            time_spent=600.0,
+            cf_service=None,
         )
         elo_no_tf = result_no_tf["global_elo_change"]
 
-        assert elo_slow < elo_no_tf, \
-            f"Slow solve ({elo_slow}) should give less Elo than baseline ({elo_no_tf})"
+        assert elo_slow < elo_no_tf, f"Slow solve ({elo_slow}) should give less Elo than baseline ({elo_no_tf})"
 
     @pytest.mark.asyncio
     async def test_failure_no_time_factor(self, training_db):
@@ -815,22 +888,33 @@ class TestTrainingTimeFactor:
         await db.flush()
 
         result_with_tf = await training_svc_module.TrainingService._calculate_training_elo(
-            db, user, problem_rating=800, session_id=session.id,
-            topic_id=topic.id, solved=False, attempts=3,
-            problem_id="100A", time_spent=600.0, cf_service=AsyncMock(),
+            db,
+            user,
+            problem_rating=800,
+            session_id=session.id,
+            topic_id=topic.id,
+            solved=False,
+            attempts=3,
+            problem_id="100A",
+            time_spent=600.0,
+            cf_service=AsyncMock(),
         )
         elo_with_tf = result_with_tf["global_elo_change"]
 
         user.elo = 2000
         result_no_tf = await training_svc_module.TrainingService._calculate_training_elo(
-            db, user, problem_rating=800, session_id=session.id,
-            topic_id=topic.id, solved=False, attempts=3,
+            db,
+            user,
+            problem_rating=800,
+            session_id=session.id,
+            topic_id=topic.id,
+            solved=False,
+            attempts=3,
             problem_id="100A",
         )
         elo_no_tf = result_no_tf["global_elo_change"]
 
-        assert elo_with_tf == elo_no_tf, \
-            f"Failure Elo should be same: {elo_with_tf} vs {elo_no_tf}"
+        assert elo_with_tf == elo_no_tf, f"Failure Elo should be same: {elo_with_tf} vs {elo_no_tf}"
 
     @pytest.mark.asyncio
     async def test_hint_and_time_factor_stack(self, training_db):
@@ -844,10 +928,16 @@ class TestTrainingTimeFactor:
 
         # Baseline: no hint, no time factor
         from app.services import training_service as ts_mod
+
         with patch.object(ts_mod.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             result_baseline = await training_svc_module.TrainingService._calculate_training_elo(
-                db, user, problem_rating=1500, session_id=session.id,
-                topic_id=topic.id, solved=True, attempts=1,
+                db,
+                user,
+                problem_rating=1500,
+                session_id=session.id,
+                topic_id=topic.id,
+                solved=True,
+                attempts=1,
                 problem_id="100A",
             )
         elo_baseline = result_baseline["global_elo_change"]
@@ -856,16 +946,22 @@ class TestTrainingTimeFactor:
         # Hint level 2 + fast solve
         with patch.object(ts_mod.HintService, "get_max_hint_level", AsyncMock(return_value=2)):
             result_stacked = await training_svc_module.TrainingService._calculate_training_elo(
-                db, user, problem_rating=1500, session_id=session.id,
-                topic_id=topic.id, solved=True, attempts=1,
-                problem_id="100A", time_spent=600.0, cf_service=AsyncMock(),
+                db,
+                user,
+                problem_rating=1500,
+                session_id=session.id,
+                topic_id=topic.id,
+                solved=True,
+                attempts=1,
+                problem_id="100A",
+                time_spent=600.0,
+                cf_service=AsyncMock(),
             )
         elo_stacked = result_stacked["global_elo_change"]
 
         # Expected: baseline * 0.50 (hint) * 1.5 (time) = baseline * 0.75
         expected = round(elo_baseline * 0.50 * 1.5)
-        assert elo_stacked == expected, \
-            f"Stacked: {elo_stacked} vs expected {expected} (baseline={elo_baseline})"
+        assert elo_stacked == expected, f"Stacked: {elo_stacked} vs expected {expected} (baseline={elo_baseline})"
 
 
 # ===========================================================================
@@ -884,6 +980,7 @@ async def contest_db(async_engine):
 
     async def _mock_get_config(db, key):
         from app.core.default_config import DEFAULT_CONFIG
+
         return DEFAULT_CONFIG.get("elo", {})
 
     async def _mock_get_submission_count(db, user_id):
@@ -896,10 +993,10 @@ async def contest_db(async_engine):
         pass
 
     from app.services import config_service as config_svc_module
+    from app.services import contest_simulation_service as sim_svc_module
     from app.services import elo_service as elo_svc_module
     from app.services import hint_service as hint_svc_module
     from app.services import pp_service as pp_svc_module
-    from app.services import contest_simulation_service as sim_svc_module
 
     async with session_factory() as session:
         with (
@@ -1000,9 +1097,12 @@ class TestContestTimeFactor:
         await db.flush()
 
         from app.services import hint_service as hint_svc_module
+
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_fast = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
                 cf_service=AsyncMock(),
             )
@@ -1012,14 +1112,15 @@ class TestContestTimeFactor:
         # Without time factor
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_no_tf = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
                 cf_service=None,
             )
 
         assert elo_no_tf > 0, "PR=1600 > user.elo=1200 should give positive change"
-        assert elo_fast > elo_no_tf, \
-            f"Fast solve ({elo_fast}) should give more Elo than no TF ({elo_no_tf})"
+        assert elo_fast > elo_no_tf, f"Fast solve ({elo_fast}) should give more Elo than no TF ({elo_no_tf})"
 
     @pytest.mark.asyncio
     async def test_slow_solve_elo_reduction(self, contest_db):
@@ -1032,9 +1133,12 @@ class TestContestTimeFactor:
         await db.flush()
 
         from app.services import hint_service as hint_svc_module
+
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_slow = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
                 cf_service=AsyncMock(),
             )
@@ -1043,13 +1147,14 @@ class TestContestTimeFactor:
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_no_tf = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
                 cf_service=None,
             )
 
-        assert elo_slow < elo_no_tf, \
-            f"Slow solve ({elo_slow}) should give less Elo than no TF ({elo_no_tf})"
+        assert elo_slow < elo_no_tf, f"Slow solve ({elo_slow}) should give less Elo than no TF ({elo_no_tf})"
 
     @pytest.mark.asyncio
     async def test_no_hint_attenuation_when_time_factor_applied(self, contest_db):
@@ -1066,7 +1171,9 @@ class TestContestTimeFactor:
         # No hint, no time factor baseline
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_baseline = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
                 cf_service=None,
             )
@@ -1075,20 +1182,22 @@ class TestContestTimeFactor:
 
         # Hint level 2 + fast solve (tf=1.5)
         hint_map = {"1000A": 2, "1000B": 2, "1000C": 2}
+
         async def _hint_by_problem(db, user_id, problem_id):
             return hint_map.get(problem_id, 0)
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", _hint_by_problem):
             elo_stacked = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
                 cf_service=AsyncMock(),
             )
 
         # baseline * 0.50 (hint) * 1.5 (time factor)
         expected = round(round(elo_baseline * 0.50) * 1.5)
-        assert elo_stacked == expected, \
-            f"Stacked: {elo_stacked} vs expected {expected} (baseline={elo_baseline})"
+        assert elo_stacked == expected, f"Stacked: {elo_stacked} vs expected {expected} (baseline={elo_baseline})"
 
     @pytest.mark.asyncio
     async def test_negative_pr_not_affected(self, contest_db):
@@ -1101,9 +1210,12 @@ class TestContestTimeFactor:
         await db.flush()
 
         from app.services import hint_service as hint_svc_module
+
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_with_tf = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
                 cf_service=AsyncMock(),
             )
@@ -1112,14 +1224,15 @@ class TestContestTimeFactor:
 
         with patch.object(hint_svc_module.HintService, "get_max_hint_level", AsyncMock(return_value=0)):
             elo_no_tf = await contest_svc_module.ContestService._settle_with_pr(
-                db=db, user=user, session=contest_session,
+                db=db,
+                user=user,
+                session=contest_session,
                 contest_id=contest_session.id,
                 cf_service=None,
             )
 
         assert elo_with_tf < 0, "PR=1600 < user.elo=2000 should give negative change"
-        assert elo_with_tf == elo_no_tf, \
-            f"Negative change should be same: {elo_with_tf} vs {elo_no_tf}"
+        assert elo_with_tf == elo_no_tf, f"Negative change should be same: {elo_with_tf} vs {elo_no_tf}"
 
 
 # ===========================================================================
@@ -1133,6 +1246,7 @@ class TestReachability:
     def test_pve_submit_calls_time_factor_service(self):
         """PvE submit_result imports and calls TimeFactorService."""
         import inspect
+
         source = inspect.getsource(pve_svc_module.PvEChallengeService.submit_result)
         assert "TimeFactorService" in source, "submit_result should reference TimeFactorService"
         assert "compute_effective_time" in source
@@ -1141,7 +1255,9 @@ class TestReachability:
     def test_challenge_settle_calls_time_factor_service(self):
         """Challenge _settle_challenge calls TimeFactorService."""
         import inspect
+
         from app.services import challenge_service as challenge_svc_module
+
         source = inspect.getsource(challenge_svc_module._settle_challenge)
         assert "TimeFactorService" in source
         assert "compute_effective_time" in source
@@ -1151,6 +1267,7 @@ class TestReachability:
     def test_training_elo_calls_time_factor_service(self):
         """Training _calculate_training_elo calls TimeFactorService."""
         import inspect
+
         source = inspect.getsource(training_svc_module.TrainingService._calculate_training_elo)
         assert "TimeFactorService" in source
         assert "compute_effective_time" in source
@@ -1159,6 +1276,7 @@ class TestReachability:
     def test_contest_settle_calls_time_factor_service(self):
         """Contest _settle_with_pr calls TimeFactorService."""
         import inspect
+
         source = inspect.getsource(contest_svc_module.ContestService._settle_with_pr)
         assert "TimeFactorService" in source
         assert "compute_effective_time" in source
@@ -1167,23 +1285,23 @@ class TestReachability:
     def test_pve_api_passes_cf_service(self):
         """PvE API submit endpoint passes cf_service to service."""
         import importlib
-        source = open(
-            importlib.import_module("app.api.v1.pve_challenge").__file__
-        ).read()
+
+        with open(importlib.import_module("app.api.v1.pve_challenge").__file__) as f:
+            source = f.read()
         assert "cf_service" in source
 
     def test_challenge_api_passes_cf_service(self):
         """Challenge API submit endpoint passes cf_service to service."""
         import importlib
-        source = open(
-            importlib.import_module("app.api.v1.challenge").__file__
-        ).read()
+
+        with open(importlib.import_module("app.api.v1.challenge").__file__) as f:
+            source = f.read()
         assert "cf_service" in source
 
     def test_contest_api_passes_cf_service(self):
         """Contest API end endpoint passes cf_service to service."""
         import importlib
-        source = open(
-            importlib.import_module("app.api.v1.contest").__file__
-        ).read()
+
+        with open(importlib.import_module("app.api.v1.contest").__file__) as f:
+            source = f.read()
         assert "cf_service" in source

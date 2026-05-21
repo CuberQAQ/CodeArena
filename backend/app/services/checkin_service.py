@@ -66,23 +66,14 @@ def _week_start(d: date | None = None) -> date:
     return d - timedelta(days=d.weekday())  # Monday=0
 
 
-async def _latest_checkin(
-    db: AsyncSession, user_id: uuid.UUID
-) -> CheckIn | None:
+async def _latest_checkin(db: AsyncSession, user_id: uuid.UUID) -> CheckIn | None:
     """Return the most recent CheckIn record for *user_id*."""
-    stmt = (
-        select(CheckIn)
-        .where(CheckIn.user_id == user_id)
-        .order_by(CheckIn.checkin_date.desc())
-        .limit(1)
-    )
+    stmt = select(CheckIn).where(CheckIn.user_id == user_id).order_by(CheckIn.checkin_date.desc()).limit(1)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def _makeup_count_this_week(
-    db: AsyncSession, user_id: uuid.UUID
-) -> int:
+async def _makeup_count_this_week(db: AsyncSession, user_id: uuid.UUID) -> int:
     """Return the number of make-up check-ins in the current ISO week."""
     week_monday = _week_start()
     stmt = select(func.count(CheckIn.id)).where(
@@ -183,9 +174,7 @@ async def makeup_checkin(db: AsyncSession, user: User) -> CheckInResponse:
     # Check weekly limit
     makeup_count = await _makeup_count_this_week(db, user_id)
     if makeup_count >= MAKEUP_WEEKLY_LIMIT:
-        raise BadRequestException(
-            message=f"Weekly make-up limit ({MAKEUP_WEEKLY_LIMIT}) reached"
-        )
+        raise BadRequestException(message=f"Weekly make-up limit ({MAKEUP_WEEKLY_LIMIT}) reached")
 
     # Check that yesterday hasn't already been filled
     stmt = select(CheckIn).where(
@@ -300,10 +289,7 @@ async def get_status(db: AsyncSession, user: User) -> CheckInStatusResponse:
         )
     )
     yesterday_exists = yesterday_checkin.scalar_one_or_none() is not None
-    can_makeup = (
-        not yesterday_exists
-        and makeup_count < MAKEUP_WEEKLY_LIMIT
-    )
+    can_makeup = not yesterday_exists and makeup_count < MAKEUP_WEEKLY_LIMIT
 
     # Get actual checked dates this week
     iso_cal = today.isocalendar()

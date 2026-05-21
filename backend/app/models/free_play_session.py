@@ -30,16 +30,16 @@ class FreePlaySession(Base, UUIDPrimaryKeyMixin):
     tokens_earned: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     s_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False,
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="free_play_sessions", foreign_keys=[user_id])
 
-    __table_args__ = (
-        Index("ix_free_play_sessions_user_started", "user_id", started_at.desc()),
-    )
+    __table_args__ = (Index("ix_free_play_sessions_user_started", "user_id", started_at.desc()),)
 
     def __repr__(self) -> str:
         return f"<FreePlaySession(id={self.id}, status={self.status})>"

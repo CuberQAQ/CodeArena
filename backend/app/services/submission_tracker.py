@@ -835,7 +835,7 @@ class SubmissionTracker:
         *,
         attempts: int = 1,
         time_spent: float = 0.0,
-        cf_service: "CFApiService | None" = None,  # noqa: ARG – kept for API consistency
+        cf_service: "CFApiService | None" = None,  # kept for API consistency
     ) -> None:
         """Settle a contest problem record with accurate CF API stats."""
         from app.services.contest_service import ContestService

@@ -138,9 +138,9 @@ def _validate_config_value(key: str, value: Any) -> None:
             type_name = getattr(expected_type, "__name__", str(expected_type))
             raise ValueError(f"Config key '{key}': expected type {type_name}, got {type(value).__name__}")
 
-    if "min" in rule and isinstance(value, (int, float)) and value < rule["min"]:
+    if "min" in rule and isinstance(value, int | float) and value < rule["min"]:
         raise ValueError(f"Config key '{key}': value {value} is below minimum {rule['min']}")
-    if "max" in rule and isinstance(value, (int, float)) and value > rule["max"]:
+    if "max" in rule and isinstance(value, int | float) and value > rule["max"]:
         raise ValueError(f"Config key '{key}': value {value} is above maximum {rule['max']}")
 
 

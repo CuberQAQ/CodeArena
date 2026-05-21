@@ -18,7 +18,9 @@ select = ["E", "F", "I", "N", "UP", "B", "A", "SIM"]
 # B017: pytest.raises(Exception) in tests — legitimate for verifying any-exception cases
 # B007: unused loop var in tests — _ prefix convention not enforced
 # UP038: isinstance(x, (int, float)) — clearer than X | Y for type tuples
-ignore = ["B008", "N818", "E712", "B904", "B017", "B007", "UP038"]
+# SIM117: nested with in complex test fixtures — combining harms readability
+# SIM102: nested if in mock factories — combining harms readability
+ignore = ["B008", "N818", "E712", "B904", "B017", "B007", "SIM117", "SIM102"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

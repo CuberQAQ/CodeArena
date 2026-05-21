@@ -78,9 +78,7 @@ async def async_engine():
 
 @pytest.fixture
 async def db(async_engine):
-    session_factory = async_sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
     async with session_factory() as session:
         yield session
 
@@ -144,11 +142,7 @@ class TestStratifiedSample:
 
     def test_multiple_buckets(self):
         """Users from different buckets are all represented."""
-        users = (
-            self._make_users(150, 800)
-            + self._make_users(80, 1000)
-            + self._make_users(30, 1200)
-        )
+        users = self._make_users(150, 800) + self._make_users(80, 1000) + self._make_users(30, 1200)
         sampled = _stratified_sample(users, samples_per_bucket=100)
         # 100 + 80 + 30 = 210
         assert len(sampled) == 210
@@ -242,15 +236,17 @@ class TestCalculateEquivalentPP:
             (102, "C", 1000, 0),  # low PP
         ]
         for contest_id, index, rating, t in problems:
-            submissions.append({
-                "verdict": "OK",
-                "creationTimeSeconds": 1000 + t,
-                "problem": {
-                    "contestId": contest_id,
-                    "index": index,
-                    "rating": rating,
-                },
-            })
+            submissions.append(
+                {
+                    "verdict": "OK",
+                    "creationTimeSeconds": 1000 + t,
+                    "problem": {
+                        "contestId": contest_id,
+                        "index": index,
+                        "rating": rating,
+                    },
+                }
+            )
         cf_api.get_user_status = AsyncMock(return_value=submissions)
 
         pp = await _calculate_equivalent_pp("test_user", cf_api)
@@ -514,10 +510,11 @@ class TestPipelineIntegration:
             # Mock CF API
             mock_cf_api = AsyncMock()
             # ratedList returns users
-            mock_cf_api._request = AsyncMock(return_value=[
-                {"handle": f"user_{i}", "rating": 800 + (i % 5) * 200, "country": "US"}
-                for i in range(30)
-            ])
+            mock_cf_api._request = AsyncMock(
+                return_value=[
+                    {"handle": f"user_{i}", "rating": 800 + (i % 5) * 200, "country": "US"} for i in range(30)
+                ]
+            )
             # user.status returns simple submissions
             mock_cf_api.get_user_status = AsyncMock(
                 return_value=[
@@ -582,10 +579,7 @@ class TestPipelineIntegration:
             mock_cf_api = AsyncMock()
 
             # Need at least 3 users with different ratings for regression
-            users = [
-                {"handle": f"user_{i}", "rating": 800 + i * 200, "country": "US"}
-                for i in range(5)
-            ]
+            users = [{"handle": f"user_{i}", "rating": 800 + i * 200, "country": "US"} for i in range(5)]
             mock_cf_api._request = AsyncMock(return_value=users)
             mock_cf_api.get_user_status = AsyncMock(
                 return_value=[
@@ -602,6 +596,7 @@ class TestPipelineIntegration:
 
             # Verify records exist
             from sqlalchemy import select as sa_select
+
             stmt = sa_select(_TestCFSampleUser).where(_TestCFSampleUser.sample_batch == 1)
             db_result = await db.execute(stmt)
             records = db_result.scalars().all()
@@ -613,10 +608,7 @@ class TestPipelineIntegration:
         from app.services import cf_ranking_service as svc_module
 
         with patch.object(svc_module, "CFSampleUser", _TestCFSampleUser):
-            users = [
-                {"handle": f"user_{i}", "rating": 800 + i * 200, "country": "US"}
-                for i in range(5)
-            ]
+            users = [{"handle": f"user_{i}", "rating": 800 + i * 200, "country": "US"} for i in range(5)]
 
             # Pre-insert 2 records for batch 1 WITHOUT regression_coefficients
             # (simulating a pipeline that was interrupted)
@@ -652,9 +644,8 @@ class TestPipelineIntegration:
 
             # All 5 users should now have records in batch 1
             from sqlalchemy import select as sa_select
-            stmt = sa_select(_TestCFSampleUser).where(
-                _TestCFSampleUser.sample_batch == 1
-            )
+
+            stmt = sa_select(_TestCFSampleUser).where(_TestCFSampleUser.sample_batch == 1)
             db_result = await db.execute(stmt)
             records = db_result.scalars().all()
             assert len(records) == 5

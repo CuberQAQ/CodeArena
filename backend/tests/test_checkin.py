@@ -6,7 +6,7 @@ patching pattern. All 8 test points from the task spec are covered.
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import Boolean, Date, DateTime, Integer, String, event
@@ -18,8 +18,8 @@ from app.services import checkin_service as checkin_svc_module
 from app.services.checkin_service import (
     BASE_REWARD,
     MAKEUP_WEEKLY_LIMIT,
-    STREAK_30_REWARD,
     STREAK_7_REWARD,
+    STREAK_30_REWARD,
     _reward_for_streak,
     check_in,
     get_history,

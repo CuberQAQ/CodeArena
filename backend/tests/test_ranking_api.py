@@ -199,9 +199,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -231,9 +229,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country="CN", page=1, page_size=50, db=db_session
-            )
+            response = await get_global_ranking(country="CN", page=1, page_size=50, db=db_session)
 
         import json
 
@@ -258,9 +254,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country=None, page=2, page_size=2, db=db_session
-            )
+            response = await get_global_ranking(country=None, page=2, page_size=2, db=db_session)
 
         import json
 
@@ -281,9 +275,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -308,9 +300,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -335,9 +325,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -363,9 +351,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -396,9 +382,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -424,9 +408,7 @@ class TestGlobalRankingLogic:
         ):
             from app.api.v1.ranking import get_global_ranking
 
-            response = await get_global_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -455,9 +437,7 @@ class TestArenaRankingLogic:
         ):
             from app.api.v1.ranking import get_arena_ranking
 
-            response = await get_arena_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_arena_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -486,9 +466,7 @@ class TestArenaRankingLogic:
         ):
             from app.api.v1.ranking import get_arena_ranking
 
-            response = await get_arena_ranking(
-                sort_by="elo", country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_arena_ranking(sort_by="elo", country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -516,9 +494,7 @@ class TestArenaRankingLogic:
         ):
             from app.api.v1.ranking import get_arena_ranking
 
-            response = await get_arena_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_arena_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -546,9 +522,7 @@ class TestArenaRankingLogic:
         ):
             from app.api.v1.ranking import get_arena_ranking
 
-            response = await get_arena_ranking(
-                country="US", page=1, page_size=50, db=db_session
-            )
+            response = await get_arena_ranking(country="US", page=1, page_size=50, db=db_session)
 
         import json
 
@@ -569,9 +543,7 @@ class TestArenaRankingLogic:
         ):
             from app.api.v1.ranking import get_arena_ranking
 
-            response = await get_arena_ranking(
-                country=None, page=1, page_size=50, db=db_session
-            )
+            response = await get_arena_ranking(country=None, page=1, page_size=50, db=db_session)
 
         import json
 
@@ -594,9 +566,7 @@ class TestArenaRankingLogic:
         ):
             from app.api.v1.ranking import get_arena_ranking
 
-            response = await get_arena_ranking(
-                country=None, page=3, page_size=3, db=db_session
-            )
+            response = await get_arena_ranking(country=None, page=3, page_size=3, db=db_session)
 
         import json
 

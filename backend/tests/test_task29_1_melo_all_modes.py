@@ -50,9 +50,7 @@ class _TestUserTagElo(_TestBase):
     total_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     first_ac_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "tag", name="uq_user_tag_elo_user_tag"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "tag", name="uq_user_tag_elo_user_tag"),)
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +509,8 @@ class TestPvEMeloIntegration:
 
         # Mock the batch_update method to verify it's called
         with patch.object(
-            MEloService, "batch_update_melo_for_problem",
+            MEloService,
+            "batch_update_melo_for_problem",
             new_callable=AsyncMock,
             return_value={"dp": 10},
         ) as mock_batch:
@@ -526,7 +525,8 @@ class TestPvEMeloIntegration:
 
             # Patch _get_session_or_raise to return our mock
             with patch.object(
-                pve_svc_module.PvEChallengeService, "_get_session_or_raise",
+                pve_svc_module.PvEChallengeService,
+                "_get_session_or_raise",
                 new_callable=AsyncMock,
                 return_value=mock_session,
             ):
@@ -597,61 +597,71 @@ class TestPvPMeloIntegration:
         mock_session.hints_used_challenger = 0
         mock_session.hints_used_opponent = 0
 
-        with patch.object(
-            MEloService, "batch_update_melo_for_problem",
-            new_callable=AsyncMock, return_value={"dp": 10},
-        ) as mock_batch:
-            with patch.object(challenge_svc_module.EloService, "calculate_s_value", side_effect=[1.0, 0.0]):
-                with patch.object(
-                    challenge_svc_module.EloService, "process_challenge_result",
-                    new_callable=AsyncMock,
-                    return_value=(1210, 1190, 10, -10),
-                ):
-                    with patch.object(challenge_svc_module.economy_svc, "award_tokens", return_value=10):
-                        with patch.object(challenge_svc_module.PPService, "record_pp", new_callable=AsyncMock):
-                            # Patch db.get to return test users (avoids production User model)
-                            original_get = db.get
+        with (
+            patch.object(
+                MEloService,
+                "batch_update_melo_for_problem",
+                new_callable=AsyncMock,
+                return_value={"dp": 10},
+            ) as mock_batch,
+            patch.object(challenge_svc_module.EloService, "calculate_s_value", side_effect=[1.0, 0.0]),
+        ):
+            with patch.object(
+                challenge_svc_module.EloService,
+                "process_challenge_result",
+                new_callable=AsyncMock,
+                return_value=(1210, 1190, 10, -10),
+            ):
+                with patch.object(challenge_svc_module.economy_svc, "award_tokens", return_value=10):
+                    with patch.object(challenge_svc_module.PPService, "record_pp", new_callable=AsyncMock):
+                        # Patch db.get to return test users (avoids production User model)
+                        original_get = db.get
 
-                            async def patched_get(model, pk, **kwargs):
-                                if hasattr(model, "__tablename__"):
-                                    if model.__tablename__ == "users":
-                                        if pk == user1.id:
-                                            return user1
-                                        if pk == user2.id:
-                                            return user2
-                                return await original_get(model, pk, **kwargs)
+                        async def patched_get(model, pk, **kwargs):
+                            if hasattr(model, "__tablename__"):
+                                if model.__tablename__ == "users":
+                                    if pk == user1.id:
+                                        return user1
+                                    if pk == user2.id:
+                                        return user2
+                            return await original_get(model, pk, **kwargs)
 
-                            with patch.object(db, "get", side_effect=patched_get):
-                                with patch.object(
-                                    challenge_svc_module.EloService, "get_submission_count",
-                                    new_callable=AsyncMock, return_value=10,
-                                ):
-                                    with patch.object(
-                                        challenge_svc_module.ConfigService, "get_config",
-                                        return_value={},
-                                    ):
-                                        await challenge_svc_module._settle_challenge(
-                                            db=db,
-                                            session=mock_session,
-                                            submitting_user_id=user1.id,
-                                        )
+                        with (
+                            patch.object(db, "get", side_effect=patched_get),
+                            patch.object(
+                                challenge_svc_module.EloService,
+                                "get_submission_count",
+                                new_callable=AsyncMock,
+                                return_value=10,
+                            ),
+                            patch.object(
+                                challenge_svc_module.ConfigService,
+                                "get_config",
+                                return_value={},
+                            ),
+                        ):
+                            await challenge_svc_module._settle_challenge(
+                                db=db,
+                                session=mock_session,
+                                submitting_user_id=user1.id,
+                            )
 
-                                        # batch_update should be called twice (once per player)
-                                        assert mock_batch.call_count == 2
+                            # batch_update should be called twice (once per player)
+                            assert mock_batch.call_count == 2
 
-                                        # First call: challenger (solved)
-                                        first_call = mock_batch.call_args_list[0]
-                                        assert first_call[1]["user_id"] == user1.id
-                                        assert first_call[1]["problem_tags"] == ["dp", "greedy"]
-                                        assert first_call[1]["coefficient"] == 1.0
-                                        assert first_call[1]["solved"] is True
+                            # First call: challenger (solved)
+                            first_call = mock_batch.call_args_list[0]
+                            assert first_call[1]["user_id"] == user1.id
+                            assert first_call[1]["problem_tags"] == ["dp", "greedy"]
+                            assert first_call[1]["coefficient"] == 1.0
+                            assert first_call[1]["solved"] is True
 
-                                        # Second call: opponent (not solved)
-                                        second_call = mock_batch.call_args_list[1]
-                                        assert second_call[1]["user_id"] == user2.id
-                                        assert second_call[1]["problem_tags"] == ["dp", "greedy"]
-                                        assert second_call[1]["coefficient"] == 1.0
-                                        assert second_call[1]["solved"] is False
+                            # Second call: opponent (not solved)
+                            second_call = mock_batch.call_args_list[1]
+                            assert second_call[1]["user_id"] == user2.id
+                            assert second_call[1]["problem_tags"] == ["dp", "greedy"]
+                            assert second_call[1]["coefficient"] == 1.0
+                            assert second_call[1]["solved"] is False
 
     @pytest.mark.asyncio
     async def test_pvp_skips_melo_when_no_tags(self, db):
@@ -679,46 +689,56 @@ class TestPvPMeloIntegration:
         mock_session.hints_used_challenger = 0
         mock_session.hints_used_opponent = 0
 
-        with patch.object(
-            MEloService, "batch_update_melo_for_problem",
-            new_callable=AsyncMock, return_value={},
-        ) as mock_batch:
-            with patch.object(challenge_svc_module.EloService, "calculate_s_value", side_effect=[1.0, 0.0]):
-                with patch.object(
-                    challenge_svc_module.EloService, "process_challenge_result",
-                    new_callable=AsyncMock,
-                    return_value=(1210, 1190, 10, -10),
-                ):
-                    with patch.object(challenge_svc_module.economy_svc, "award_tokens", return_value=10):
-                        with patch.object(challenge_svc_module.PPService, "record_pp", new_callable=AsyncMock):
-                            original_get = db.get
+        with (
+            patch.object(
+                MEloService,
+                "batch_update_melo_for_problem",
+                new_callable=AsyncMock,
+                return_value={},
+            ) as mock_batch,
+            patch.object(challenge_svc_module.EloService, "calculate_s_value", side_effect=[1.0, 0.0]),
+        ):
+            with patch.object(
+                challenge_svc_module.EloService,
+                "process_challenge_result",
+                new_callable=AsyncMock,
+                return_value=(1210, 1190, 10, -10),
+            ):
+                with patch.object(challenge_svc_module.economy_svc, "award_tokens", return_value=10):
+                    with patch.object(challenge_svc_module.PPService, "record_pp", new_callable=AsyncMock):
+                        original_get = db.get
 
-                            async def patched_get(model, pk, **kwargs):
-                                if hasattr(model, "__tablename__"):
-                                    if model.__tablename__ == "users":
-                                        if pk == user1.id:
-                                            return user1
-                                        if pk == user2.id:
-                                            return user2
-                                return await original_get(model, pk, **kwargs)
+                        async def patched_get(model, pk, **kwargs):
+                            if hasattr(model, "__tablename__"):
+                                if model.__tablename__ == "users":
+                                    if pk == user1.id:
+                                        return user1
+                                    if pk == user2.id:
+                                        return user2
+                            return await original_get(model, pk, **kwargs)
 
-                            with patch.object(db, "get", side_effect=patched_get):
-                                with patch.object(
-                                    challenge_svc_module.EloService, "get_submission_count",
-                                    new_callable=AsyncMock, return_value=10,
-                                ):
-                                    with patch.object(
-                                        challenge_svc_module.ConfigService, "get_config",
-                                        return_value={},
-                                    ):
-                                        await challenge_svc_module._settle_challenge(
-                                            db=db,
-                                            session=mock_session,
-                                            submitting_user_id=user1.id,
-                                        )
+                        with (
+                            patch.object(db, "get", side_effect=patched_get),
+                            patch.object(
+                                challenge_svc_module.EloService,
+                                "get_submission_count",
+                                new_callable=AsyncMock,
+                                return_value=10,
+                            ),
+                            patch.object(
+                                challenge_svc_module.ConfigService,
+                                "get_config",
+                                return_value={},
+                            ),
+                        ):
+                            await challenge_svc_module._settle_challenge(
+                                db=db,
+                                session=mock_session,
+                                submitting_user_id=user1.id,
+                            )
 
-                                        # batch_update should NOT be called when no tags
-                                        mock_batch.assert_not_called()
+                            # batch_update should NOT be called when no tags
+                            mock_batch.assert_not_called()
 
 
 # ===========================================================================
@@ -754,8 +774,10 @@ class TestContestMeloIntegration:
         # Instead, verify that the code in contest_service.py correctly
         # extracts tags from problem_data and calls batch_update.
         with patch.object(
-            MEloService, "batch_update_melo_for_problem",
-            new_callable=AsyncMock, return_value={"dp": 10, "math": 8},
+            MEloService,
+            "batch_update_melo_for_problem",
+            new_callable=AsyncMock,
+            return_value={"dp": 10, "math": 8},
         ) as mock_batch:
             # Simulate the M-Elo update block from contest submit_problem
             problem_tags_list = problem_data.get("tags", [])

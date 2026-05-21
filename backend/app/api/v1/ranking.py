@@ -72,9 +72,7 @@ async def get_global_ranking(
 
     # --- Fetch CF sample users from the latest batch ---
     max_batch_result = await db.execute(
-        select(CFSampleUser.sample_batch)
-        .order_by(CFSampleUser.sample_batch.desc())
-        .limit(1)
+        select(CFSampleUser.sample_batch).order_by(CFSampleUser.sample_batch.desc()).limit(1)
     )
     max_batch_row = max_batch_result.first()
     if max_batch_row is None:
@@ -112,25 +110,29 @@ async def get_global_ranking(
             ca_country = cf_country_lookup.get(cf_handle)
             ca_cf_handle_set.add(cf_handle)
 
-        combined.append({
-            "name": username,
-            "pp": round(pp, 2),
-            "country": ca_country,
-            "verified": True,
-        })
+        combined.append(
+            {
+                "name": username,
+                "pp": round(pp, 2),
+                "country": ca_country,
+                "verified": True,
+            }
+        )
 
     for cf_handle, cf_rating, estimated_pp, cf_country in cf_rows:
         # Skip CF users who are also CA users (CA entry takes precedence)
         if cf_handle in ca_cf_handle_set:
             continue
 
-        combined.append({
-            "name": cf_handle,
-            "pp": round(estimated_pp, 2),
-            "country": cf_country,
-            "verified": False,
-            "cf_rating": cf_rating,
-        })
+        combined.append(
+            {
+                "name": cf_handle,
+                "pp": round(estimated_pp, 2),
+                "country": cf_country,
+                "verified": False,
+                "cf_rating": cf_rating,
+            }
+        )
 
     # --- Sort ---
     # PP descending, CA users (verified=True) first on tie
@@ -193,13 +195,15 @@ async def get_arena_ranking(
         if cf_handle and cf_handle_verified:
             ca_country = cf_country_lookup.get(cf_handle)
 
-        items.append({
-            "name": username,
-            "pp": round(pp, 2),
-            "elo": elo,
-            "country": ca_country,
-            "verified": True,
-        })
+        items.append(
+            {
+                "name": username,
+                "pp": round(pp, 2),
+                "elo": elo,
+                "country": ca_country,
+                "verified": True,
+            }
+        )
 
     # --- Sort ---
     if sort_by == "elo":

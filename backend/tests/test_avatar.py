@@ -13,10 +13,8 @@ Covers:
 Uses an in-memory SQLite database with a lightweight test UserSettings model.
 """
 
-import shutil
 import uuid
 from io import BytesIO
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -293,13 +291,19 @@ class TestUploadAvatar:
         # First upload
         content1 = _make_jpg_image(50, 50)
         await avatar_service.upload_avatar(
-            db=db, user_id=user_id, file_content=content1, content_type="image/jpeg",
+            db=db,
+            user_id=user_id,
+            file_content=content1,
+            content_type="image/jpeg",
         )
 
         # Second upload (overwrite)
         content2 = _make_png_image(300, 200)
         result = await avatar_service.upload_avatar(
-            db=db, user_id=user_id, file_content=content2, content_type="image/png",
+            db=db,
+            user_id=user_id,
+            file_content=content2,
+            content_type="image/png",
         )
 
         assert result == f"avatars/{user_id}.jpg"
@@ -312,7 +316,10 @@ class TestUploadAvatar:
         content = _make_jpg_image(50, 50)
 
         await avatar_service.upload_avatar(
-            db=db, user_id=user_id, file_content=content, content_type="image/jpeg",
+            db=db,
+            user_id=user_id,
+            file_content=content,
+            content_type="image/jpeg",
         )
 
         # Verify settings row was created
@@ -342,7 +349,10 @@ class TestUploadAvatar:
         # Upload avatar
         content = _make_jpg_image(50, 50)
         await avatar_service.upload_avatar(
-            db=db, user_id=user_id, file_content=content, content_type="image/jpeg",
+            db=db,
+            user_id=user_id,
+            file_content=content,
+            content_type="image/jpeg",
         )
 
         # Verify settings was updated

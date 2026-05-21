@@ -1,6 +1,5 @@
 """Pydantic schemas for Free Play API request/response validation."""
 
-from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field

@@ -485,7 +485,10 @@ class TestCalculateExpectedTime:
     async def test_fallback_when_no_contest_id(self, cf_service):
         """Problem ID without valid contestId uses fallback."""
         result = await TimeFactorService.calculate_expected_time(
-            cf_service, "INVALID", 1300, 1500,
+            cf_service,
+            "INVALID",
+            1300,
+            1500,
         )
         # Should be the fallback value
         expected = TimeFactorService._fallback_expected_time(1300, 1500)
@@ -499,7 +502,10 @@ class TestCalculateExpectedTime:
         cf_service.get_contest_status.side_effect = Exception("API error")
 
         result = await TimeFactorService.calculate_expected_time(
-            cf_service, "1920A", 1300, 1500,
+            cf_service,
+            "1920A",
+            1300,
+            1500,
         )
         expected = TimeFactorService._fallback_expected_time(1300, 1500)
         assert result == expected
@@ -513,7 +519,10 @@ class TestCalculateExpectedTime:
         ]
 
         result = await TimeFactorService.calculate_expected_time(
-            cf_service, "1920A", 1300, 1500,
+            cf_service,
+            "1920A",
+            1300,
+            1500,
         )
         expected = TimeFactorService._fallback_expected_time(1300, 1500)
         assert result == expected
@@ -527,7 +536,10 @@ class TestCalculateExpectedTime:
         cf_service.get_contest_rating_changes.return_value = []
 
         result = await TimeFactorService.calculate_expected_time(
-            cf_service, "1920A", 1300, 1500,
+            cf_service,
+            "1920A",
+            1300,
+            1500,
         )
         expected = TimeFactorService._fallback_expected_time(1300, 1500)
         assert result == expected
@@ -553,7 +565,10 @@ class TestCalculateExpectedTime:
         cf_service.get_contest_rating_changes.return_value = rating_changes_list
 
         result = await TimeFactorService.calculate_expected_time(
-            cf_service, "1920B", 1300, 1500,
+            cf_service,
+            "1920B",
+            1300,
+            1500,
         )
 
         # Should be a reasonable number of seconds (600 +/- some variation)
@@ -589,7 +604,10 @@ class TestCalculateExpectedTime:
 
         # User rating 1300 -> bucket 1200, only 1 data point, should expand to 1400
         result = await TimeFactorService.calculate_expected_time(
-            cf_service, "1920B", 1300, 1300,
+            cf_service,
+            "1920B",
+            1300,
+            1300,
         )
 
         # Should return a value (not fallback) thanks to expansion
@@ -606,7 +624,10 @@ class TestCalculateExpectedTime:
         cf_service.get_contest_rating_changes.side_effect = Exception("API error")
 
         result = await TimeFactorService.calculate_expected_time(
-            cf_service, "1920A", 1300, 1500,
+            cf_service,
+            "1920A",
+            1300,
+            1500,
         )
         # The outer try/except should catch and use fallback
         expected = TimeFactorService._fallback_expected_time(1300, 1500)

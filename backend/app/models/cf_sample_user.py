@@ -17,15 +17,9 @@ class CFSampleUser(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     __tablename__ = "cf_sample_users"
 
-    cf_handle: Mapped[str] = mapped_column(
-        String(100), nullable=False, index=True, comment="Codeforces handle"
-    )
-    cf_rating: Mapped[int] = mapped_column(
-        Integer, nullable=False, comment="CF rating at time of sampling"
-    )
-    country: Mapped[str | None] = mapped_column(
-        String(10), nullable=True, comment="Country code (ISO 3166-1 alpha-2)"
-    )
+    cf_handle: Mapped[str] = mapped_column(String(100), nullable=False, index=True, comment="Codeforces handle")
+    cf_rating: Mapped[int] = mapped_column(Integer, nullable=False, comment="CF rating at time of sampling")
+    country: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="Country code (ISO 3166-1 alpha-2)")
     equivalent_pp: Mapped[float | None] = mapped_column(
         Float, nullable=True, comment="PP computed from CF submission history"
     )

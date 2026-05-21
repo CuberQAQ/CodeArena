@@ -159,7 +159,9 @@ class FreePlayService:
         if not melos:
             # No M-Elo data yet -- fall back to a simple range search
             return await FreePlayService._fallback_recommend(
-                db, user, cf_service,
+                db,
+                user,
+                cf_service,
             )
 
         # Calculate weights
@@ -334,7 +336,10 @@ class FreePlayService:
         but uses normal coefficients (no training polarization) and no blind box.
         """
         session = await FreePlayService._get_session_or_raise(
-            db, session_id, user.id, required_status="active",
+            db,
+            session_id,
+            user.id,
+            required_status="active",
         )
 
         # Calculate S-value
@@ -373,10 +378,15 @@ class FreePlayService:
             wa_count = max(0, error_count)
             effective_time = TimeFactorService.compute_effective_time(time_spent, wa_count)
             expected_time = await TimeFactorService.calculate_expected_time(
-                cf_service, session.problem_id, session.problem_rating, user.elo,
+                cf_service,
+                session.problem_id,
+                session.problem_rating,
+                user.elo,
             )
             time_factor = TimeFactorService.calculate_time_factor(
-                effective_time, expected_time, s_value,
+                effective_time,
+                expected_time,
+                s_value,
             )
             if raw_elo_change > 0 and time_factor is not None:
                 raw_elo_change *= time_factor
@@ -402,7 +412,8 @@ class FreePlayService:
             )
             pp_change = round(user.pp - pp_before, 2)
             overkill_multiplier = PPService.calculate_overkill_multiplier(
-                user.elo, session.problem_rating,
+                user.elo,
+                session.problem_rating,
             )
 
         # Token rewards
@@ -412,7 +423,9 @@ class FreePlayService:
                 # AC reward
                 base_tokens = economy_svc.tokens_for_rating(session.problem_rating)
                 tokens_earned = await economy_svc.award_tokens(
-                    db, user, base_tokens,
+                    db,
+                    user,
+                    base_tokens,
                     tx_type="free_play_reward",
                     reference_type="free_play_session",
                     reference_id=session.id,
@@ -423,7 +436,9 @@ class FreePlayService:
                     time_bonus = economy_svc.time_bonus_for_rating(session.problem_rating)
                     if time_bonus > 0:
                         bonus = await economy_svc.award_tokens(
-                            db, user, time_bonus,
+                            db,
+                            user,
+                            time_bonus,
                             tx_type="time_bonus",
                             reference_type="free_play_session",
                             reference_id=session.id,
@@ -434,7 +449,9 @@ class FreePlayService:
                 attempt_tokens = economy_svc.attempt_tokens_for_rating(session.problem_rating)
                 if attempt_tokens > 0:
                     tokens_earned = await economy_svc.award_tokens(
-                        db, user, attempt_tokens,
+                        db,
+                        user,
+                        attempt_tokens,
                         tx_type="free_play_attempt_reward",
                         reference_type="free_play_session",
                         reference_id=session.id,
@@ -443,7 +460,12 @@ class FreePlayService:
         # Record Elo history
         reason = EloReason.CHALLENGE_WIN if solved else EloReason.CHALLENGE_LOSS
         await EloService.record_elo_history(
-            db, user.id, user.elo, new_elo, reason, session.id,
+            db,
+            user.id,
+            user.elo,
+            new_elo,
+            reason,
+            session.id,
         )
 
         # Update user Elo
@@ -466,6 +488,7 @@ class FreePlayService:
             hint_attenuation = None
             if hint_level > 0:
                 from app.services.elo_service import EloConfig
+
                 _hint_cfg = EloConfig()
                 hint_attenuation = _hint_cfg.hint_attenuation.get(hint_level)
 
@@ -484,7 +507,11 @@ class FreePlayService:
 
         logger.info(
             "Free play completed: session=%s solved=%s elo_change=%d tokens=%d s_value=%.2f",
-            session.id, solved, elo_change, tokens_earned, s_value,
+            session.id,
+            solved,
+            elo_change,
+            tokens_earned,
+            s_value,
         )
 
         # Achievement event detection
@@ -539,19 +566,22 @@ class FreePlayService:
           - 3+ submissions: normal failure (S=0, full Elo calculation)
         """
         session = await FreePlayService._get_session_or_raise(
-            db, session_id, user.id, required_status="active",
+            db,
+            session_id,
+            user.id,
+            required_status="active",
         )
 
         # Determine submission count from tracking record
         tracking = await SubmissionTracker.get_tracking_for_session(
-            db, user.id, "free_play", session_id,
+            db,
+            user.id,
+            "free_play",
+            session_id,
         )
         # If tracking was matched/settled, user submitted at least once.
         # Use error_count as proxy for non-AC attempts; +1 if tracking was matched.
-        if tracking and tracking.status in ("matched", "settled"):
-            submissions = max(1, session.error_count + 1)
-        else:
-            submissions = 0
+        submissions = max(1, session.error_count + 1) if tracking and tracking.status in ("matched", "settled") else 0
 
         current_elo = user.elo
 
@@ -581,7 +611,12 @@ class FreePlayService:
 
         # Record Elo history
         await EloService.record_elo_history(
-            db, user.id, current_elo, new_elo, EloReason.QUIT_PENALTY, session.id,
+            db,
+            user.id,
+            current_elo,
+            new_elo,
+            EloReason.QUIT_PENALTY,
+            session.id,
         )
 
         # Update user Elo
@@ -594,7 +629,9 @@ class FreePlayService:
 
         logger.info(
             "Free play quit: session=%s submissions=%d elo_change=%d",
-            session.id, submissions, elo_change,
+            session.id,
+            submissions,
+            elo_change,
         )
 
         return FreePlayQuitResponse(
@@ -648,9 +685,7 @@ class FreePlayService:
             raise ForbiddenException(message="Not the owner of this Free Play session")
 
         if required_status and session.status != required_status:
-            raise BadRequestException(
-                message=f"Free Play session is not {required_status} (current: {session.status})"
-            )
+            raise BadRequestException(message=f"Free Play session is not {required_status} (current: {session.status})")
 
         return session
 

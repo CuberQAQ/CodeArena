@@ -61,9 +61,4 @@ class ContestMedal(Base, UUIDPrimaryKeyMixin):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<ContestMedal(id={self.id}, "
-            f"user_id={self.user_id}, "
-            f"level={self.medal_level}, "
-            f"type={self.medal_type})>"
-        )
+        return f"<ContestMedal(id={self.id}, user_id={self.user_id}, level={self.medal_level}, type={self.medal_type})>"
