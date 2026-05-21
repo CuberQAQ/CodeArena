@@ -1,20 +1,24 @@
 """Authentication API routes.
 
-Mounts seven endpoints under ``/api/v1/auth/``:
+Mounts endpoints under ``/api/v1/auth/``:
   POST /register   -- create account
   POST /login      -- obtain token pair
   POST /refresh    -- rotate access token
   GET  /me         -- current user profile (auth required)
   PUT  /profile    -- update username / email (auth required)
+  POST /avatar     -- upload avatar image (auth required)
+  GET  /avatar/{user_id} -- serve avatar image (public)
   GET  /settings   -- get user settings (auth required)
   PUT  /settings   -- update user settings (auth required)
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.exceptions import NotFoundException
 from app.core.response import success_response
 from app.core.security import get_current_user
 from app.models.elo_history import EloHistory
@@ -31,7 +35,7 @@ from app.schemas.auth import (
     UserInfo,
 )
 from app.schemas.medal import UpdateSettingsRequest, UserSettingsResponse
-from app.services import auth_service
+from app.services import auth_service, avatar_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -118,6 +122,54 @@ async def update_profile(
     )
 
 
+@router.post("/avatar")
+async def upload_avatar(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    file: UploadFile = File(...),
+):
+    """Upload or replace the authenticated user's avatar image.
+
+    Accepts JPG/PNG images up to 2 MB. The image is automatically cropped
+    to a square and saved as JPG.
+    """
+    file_content = await file.read()
+    content_type = file.content_type or ""
+
+    avatar_path = await avatar_service.upload_avatar(
+        db=db,
+        user_id=current_user.id,
+        file_content=file_content,
+        content_type=content_type,
+    )
+
+    return success_response(
+        data={"avatar_path": avatar_path},
+        message="Avatar uploaded successfully",
+    )
+
+
+@router.get("/avatar/{user_id}")
+async def get_avatar(
+    user_id: str,
+):
+    """Serve a user's avatar image.
+
+    Returns the avatar JPG file if it exists, otherwise raises 404.
+    This endpoint is public (no auth required) so avatars can be
+    displayed on leaderboards and contest pages.
+    """
+    avatar_path = avatar_service.get_avatar_path(user_id)
+    if avatar_path is None:
+        raise NotFoundException(message="Avatar not found")
+
+    return FileResponse(
+        path=str(avatar_path),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @router.get("/elo-history")
 async def get_elo_history(
     current_user: User = Depends(get_current_user),
@@ -151,8 +203,17 @@ async def get_global_leaderboard(
 ):
     """Get the global leaderboard of all users."""
     stmt = (
-        select(User.id, User.username, User.cf_handle, User.elo, User.pp, User.tokens)
-        .where(User.is_active == True)
+        select(
+            User.id,
+            User.username,
+            User.cf_handle,
+            User.elo,
+            User.pp,
+            User.tokens,
+            UserSettings.avatar_path,
+        )
+        .outerjoin(UserSettings, UserSettings.user_id == User.id)
+        .where(User.is_active.is_(True))
         .order_by(User.elo.desc())
         .limit(limit)
     )
@@ -169,6 +230,7 @@ async def get_global_leaderboard(
             "pp": user.pp,
             "tokens": user.tokens,
             "rank": i,
+            "avatar_path": user.avatar_path,
         })
 
     return success_response(

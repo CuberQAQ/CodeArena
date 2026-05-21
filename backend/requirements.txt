@@ -29,3 +29,4 @@ ruff>=0.8.0
 fakeredis>=2.0.0
 testcontainers[postgres]>=4.0.0
 psycopg2-binary>=2.9.0
+python-multipart

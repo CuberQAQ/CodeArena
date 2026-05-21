@@ -52,5 +52,11 @@
     "expected": "Expected",
     "now": "Now",
     "expectedTime": "Expected solve time: {{minutes}} min"
+  },
+  "avatar": {
+    "clickToUpload": "Click to upload avatar",
+    "invalidFormat": "Only JPG and PNG images are allowed",
+    "fileTooLarge": "File size must be less than 2 MB",
+    "uploadFailed": "Failed to upload avatar"
   }
 }

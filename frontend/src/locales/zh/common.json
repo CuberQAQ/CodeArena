@@ -52,5 +52,11 @@
     "expected": "期望",
     "now": "现在",
     "expectedTime": "期望用时：{{minutes}} 分钟"
+  },
+  "avatar": {
+    "clickToUpload": "点击上传头像",
+    "invalidFormat": "仅支持 JPG 和 PNG 格式的图片",
+    "fileTooLarge": "文件大小不能超过 2 MB",
+    "uploadFailed": "头像上传失败"
   }
 }

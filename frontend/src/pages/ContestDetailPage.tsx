@@ -18,7 +18,9 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { AchievementPopup } from "@/components/animations";
 import { extractApiError, formatTime, getRatingColor } from "@/utils";
+import { Avatar } from "@/components/Avatar";
 import api from "@/services/api";
+import { useAuthStore } from "@/stores/auth";
 import { useContestLiveStore } from "@/stores/contestStore";
 import type {
   ApiResponse,
@@ -36,8 +38,10 @@ type Phase = "loading" | "active" | "completed";
 
 function LeaderboardTable({
   entries,
+  currentUserId,
 }: {
   entries: LeaderboardEntry[];
+  currentUserId?: string;
 }) {
   const { t } = useTranslation("contest");
 
@@ -92,7 +96,9 @@ function LeaderboardTable({
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-2">
-                    {isHuman ? null : (
+                    {isHuman && currentUserId ? (
+                      <Avatar userId={currentUserId} size={22} />
+                    ) : (
                       <Bot className="size-3.5 shrink-0 text-muted-foreground" />
                     )}
                     <span className={isHuman ? "text-foreground" : "text-muted-foreground"}>
@@ -137,6 +143,7 @@ export default function ContestDetailPage() {
   const { id: contestId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation("contest");
+  const { user: currentUser } = useAuthStore();
   const [phase, setPhase] = useState<Phase>("loading");
   const [contest, setContest] = useState<ContestSessionInfo | null>(null);
   const [result, setResult] = useState<ContestResult | null>(null);
@@ -548,6 +555,7 @@ export default function ContestDetailPage() {
             </div>
             <LeaderboardTable
               entries={leaderboard}
+              currentUserId={currentUser?.id}
             />
           </div>
         </div>
@@ -648,6 +656,7 @@ export default function ContestDetailPage() {
               </div>
               <LeaderboardTable
                 entries={leaderboard}
+                currentUserId={currentUser?.id}
               />
             </div>
           )}

@@ -19,6 +19,7 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { DashboardCharts } from "@/components/charts/DashboardCharts";
 import { getRatingColor, getDifficultyLabelKey } from "@/utils";
 import { MedalBadge } from "@/components/medal";
+import { Avatar } from "@/components/Avatar";
 import api from "@/services/api";
 import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo, UserSettingsData, MedalInfo } from "@/types";
 
@@ -104,13 +105,16 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">
-          {t("dashboard:welcomeBack", { username: user.username })}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("dashboard:readyForChallenge")}
-        </p>
+      <div className="flex items-center gap-3">
+        <Avatar userId={user.id} size={44} />
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">
+            {t("dashboard:welcomeBack", { username: user.username })}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("dashboard:readyForChallenge")}
+          </p>
+        </div>
       </div>
 
       {/* Stats Cards */}

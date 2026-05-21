@@ -18,6 +18,7 @@ export interface UserInfo {
   created_at: string | null;
   updated_at: string | null;
   last_login_at: string | null;
+  avatar_path?: string | null;
 }
 
 export interface TokenPair {

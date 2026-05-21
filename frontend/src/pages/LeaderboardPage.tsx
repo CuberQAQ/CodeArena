@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { getRatingColor, getDifficultyLabelKey, ratingToMedal } from "@/utils";
 import { MedalBadge } from "@/components/medal";
+import { Avatar } from "@/components/Avatar";
 import api from "@/services/api";
 import type { ApiResponse, UserInfo, UserSettingsData } from "@/types";
 
@@ -100,13 +101,16 @@ export default function LeaderboardPage() {
                 <span className="text-sm font-medium text-muted-foreground">
                   {index + 1}
                 </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
-                  {user.cf_handle && (
-                    <p className="truncate text-xs text-muted-foreground">
-                      {t("cfHandle", { handle: user.cf_handle })}
-                    </p>
-                  )}
+                <div className="flex min-w-0 items-center gap-2">
+                  <Avatar userId={user.id} src={user.avatar_path} size={28} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
+                    {user.cf_handle && (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {t("cfHandle", { handle: user.cf_handle })}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <span
                   className="text-right text-sm font-bold"

@@ -68,6 +68,8 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - avatar_data:/app/uploads/avatars
     depends_on:
       db:
         condition: service_healthy
@@ -116,6 +118,8 @@ services:
 
 volumes:
   pgdata:
+    driver: local
+  avatar_data:
     driver: local
 
 networks:

@@ -20,6 +20,7 @@ import { extractApiError, getRatingColor, getDifficultyLabelKey, formatDate } fr
 import { MedalBadge } from "@/components/medal";
 import { MedalCabinet } from "@/components/medal";
 import { SkillMedalWall } from "@/components/medal";
+import { AvatarUpload } from "@/components/Avatar";
 import api from "@/services/api";
 import type {
   EloHistoryPoint,
@@ -88,9 +89,7 @@ function ProfileForm({
 
       <div className="rounded-xl border border-border bg-card p-6">
         <div className="flex items-start gap-5">
-          <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-primary/10">
-            <User className="size-8 text-primary" />
-          </div>
+          <AvatarUpload userId={user.id} size={64} />
           <div className="flex-1 space-y-3">
             {editing ? (
               <div className="space-y-3">
