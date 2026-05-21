@@ -342,15 +342,15 @@ export function ProfileCardExport(props: ProfileCardProps) {
     setError(null);
 
     try {
-      const el = cardRef.current;
-      // Temporarily make visible for html2canvas measurement
-      el.style.visibility = "visible";
-      el.style.position = "absolute";
-      el.style.left = "0";
-      el.style.top = "0";
-      el.style.zIndex = "-1";
+      const wrapper = cardRef.current.parentElement!;
+      // Move wrapper into visible viewport temporarily
+      const origStyle = wrapper.style.cssText;
+      wrapper.style.cssText = "position:fixed; left:0; top:0; z-index:9999; opacity:1; visibility:visible;";
 
-      const canvas = await html2canvas(el, {
+      // Small delay to let browser re-render
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      const canvas = await html2canvas(cardRef.current, {
         backgroundColor: null,
         scale: 2,
         useCORS: true,
@@ -358,12 +358,8 @@ export function ProfileCardExport(props: ProfileCardProps) {
         logging: false,
       });
 
-      // Restore hidden state
-      el.style.visibility = "hidden";
-      el.style.position = "fixed";
-      el.style.left = "-9999px";
-      el.style.top = "0";
-      el.style.zIndex = "-1";
+      // Restore
+      wrapper.style.cssText = origStyle;
 
       const dataUrl = canvas.toDataURL("image/png");
       const link = document.createElement("a");
@@ -371,6 +367,9 @@ export function ProfileCardExport(props: ProfileCardProps) {
       link.href = dataUrl;
       link.click();
     } catch (err) {
+      // Ensure we restore even on error
+      const wrapper = cardRef.current?.parentElement;
+      if (wrapper) wrapper.style.cssText = "position:fixed; left:-9999px; top:0; z-index:-1; visibility:hidden;";
       console.error("Profile card export failed:", err);
       setError(t("exportFailed"));
     } finally {

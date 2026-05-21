@@ -41,10 +41,11 @@ function buildRadarDataFromMElo(
   return raw.map((r) => ({ ...r, fullMark }));
 }
 
-function buildStatsFromTransactions(
+function buildStatsFromData(
   transactions: TransactionItem[],
   userSolved: number,
   radarData: RadarDataPoint[],
+  ppContributions: PPContributionItem[],
   t: (key: string) => string,
 ): DashboardStats {
   let totalEarned = 0;
@@ -55,22 +56,45 @@ function buildStatsFromTransactions(
     else totalSpent += Math.abs(tx.amount);
   }
 
-  const _DIST_WEIGHTS = [
-    { rating: 800, weight: 0.35 },
-    { rating: 1300, weight: 0.25 },
-    { rating: 1500, weight: 0.20 },
-    { rating: 1800, weight: 0.12 },
-    { rating: 2000, weight: 0.06 },
-    { rating: 2600, weight: 0.02 },
+  const _DIST_BUCKETS = [
+    { max: 1199, rating: 800 },
+    { max: 1399, rating: 1300 },
+    { max: 1599, rating: 1500 },
+    { max: 1899, rating: 1800 },
+    { max: 2099, rating: 2000 },
+    { max: Infinity, rating: 2600 },
   ];
 
-  const difficultyDistribution: DifficultyDistribution[] = radarData.length > 0
-    ? _DIST_WEIGHTS.map(({ rating, weight }) => ({
-        difficulty: t(getDifficultyLabelKey(rating)),
-        count: Math.round(userSolved * weight),
-        color: getRatingColor(rating),
+  let difficultyDistribution: DifficultyDistribution[] = [];
+
+  // Build distribution from PP contributions (actual solved problem ratings)
+  if (ppContributions.length > 0) {
+    const buckets = _DIST_BUCKETS.map(() => 0);
+    for (const pp of ppContributions) {
+      if (pp.rating == null) continue;
+      for (let i = 0; i < _DIST_BUCKETS.length; i++) {
+        if (pp.rating <= _DIST_BUCKETS[i].max) {
+          buckets[i]++;
+          break;
+        }
+      }
+    }
+    difficultyDistribution = _DIST_BUCKETS
+      .map((b, i) => ({
+        difficulty: t(getDifficultyLabelKey(b.rating)),
+        count: buckets[i],
+        color: getRatingColor(b.rating),
       }))
-    : [];
+      .filter((d) => d.count > 0);
+  } else if (radarData.length > 0 && userSolved > 0) {
+    // Fallback: estimate from M-Elo weights
+    const _WEIGHTS = [0.35, 0.25, 0.20, 0.12, 0.06, 0.02];
+    difficultyDistribution = _DIST_BUCKETS.map((b, i) => ({
+      difficulty: t(getDifficultyLabelKey(b.rating)),
+      count: Math.round(userSolved * _WEIGHTS[i]),
+      color: getRatingColor(b.rating),
+    })).filter((d) => d.count > 0);
+  }
 
   return {
     total_solved: userSolved,
@@ -113,19 +137,13 @@ export function DashboardCharts({ transactions }: { transactions: TransactionIte
       const meloResult = await getMElo().catch(() => null);
 
       // --- Radar data (M-Elo) ---
+      let radar: RadarDataPoint[] = [];
+      let totalSolved = 0;
       if (meloResult && meloResult.melos.length > 0) {
-        const radar = buildRadarDataFromMElo(meloResult.melos, meloResult.global_elo);
-        setRadarData(radar);
-
-        // --- Stats ---
-        // Estimate total solved from M-Elo submissions
-        const totalSolved = meloResult.melos.reduce((sum, m) => sum + m.total_submissions, 0);
-        setStats(buildStatsFromTransactions(transactions, totalSolved, radar, t));
-      } else {
-        // No M-Elo data - use transactions-only stats
-        setRadarData([]);
-        setStats(buildStatsFromTransactions(transactions, 0, [], t));
+        radar = buildRadarDataFromMElo(meloResult.melos, meloResult.global_elo);
+        totalSolved = meloResult.melos.reduce((sum, m) => sum + m.total_submissions, 0);
       }
+      setRadarData(radar);
 
       // Elo history
       const eloResult = await api
@@ -136,10 +154,17 @@ export function DashboardCharts({ transactions }: { transactions: TransactionIte
 
       // PP contributions
       const ppResult = await api
-        .get<ApiResponse<PPContributionItem[]>>("/auth/pp-contributions?limit=20")
-        .then((r) => r.data.data)
+        .get<ApiResponse<PPContributionItem[]>>("/auth/pp-contributions?limit=100")
+        .then((r) => r.data.data ?? [])
         .catch(() => []);
       setPpData(ppResult);
+
+      // Use PP count as a more accurate total_solved if M-Elo submissions are 0
+      if (totalSolved === 0 && ppResult.length > 0) {
+        totalSolved = ppResult.length;
+      }
+
+      setStats(buildStatsFromData(transactions, totalSolved, radar, ppResult, t));
     } catch {
       // Silently fail - charts show empty state
     } finally {

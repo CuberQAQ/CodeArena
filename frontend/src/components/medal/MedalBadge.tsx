@@ -59,16 +59,16 @@ export function MedalBadge({ level, type, size = "md", className }: MedalBadgePr
     <span className={cn("inline-flex items-center gap-1.5", className)}>
       <span
         className={cn(
-          "inline-flex items-center justify-center rounded-full font-bold",
+          "inline-flex items-center justify-center rounded-full font-bold leading-none",
           s.circle,
         )}
         style={{
           backgroundColor: `${color}20`,
           color,
-          border: `2px solid ${color}`,
+          border: `1.5px solid ${color}`,
         }}
       >
-        <span className={s.icon}>{TYPE_ICON[type] ?? ""}</span>
+        <span className={cn("leading-none", s.icon)}>{TYPE_ICON[type] ?? ""}</span>
       </span>
       <span className={cn("font-medium", s.text)} style={{ color }}>
         {t(LEVEL_I18N_KEY[level] ?? level)} {t(`medal:types.${type}`)}
