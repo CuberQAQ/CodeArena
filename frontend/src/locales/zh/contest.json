@@ -61,5 +61,12 @@
   "tierPupil": "Pupil 比赛",
   "tierAdvanced": "Advanced 比赛",
   "tierMaster": "Master 比赛",
-  "tierBlitz": "短时赛"
+  "tierBlitz": "短时赛",
+  "resultOverview": "比赛结果概览",
+  "globalElo": "Global Elo",
+  "pp": "PP",
+  "timeSpent": "用时",
+  "rank": "排名",
+  "solvedCount": "解题",
+  "noChange": "无变化"
 }

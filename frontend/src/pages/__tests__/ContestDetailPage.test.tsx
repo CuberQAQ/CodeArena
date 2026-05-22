@@ -164,6 +164,16 @@ const contestResult = {
     { problem_id: "p3", name: "Four Sum", index: "C", rating: 1200, solved: false },
     { problem_id: "p4", name: "Five Sum", index: "D", rating: 1400, solved: false },
   ],
+  // Extended fields
+  elo_before: 1500,
+  elo_after: 1512,
+  pp_before: 40.0,
+  pp_after: 42.5,
+  pp_change: 2.5,
+  rank: 3,
+  total_participants: 11,
+  melo_changes: null,
+  time_spent_minutes: 45,
 };
 
 beforeAll(() => server.listen({ onUnhandledRequest: "bypass" }));
@@ -829,6 +839,223 @@ describe("ContestDetailPage", () => {
 
       await user.click(screen.getByText("dashboard"));
       expect(mockNavigate).toHaveBeenCalledWith("/dashboard");
+    });
+
+    // =========================================================================
+    // Extended result fields
+    // =========================================================================
+
+    // 29. Elo before/after displayed in completed view
+    it("displays elo before and after values", async () => {
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: contestResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      // Elo card should show "Global Elo" heading and before/after
+      expect(screen.getByText("globalElo")).toBeInTheDocument();
+      // elo_before=1500, elo_after=1512
+      const all1500 = screen.getAllByText("1500");
+      const all1512 = screen.getAllByText("1512");
+      expect(all1500.length).toBeGreaterThanOrEqual(1);
+      expect(all1512.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // 30. PP before/after displayed
+    it("displays PP before and after values", async () => {
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: contestResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      // PP card should display pp heading and values
+      expect(screen.getByText("pp")).toBeInTheDocument();
+      // pp_before=40.0, pp_after=42.5
+      expect(screen.getByText("40.0")).toBeInTheDocument();
+      expect(screen.getByText("42.5")).toBeInTheDocument();
+    });
+
+    // 31. PP change displayed with + prefix
+    it("displays PP change with + prefix for positive values", async () => {
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: contestResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      // pp_change=2.5 should show "+2.5"
+      expect(screen.getByText("+2.5")).toBeInTheDocument();
+    });
+
+    // 32. Rank displayed with # prefix
+    it("displays rank with # prefix and total participants", async () => {
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: contestResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      // rank=3, total_participants=11 -> "#3 /11"
+      expect(screen.getByText("#3")).toBeInTheDocument();
+      expect(screen.getByText(/\/11/)).toBeInTheDocument();
+    });
+
+    // 33. Time spent displayed
+    it("displays time spent in minutes", async () => {
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: contestResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      // time_spent_minutes=45 -> "45min"
+      expect(screen.getByText("timeSpent")).toBeInTheDocument();
+      expect(screen.getByText("45min")).toBeInTheDocument();
+    });
+
+    // 34. Time spent in hours for >= 60 min
+    it("displays time spent in hours when >= 60 minutes", async () => {
+      const longResult = { ...contestResult, time_spent_minutes: 90 };
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: longResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("1h30m")).toBeInTheDocument();
+    });
+
+    // 35. Solved count shown as fraction
+    it("displays solved count as fraction in result overview", async () => {
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: contestResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      // "solvedCount" label and solved fraction display
+      expect(screen.getByText("solvedCount")).toBeInTheDocument();
+      // solved=2, total=4 -> "2" appears in solved fraction, "4" appears as total
+      const allTwos = screen.getAllByText("2");
+      expect(allTwos.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // 36. Null extended fields handled gracefully
+    it("handles null extended fields gracefully", async () => {
+      const minimalResult = {
+        ...contestResult,
+        elo_before: null,
+        elo_after: null,
+        pp_before: null,
+        pp_after: null,
+        pp_change: null,
+        rank: null,
+        total_participants: null,
+        time_spent_minutes: null,
+      };
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: minimalResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      // Rank should show "-"
+      expect(screen.getByText("rank")).toBeInTheDocument();
+      // Time spent should show "-"
+      expect(screen.getByText("timeSpent")).toBeInTheDocument();
+      // PP card should show "noChange"
+      expect(screen.getByText("noChange")).toBeInTheDocument();
+    });
+
+    // 37. Negative PP change displayed correctly
+    it("shows negative PP change without + prefix", async () => {
+      const lossResult = {
+        ...contestResult,
+        pp_before: 50.0,
+        pp_after: 45.0,
+        pp_change: -5.0,
+      };
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: completedContest, message: "ok" }),
+        ),
+        http.get("*/api/v1/contest/c1/result", () =>
+          HttpResponse.json({ success: true, data: lossResult, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText("contestComplete")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("-5")).toBeInTheDocument();
     });
   });
 

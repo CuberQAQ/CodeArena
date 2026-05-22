@@ -343,6 +343,16 @@ export interface ContestResult {
   medal: MedalInfo | null;
   problems: ContestProblemInfo[];
   achievements: AchievementEvent[];
+  // Extended result fields (backward-compatible, all optional)
+  elo_before: number | null;
+  elo_after: number | null;
+  pp_before: number | null;
+  pp_after: number | null;
+  pp_change: number | null;
+  rank: number | null;
+  total_participants: number | null;
+  melo_changes: { tag: string; before: number; after: number; change: number }[] | null;
+  time_spent_minutes: number | null;
 }
 
 export interface ContestHistoryItem {

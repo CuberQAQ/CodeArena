@@ -629,6 +629,32 @@ export default function ContestDetailPage() {
   const data = result ?? contest;
   const pr = result?.performance_rating;
 
+  // Helper for change value coloring
+  const changeColor = (val: number | null | undefined) => {
+    if (val == null || val === 0) return "text-muted-foreground";
+    return val > 0 ? "text-green-400" : "text-red-400";
+  };
+
+  const formatChange = (val: number | null | undefined) => {
+    if (val == null) return null;
+    if (val === 0) return "0";
+    return val > 0 ? `+${val}` : `${val}`;
+  };
+
+  // Calculate time spent display
+  const timeSpentDisplay = (() => {
+    if (result?.time_spent_minutes != null) {
+      const mins = result.time_spent_minutes;
+      if (mins >= 60) {
+        const h = Math.floor(mins / 60);
+        const m = Math.round(mins % 60);
+        return m > 0 ? `${h}h${m}m` : `${h}h`;
+      }
+      return `${Math.round(mins)}min`;
+    }
+    return null;
+  })();
+
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       {/* Achievement popup overlay */}
@@ -659,66 +685,147 @@ export default function ContestDetailPage() {
 
       {data && (
         <>
-          {/* Main result stats */}
+          {/* Top row: 4 summary cards */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-xs text-muted-foreground">{t("common:solved", { ns: "common" })}</p>
-              <p className="mt-1 text-xl font-bold text-green-400">{data.problems_solved}</p>
-            </div>
-            <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-xs text-muted-foreground">{t("common:total", { ns: "common" })}</p>
-              <p className="mt-1 text-xl font-bold text-foreground">{data.total_problems}</p>
+              <p className="text-xs text-muted-foreground">{t("solvedCount")}</p>
+              <p className="mt-1 text-xl font-bold">
+                <span className="text-green-400">{data.problems_solved}</span>
+                <span className="text-muted-foreground">/{data.total_problems}</span>
+              </p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4 text-center">
               <p className="text-xs text-muted-foreground">{t("submissions")}</p>
               <p className="mt-1 text-xl font-bold text-foreground">{data.submissions}</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-xs text-muted-foreground">{t("eloChange")}</p>
-              <p
-                className={`mt-1 text-xl font-bold ${
-                  (data.elo_change ?? 0) > 0
-                    ? "text-green-400"
-                    : (data.elo_change ?? 0) < 0
-                      ? "text-red-400"
-                      : "text-muted-foreground"
-                }`}
-              >
-                {(data.elo_change ?? 0) > 0 ? "+" : ""}
-                {data.elo_change ?? 0}
+              <p className="text-xs text-muted-foreground">{t("rank")}</p>
+              <p className="mt-1 text-xl font-bold text-primary">
+                {result?.rank != null && result?.total_participants != null
+                  ? `#${result.rank}`
+                  : "-"}
+                {result?.total_participants != null && (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {" "}/{result.total_participants}
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4 text-center">
+              <p className="text-xs text-muted-foreground">{t("timeSpent")}</p>
+              <p className="mt-1 text-xl font-bold text-foreground">
+                {timeSpentDisplay ?? "-"}
               </p>
             </div>
           </div>
 
-          {/* Performance Rating card */}
-          {pr != null && (
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 text-center">
+          {/* Detail cards: Elo + PP side by side */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Left: Global Elo card */}
+            <div className="rounded-xl border border-border bg-card p-5">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t("performanceRating")}
+                {t("globalElo")}
               </p>
-              <div className="mt-2 flex items-center justify-center gap-3">
-                <span
-                  className="text-4xl font-bold"
-                  style={{ color: getRatingColor(pr) }}
-                >
-                  {pr}
-                </span>
+              <div className="mt-3 space-y-1">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-muted-foreground">Before</span>
+                  <span
+                    className="text-lg font-bold"
+                    style={{
+                      color: result?.elo_before != null
+                        ? getRatingColor(result.elo_before)
+                        : undefined,
+                    }}
+                  >
+                    {result?.elo_before ?? data.elo_change != null ? (result?.elo_before ?? "-") : "-"}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-muted-foreground">After</span>
+                  <span
+                    className="text-lg font-bold"
+                    style={{
+                      color: result?.elo_after != null
+                        ? getRatingColor(result.elo_after)
+                        : undefined,
+                    }}
+                  >
+                    {result?.elo_after ?? "-"}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between border-t border-border pt-1">
+                  <span className="text-sm text-muted-foreground">{t("eloChange")}</span>
+                  <span className={`text-lg font-bold ${changeColor(data.elo_change)}`}>
+                    {formatChange(data.elo_change) ?? "0"}
+                  </span>
+                </div>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {t("performanceRatingDesc")}
-              </p>
-              {/* Medal badge derived from PR */}
-              {result?.medal && result.medal.level !== "unranked" && (
-                <div className="mt-3 flex items-center justify-center">
-                  <MedalBadge
-                    level={result.medal.level}
-                    type={result.medal.type}
-                    size="lg"
-                  />
+
+              {/* Performance Rating inside Elo card */}
+              {pr != null && (
+                <div className="mt-4 border-t border-border pt-3 text-center">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    {t("performanceRating")}
+                  </p>
+                  <div className="mt-1 flex items-center justify-center gap-3">
+                    <span
+                      className="text-3xl font-bold"
+                      style={{ color: getRatingColor(pr) }}
+                    >
+                      {pr}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("performanceRatingDesc")}
+                  </p>
+                  {/* Medal badge derived from PR */}
+                  {result?.medal && result.medal.level !== "unranked" && (
+                    <div className="mt-2 flex items-center justify-center">
+                      <MedalBadge
+                        level={result.medal.level}
+                        type={result.medal.type}
+                        size="lg"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
+
+            {/* Right: PP card */}
+            <div className="rounded-xl border border-border bg-card p-5">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t("pp")}
+              </p>
+              {result?.pp_before != null && result?.pp_after != null ? (
+                <div className="mt-3 space-y-1">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm text-muted-foreground">Before</span>
+                    <span className="text-lg font-bold text-foreground">
+                      {result.pp_before.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm text-muted-foreground">After</span>
+                    <span className="text-lg font-bold text-foreground">
+                      {result.pp_after.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between border-t border-border pt-1">
+                    <span className="text-sm text-muted-foreground">{t("eloChange")}</span>
+                    <span className={`text-lg font-bold ${changeColor(result.pp_change ?? 0)}`}>
+                      {formatChange(result.pp_change != null ? Number(result.pp_change.toFixed(1)) : null)
+                        ?? t("noChange")}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 py-4 text-center text-sm text-muted-foreground">
+                  {t("noChange")}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Final Leaderboard (if available) */}
           {leaderboard.length > 0 && (

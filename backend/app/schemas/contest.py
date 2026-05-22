@@ -106,6 +106,16 @@ class ContestResult(BaseModel):
     medal: dict | None = None
     problems: list[ContestProblemInfo] = []
     achievements: list[dict] = []
+    # Extended result fields (backward-compatible, all optional)
+    elo_before: int | None = None
+    elo_after: int | None = None
+    pp_before: float | None = None
+    pp_after: float | None = None
+    pp_change: float | None = None
+    rank: int | None = None
+    total_participants: int | None = None
+    melo_changes: list[dict] | None = None
+    time_spent_minutes: float | None = None
 
 
 class ContestHistoryItem(BaseModel):

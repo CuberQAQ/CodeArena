@@ -239,7 +239,7 @@ def _make_user(**kwargs) -> _TestUser:
     defaults = {
         "username": f"user_{uuid.uuid4().hex[:8]}",
         "email": f"{uuid.uuid4().hex[:8]}@test.com",
-        "password_hash": "hash",
+        "password_hash": "hashed_value",  # pragma: allowlist secret
         "elo": 1200,
         "tokens": 0,
     }
@@ -1744,3 +1744,422 @@ class TestBackwardCompatibility:
         result = await ContestService.start_contest(db, user, "master", cf_mock)
         assert result.tier == "master"
         assert result.status == "active"
+
+
+# ===========================================================================
+# Test: Extended result fields (elo_before, elo_after, pp, rank, time_spent)
+# ===========================================================================
+
+
+def _make_leaderboard_response(
+    player_rank: int = 1,
+    total: int = 10,
+    player_solved: int = 3,
+    player_elo: int = 1500,
+) -> "LeaderboardResponse":  # noqa: F821
+    """Build a mock LeaderboardResponse for testing rank/total_participants."""
+    from app.schemas.contest import LeaderboardEntry, LeaderboardResponse
+
+    entries = [
+        LeaderboardEntry(rank=player_rank, name="testuser", elo=player_elo, solved=player_solved, is_bot=False),
+    ]
+    for i in range(total - 1):
+        entries.append(
+            LeaderboardEntry(
+                rank=i + 1 + (1 if i + 1 >= player_rank else 0), name=f"Bot{i}", elo=1200, solved=0, is_bot=True
+            )
+        )
+    return LeaderboardResponse(leaderboard=entries, time_elapsed=60, time_total=120)
+
+
+class TestExtendedResultFields:
+    """Verify end_contest and get_contest_result populate extended result fields."""
+
+    @pytest.mark.asyncio
+    async def test_end_contest_populates_elo_before_after(self, db):
+        """end_contest returns elo_before and elo_after."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        # Submit 3+ problems to trigger PR settlement
+        problems = contest.problems
+        for i in range(3):
+            await ContestService.submit_problem(
+                db=db,
+                user=user,
+                contest_id=contest.id,
+                problem_id=problems[i].problem_id,
+                solved=(i < 2),
+                attempts=1,
+                time_spent=300.0,
+            )
+
+        with patch.object(
+            ContestSimulationService,
+            "build_leaderboard",
+            AsyncMock(return_value=_make_leaderboard_response(player_rank=2, total=11, player_elo=1500)),
+        ):
+            result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        assert result.elo_before == 1500
+        assert result.elo_after == user.elo
+        assert result.elo_change == result.elo_after - result.elo_before
+
+    @pytest.mark.asyncio
+    async def test_end_contest_elo_before_after_zero_submissions(self, db):
+        """0 submissions: elo_before == elo_after, elo_change == 0."""
+        user = _make_user(elo=1400)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        assert result.elo_before == 1400
+        assert result.elo_after == 1400
+        assert result.elo_change == 0
+
+    @pytest.mark.asyncio
+    async def test_end_contest_elo_before_after_quit_penalty(self, db):
+        """1-2 submissions: elo_after < elo_before (quit penalty)."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        # Submit 1 problem (triggers quit penalty)
+        await ContestService.submit_problem(
+            db=db,
+            user=user,
+            contest_id=contest.id,
+            problem_id=contest.problems[0].problem_id,
+            solved=False,
+            attempts=1,
+            time_spent=100.0,
+        )
+
+        result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        assert result.elo_before == 1500
+        assert result.elo_after < 1500
+        assert result.elo_after == user.elo
+        assert result.elo_change is not None and result.elo_change < 0
+
+    @pytest.mark.asyncio
+    async def test_end_contest_populates_rank_and_total_participants(self, db):
+        """end_contest returns rank and total_participants from leaderboard."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        # Submit 3 problems for PR settlement
+        for i in range(3):
+            await ContestService.submit_problem(
+                db=db,
+                user=user,
+                contest_id=contest.id,
+                problem_id=contest.problems[i].problem_id,
+                solved=True,
+                attempts=1,
+                time_spent=300.0,
+            )
+
+        lb = _make_leaderboard_response(player_rank=3, total=15, player_elo=1500)
+        with patch.object(
+            ContestSimulationService,
+            "build_leaderboard",
+            AsyncMock(return_value=lb),
+        ):
+            result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        assert result.rank == 3
+        assert result.total_participants == 15
+
+    @pytest.mark.asyncio
+    async def test_end_contest_rank_none_when_no_leaderboard(self, db):
+        """rank is None when leaderboard is unavailable."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        for i in range(3):
+            await ContestService.submit_problem(
+                db=db,
+                user=user,
+                contest_id=contest.id,
+                problem_id=contest.problems[i].problem_id,
+                solved=True,
+                attempts=1,
+                time_spent=300.0,
+            )
+
+        with patch.object(
+            ContestSimulationService,
+            "build_leaderboard",
+            AsyncMock(side_effect=Exception("no bots table")),
+        ):
+            result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        assert result.rank is None
+        assert result.total_participants is None
+
+    @pytest.mark.asyncio
+    async def test_end_contest_populates_time_spent(self, db):
+        """end_contest calculates time_spent_minutes from started_at to ended_at."""
+        user = _make_user(elo=1200)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        # end_contest without submissions
+        result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        # time_spent_minutes should be populated (small, since test runs fast)
+        assert result.time_spent_minutes is not None
+        assert result.time_spent_minutes >= 0
+
+    @pytest.mark.asyncio
+    async def test_end_contest_melo_changes_is_none(self, db):
+        """melo_changes is None in current implementation."""
+        user = _make_user(elo=1200)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        assert result.melo_changes is None
+
+    @pytest.mark.asyncio
+    async def test_end_contest_pp_fields_none_when_no_pp_records(self, db):
+        """PP fields are None when there are no PP records for contest problems."""
+        user = _make_user(elo=1200, pp=10.0)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        # PP records are queried by problem_id from session.problems.
+        # With mocked PPService.record_pp, no PPRecords exist for these problem_ids.
+        assert result.pp_before is not None
+        assert result.pp_after is not None
+        assert result.pp_before == 10.0
+        assert result.pp_after == 10.0
+        assert result.pp_change == 0.0
+
+    @pytest.mark.asyncio
+    async def test_end_contest_pp_fields_with_records(self, db):
+        """PP fields reflect gains when PPRecord entries exist for contest problems."""
+        user = _make_user(elo=1500, pp=55.0)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        # Insert PPRecord for first problem to simulate PP gained
+        problem_id = contest.problems[0].problem_id
+        pp_record = _TestPPRecord(
+            user_id=user.id,
+            cf_problem_id=problem_id,
+            problem_rating=800,
+            base_pp=5.0,
+            solved_at=datetime.now(UTC),
+            final_pp=5.0,
+        )
+        db.add(pp_record)
+        await db.flush()
+
+        result = await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        assert result.pp_after == 55.0
+        assert result.pp_before == 50.0  # 55 - 5
+        assert result.pp_change == 5.0
+
+
+class TestGetContestResultExtended:
+    """Verify get_contest_result populates extended fields for completed contests."""
+
+    @pytest.mark.asyncio
+    async def test_get_contest_result_elo_before_after(self, db):
+        """get_contest_result computes elo_before from user.elo - elo_change."""
+        user = _make_user(elo=1515)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        # Submit 3+ for PR settlement
+        for i in range(3):
+            await ContestService.submit_problem(
+                db=db,
+                user=user,
+                contest_id=contest.id,
+                problem_id=contest.problems[i].problem_id,
+                solved=True,
+                attempts=1,
+                time_spent=300.0,
+            )
+
+        with patch.object(
+            ContestSimulationService,
+            "build_leaderboard",
+            AsyncMock(return_value=_make_leaderboard_response(player_rank=1, total=10)),
+        ):
+            await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        # Now get result via get_contest_result
+        with patch.object(
+            ContestSimulationService,
+            "build_leaderboard",
+            AsyncMock(return_value=_make_leaderboard_response(player_rank=1, total=10, player_elo=user.elo)),
+        ):
+            result = await ContestService.get_contest_result(db, user, contest.id)
+
+        assert result.elo_before is not None
+        assert result.elo_after == user.elo
+        assert result.elo_before == user.elo - (result.elo_change or 0)
+
+    @pytest.mark.asyncio
+    async def test_get_contest_result_rank_and_total(self, db):
+        """get_contest_result returns rank and total_participants."""
+        user = _make_user(elo=1500)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        for i in range(3):
+            await ContestService.submit_problem(
+                db=db,
+                user=user,
+                contest_id=contest.id,
+                problem_id=contest.problems[i].problem_id,
+                solved=True,
+                attempts=1,
+                time_spent=300.0,
+            )
+
+        with patch.object(
+            ContestSimulationService,
+            "build_leaderboard",
+            AsyncMock(return_value=_make_leaderboard_response(player_rank=5, total=20)),
+        ):
+            await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        # Fetch again
+        lb = _make_leaderboard_response(player_rank=5, total=20, player_elo=user.elo)
+        with patch.object(
+            ContestSimulationService,
+            "build_leaderboard",
+            AsyncMock(return_value=lb),
+        ):
+            result = await ContestService.get_contest_result(db, user, contest.id)
+
+        assert result.rank == 5
+        assert result.total_participants == 20
+
+    @pytest.mark.asyncio
+    async def test_get_contest_result_time_spent(self, db):
+        """get_contest_result calculates time_spent_minutes."""
+        user = _make_user(elo=1200)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        result = await ContestService.get_contest_result(db, user, contest.id)
+
+        assert result.time_spent_minutes is not None
+        assert result.time_spent_minutes >= 0
+
+    @pytest.mark.asyncio
+    async def test_get_contest_result_melo_changes_none(self, db):
+        """melo_changes is None in get_contest_result."""
+        user = _make_user(elo=1200)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+        await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        result = await ContestService.get_contest_result(db, user, contest.id)
+        assert result.melo_changes is None
+
+    @pytest.mark.asyncio
+    async def test_get_contest_result_pp_with_records(self, db):
+        """PP before/after computed from PPRecord entries."""
+        user = _make_user(elo=1500, pp=42.5)
+        db.add(user)
+        await db.flush()
+
+        cf_mock = _make_cf_service_mock()
+        contest = await ContestService.start_contest(db, user, "beginner", cf_mock)
+
+        # Add PPRecord for first problem
+        problem_id = contest.problems[0].problem_id
+        pp_record = _TestPPRecord(
+            user_id=user.id,
+            cf_problem_id=problem_id,
+            problem_rating=800,
+            base_pp=7.5,
+            solved_at=datetime.now(UTC),
+            final_pp=7.5,
+        )
+        db.add(pp_record)
+        await db.flush()
+
+        await ContestService.end_contest(db, user, contest.id, cf_mock)
+
+        result = await ContestService.get_contest_result(db, user, contest.id)
+
+        assert result.pp_after == 42.5
+        assert result.pp_before == pytest.approx(35.0)
+        assert result.pp_change == pytest.approx(7.5)
+
+    @pytest.mark.asyncio
+    async def test_get_contest_result_backward_compat_no_new_fields(self, db):
+        """All extended fields default to None when not populated (backward compat)."""
+        # This tests that the schema defaults work correctly
+        from app.schemas.contest import ContestResult
+
+        result = ContestResult(
+            id=uuid.uuid4(),
+            tier="beginner",
+            total_problems=4,
+            problems_solved=1,
+            status="completed",
+        )
+        assert result.elo_before is None
+        assert result.elo_after is None
+        assert result.pp_before is None
+        assert result.pp_after is None
+        assert result.pp_change is None
+        assert result.rank is None
+        assert result.total_participants is None
+        assert result.melo_changes is None
+        assert result.time_spent_minutes is None

@@ -61,5 +61,12 @@
   "tierPupil": "Pupil Contest",
   "tierAdvanced": "Advanced Contest",
   "tierMaster": "Master Contest",
-  "tierBlitz": "Blitz Contest"
+  "tierBlitz": "Blitz Contest",
+  "resultOverview": "Result Overview",
+  "globalElo": "Global Elo",
+  "pp": "PP",
+  "timeSpent": "Time Spent",
+  "rank": "Rank",
+  "solvedCount": "Solved",
+  "noChange": "No change"
 }

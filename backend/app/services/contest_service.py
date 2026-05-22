@@ -628,6 +628,9 @@ class ContestService:
         session.ended_at = now
         session.status = "completed"
 
+        # Snapshot elo_before before settlement modifies user.elo
+        elo_before = user.elo
+
         # Determine Elo change based on submission count
         pr_achievements: list[dict] = []
         if session.submissions == 0:
@@ -662,6 +665,8 @@ class ContestService:
             )
             session.elo_change = elo_change
 
+        elo_after = user.elo
+
         await db.flush()
 
         # Build result
@@ -676,11 +681,12 @@ class ContestService:
 
         # --- Achievement event detection ---
         achievements: list[dict] = list(pr_achievements) if session.submissions > 2 else []
+        player_rank: int | None = None
+        total_participants: int | None = None
 
         try:
             # Check contest win (rank 1 among all participants including bots)
             leaderboard = await ContestSimulationService.build_leaderboard(db, contest_id, user)
-            player_rank = None
             total_participants = len(leaderboard.leaderboard)
             for entry in leaderboard.leaderboard:
                 if not entry.is_bot:
@@ -704,6 +710,34 @@ class ContestService:
         if medal and medal.get("level") == "unranked":
             medal = None
 
+        # --- Calculate PP change during contest ---
+        pp_before: float | None = None
+        pp_after: float | None = None
+        pp_change: float | None = None
+        try:
+            pp_after = user.pp
+            solved_problem_ids = [p.get("problem_id", "") for p in (session.problems or [])]
+            if solved_problem_ids and pp_after is not None:
+                from app.models.pp_record import PPRecord
+
+                pp_gained_stmt = select(PPRecord).where(
+                    PPRecord.user_id == user.id,
+                    PPRecord.cf_problem_id.in_(solved_problem_ids),
+                )
+                pp_gained_result = await db.execute(pp_gained_stmt)
+                pp_gained_total = sum(r.final_pp for r in pp_gained_result.scalars().all())
+                pp_before = pp_after - pp_gained_total
+                pp_change = pp_gained_total
+        except Exception:
+            logger.debug("PP change calculation skipped for contest %s", contest_id, exc_info=True)
+
+        # --- Calculate time spent ---
+        time_spent_minutes: float | None = None
+        if session.started_at and session.ended_at:
+            started = ContestService._ensure_utc(session.started_at)
+            ended = ContestService._ensure_utc(session.ended_at)
+            time_spent_minutes = round((ended - started).total_seconds() / 60.0, 1)
+
         return ContestResult(
             id=session.id,
             tier=session.contest_tier,
@@ -719,6 +753,15 @@ class ContestService:
             medal=medal,
             problems=problem_infos,
             achievements=achievements,
+            elo_before=elo_before,
+            elo_after=elo_after,
+            pp_before=pp_before,
+            pp_after=pp_after,
+            pp_change=pp_change,
+            rank=player_rank,
+            total_participants=total_participants,
+            melo_changes=None,
+            time_spent_minutes=time_spent_minutes,
         )
 
     # ------------------------------------------------------------------
@@ -782,6 +825,51 @@ class ContestService:
         if medal and medal.get("level") == "unranked":
             medal = None
 
+        # --- Calculate elo_before/elo_after ---
+        elo_after = user.elo
+        elo_before = elo_after - (session.elo_change or 0)
+
+        # --- Calculate PP change during contest ---
+        pp_before: float | None = None
+        pp_after: float | None = None
+        pp_change: float | None = None
+        try:
+            pp_after = user.pp
+            solved_problem_ids = [p.get("problem_id", "") for p in (session.problems or [])]
+            if solved_problem_ids and pp_after is not None:
+                from app.models.pp_record import PPRecord
+
+                pp_gained_stmt = select(PPRecord).where(
+                    PPRecord.user_id == user.id,
+                    PPRecord.cf_problem_id.in_(solved_problem_ids),
+                )
+                pp_gained_result = await db.execute(pp_gained_stmt)
+                pp_gained_total = sum(r.final_pp for r in pp_gained_result.scalars().all())
+                pp_before = pp_after - pp_gained_total
+                pp_change = pp_gained_total
+        except Exception:
+            logger.debug("PP change calculation skipped for contest %s", contest_id, exc_info=True)
+
+        # --- Calculate rank and total_participants ---
+        player_rank: int | None = None
+        total_participants: int | None = None
+        try:
+            leaderboard = await ContestSimulationService.build_leaderboard(db, contest_id, user)
+            total_participants = len(leaderboard.leaderboard)
+            for entry in leaderboard.leaderboard:
+                if not entry.is_bot:
+                    player_rank = entry.rank
+                    break
+        except Exception:
+            logger.debug("Rank calculation skipped for contest %s", contest_id)
+
+        # --- Calculate time spent ---
+        time_spent_minutes: float | None = None
+        if session.started_at and session.ended_at:
+            started = ContestService._ensure_utc(session.started_at)
+            ended = ContestService._ensure_utc(session.ended_at)
+            time_spent_minutes = round((ended - started).total_seconds() / 60.0, 1)
+
         return ContestResult(
             id=session.id,
             tier=session.contest_tier,
@@ -797,6 +885,15 @@ class ContestService:
             medal=medal,
             problems=problem_infos,
             achievements=[],  # Achievements are only generated at end_contest time
+            elo_before=elo_before,
+            elo_after=elo_after,
+            pp_before=pp_before,
+            pp_after=pp_after,
+            pp_change=pp_change,
+            rank=player_rank,
+            total_participants=total_participants,
+            melo_changes=None,
+            time_spent_minutes=time_spent_minutes,
         )
 
     # ------------------------------------------------------------------
