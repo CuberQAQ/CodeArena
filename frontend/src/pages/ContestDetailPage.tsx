@@ -19,7 +19,7 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { AchievementPopup } from "@/components/animations";
 import { ProblemViewer } from "@/components/ProblemViewer";
 import { SolvingTimeline } from "@/components/SolvingTimeline";
-import { extractApiError, formatTime, getRatingColor } from "@/utils";
+import { extractApiError, formatTime, getRatingColor, stripIndexPrefix } from "@/utils";
 import { Avatar } from "@/components/Avatar";
 import { MedalBadge } from "@/components/medal/MedalBadge";
 import api from "@/services/api";
@@ -548,7 +548,7 @@ export default function ContestDetailPage() {
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">
-                          {problem.index} - {problem.name}
+                          {problem.index} - {stripIndexPrefix(problem.name)}
                         </p>
                       </div>
                       <span
@@ -752,7 +752,7 @@ export default function ContestDetailPage() {
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground">
-                        {problem.index} - {problem.name}
+                        {problem.index} - {stripIndexPrefix(problem.name)}
                       </p>
                     </div>
                     <span

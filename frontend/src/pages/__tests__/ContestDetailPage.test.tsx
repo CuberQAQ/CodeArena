@@ -62,6 +62,7 @@ vi.mock("@/utils", () => ({
   },
   formatTime: (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`,
   getRatingColor: () => "#000000",
+  stripIndexPrefix: (name: string) => name.replace(/^[A-Z]\d*\.\s*/, ""),
 }));
 
 const mockNavigate = vi.fn();

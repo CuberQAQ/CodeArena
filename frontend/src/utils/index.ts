@@ -154,3 +154,20 @@ export function ratingToMedal(rating: number): { level: string; type?: string } 
   }
   return { level: "unranked" };
 }
+
+// ---------------------------------------------------------------------------
+// CF problem title sanitisation
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip the leading index prefix from a CF problem name/title.
+ *
+ * CF API returns names like "B. Two Tables" or "C1. Increasing Subsequence".
+ * When we already display the index separately (e.g. "{index} - {name}"),
+ * this prevents double-rendering like "B - B. Two Tables".
+ *
+ * Handles: A, B, C1, C2, E1, E2, etc. (uppercase letter + optional digits + dot + space)
+ */
+export function stripIndexPrefix(name: string): string {
+  return name.replace(/^[A-Z]\d*\.\s*/, "");
+}

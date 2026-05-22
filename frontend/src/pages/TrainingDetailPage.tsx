@@ -23,7 +23,7 @@ import { CoinAnimation } from "@/components/animations/CoinAnimation";
 import { AchievementPopup } from "@/components/animations";
 import { ProblemViewer } from "@/components/ProblemViewer";
 import { SolvingTimeline } from "@/components/SolvingTimeline";
-import { extractApiError, formatTime, getRatingColor } from "@/utils";
+import { extractApiError, formatTime, getRatingColor, stripIndexPrefix } from "@/utils";
 import api from "@/services/api";
 import {
   getActiveTrainingSession,
@@ -523,7 +523,7 @@ export default function TrainingDetailPage() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">
                           {problem.contest_id}
-                          {problem.index} - {problem.name}
+                          {problem.index} - {stripIndexPrefix(problem.name)}
                         </p>
                       </div>
                       {problem.rating && (
@@ -668,7 +668,7 @@ export default function TrainingDetailPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground">
                         {problem.contest_id}
-                        {problem.index} - {problem.name}
+                        {problem.index} - {stripIndexPrefix(problem.name)}
                       </p>
                       {problem.solved && problem.time_spent != null && (
                         <p className="text-xs text-muted-foreground">

@@ -18,6 +18,7 @@ import {
   type ProblemStatementData,
   type SampleTest,
 } from "@/services/problemApi";
+import { stripIndexPrefix } from "@/utils";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -320,7 +321,7 @@ export function ProblemStatementViewer({
         {/* Header */}
         <div className="border-b border-border px-6 py-4">
           <h2 className="text-xl font-bold text-foreground">
-            {index}. {statement.title}
+            {index}. {stripIndexPrefix(statement.title)}
           </h2>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             {statement.time_limit && (

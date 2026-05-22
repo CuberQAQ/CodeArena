@@ -8,6 +8,7 @@ import {
   formatDate,
   extractApiError,
   ratingToMedal,
+  stripIndexPrefix,
   RATING_TIERS,
 } from "../index";
 
@@ -401,5 +402,55 @@ describe("ratingToMedal", () => {
 
   it("returns highest medal for extreme rating", () => {
     expect(ratingToMedal(3000)).toEqual({ level: "world_finals", type: "gold" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stripIndexPrefix
+// ---------------------------------------------------------------------------
+
+describe("stripIndexPrefix", () => {
+  it("strips simple letter prefix like 'A. '", () => {
+    expect(stripIndexPrefix("A. Theatre Square")).toBe("Theatre Square");
+  });
+
+  it("strips letter+digit prefix like 'C1. '", () => {
+    expect(stripIndexPrefix("C1. Increasing Subsequence")).toBe(
+      "Increasing Subsequence",
+    );
+  });
+
+  it("strips letter+multi-digit prefix like 'E2. '", () => {
+    expect(stripIndexPrefix("E2. Array and Segments")).toBe(
+      "Array and Segments",
+    );
+  });
+
+  it("strips 'B. ' prefix", () => {
+    expect(stripIndexPrefix("B. Two Tables")).toBe("Two Tables");
+  });
+
+  it("does not strip lowercase prefix", () => {
+    expect(stripIndexPrefix("a. Some Problem")).toBe("a. Some Problem");
+  });
+
+  it("does not strip prefix without dot-space", () => {
+    expect(stripIndexPrefix("A problem name")).toBe("A problem name");
+  });
+
+  it("does not strip prefix embedded in text", () => {
+    expect(stripIndexPrefix("Problem A. Test")).toBe("Problem A. Test");
+  });
+
+  it("returns name unchanged when no prefix present", () => {
+    expect(stripIndexPrefix("Two Tables")).toBe("Two Tables");
+  });
+
+  it("handles single letter prefix 'Z. '", () => {
+    expect(stripIndexPrefix("Z. Hard Problem")).toBe("Hard Problem");
+  });
+
+  it("handles prefix with multiple digits 'F12. '", () => {
+    expect(stripIndexPrefix("F12. Very Hard")).toBe("Very Hard");
   });
 });
