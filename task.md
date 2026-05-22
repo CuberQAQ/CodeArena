@@ -1893,3 +1893,37 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 - [ ] **Codecov PR 评论**: 每个 PR 自动评论覆盖率变化
 - [ ] **变异报告**: 变异测试结果可作为 CI artifact 下载
 - [ ] **执行时间**: 测试超时自动警告
+
+---
+
+## 阶段 44: Bug 修复 — 排行榜 UI
+
+### Task 44.1: 修复排行榜页面标题不随 Tab 切换更新
+**状态**: 🟢 已完成
+**优先级**: P0
+**依赖**: 无
+
+#### Bug 描述
+排行榜页面 (`/ranking`) 切换到 Arena 标签页时，页面标题始终显示 "Global Ranking" 及全球排名描述，未随标签页切换而更新。
+
+#### 根因分析
+`RankingPage.tsx` 中 `<PageHeader title={t("title")} description={t("description")} />` 使用了固定的 i18n key `"title"` 和 `"description"`，未根据 `activeTab` 状态动态切换。
+
+#### 需要修改的文件
+- `frontend/src/pages/RankingPage.tsx` — PageHeader 组件的 title/description 根据 activeTab 动态切换
+- `frontend/src/locales/en/ranking.json` — 新增 `arenaTitle` 和 `arenaDescription` key
+- `frontend/src/locales/zh/ranking.json` — 新增对应的中文翻译
+
+#### 关键实现细节
+1. PageHeader 的 title 根据 activeTab 切换：
+   - `"global"` → `t("title")` / `t("description")`
+   - `"arena"` → `t("arenaTitle")` / `t("arenaDescription")`
+2. 新增 i18n key：
+   - `arenaTitle`: "Arena Ranking" / "竞技场排名"
+   - `arenaDescription`: "CodeArena users only, ranked by verified PP or Elo." / "仅 CodeArena 用户，按真实 PP 或 Elo 排名。"
+
+#### 测试要点
+- [ ] Global 标签页标题显示 "Global Ranking"
+- [ ] Arena 标签页标题显示 "Arena Ranking"
+- [ ] 标题随 Tab 切换实时更新
+- [ ] 中英文翻译均正确

@@ -642,4 +642,74 @@ describe("RankingPage", () => {
     // Country should be displayed in uppercase
     expect(screen.getByText("CN")).toBeInTheDocument();
   });
+
+  // --- Title switching tests (bug fix verification) ---
+
+  // 29. Global tab shows global title and description in PageHeader
+  it("shows global title and description in PageHeader on global tab", () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1).toHaveTextContent("title");
+    expect(screen.getByText("description")).toBeInTheDocument();
+  });
+
+  // 30. Arena tab shows arena title and description in PageHeader
+  it("shows arena title and description in PageHeader on arena tab", async () => {
+    mockGlobalEndpoint();
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("tabArena"));
+
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1).toHaveTextContent("arenaTitle");
+    expect(screen.getByText("arenaDescription")).toBeInTheDocument();
+  });
+
+  // 31. Title updates correctly when switching between tabs
+  it("updates PageHeader title when switching between tabs", async () => {
+    mockGlobalEndpoint();
+    const user = userEvent.setup();
+    renderPage();
+
+    // Initially on global tab
+    let h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1).toHaveTextContent("title");
+    expect(h1).not.toHaveTextContent("arenaTitle");
+
+    // Switch to arena tab
+    await user.click(screen.getByText("tabArena"));
+    h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1).toHaveTextContent("arenaTitle");
+    expect(h1).not.toHaveTextContent("title");
+
+    // Switch back to global tab
+    await user.click(screen.getByText("tabGlobal"));
+    h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1).toHaveTextContent("title");
+    expect(h1).not.toHaveTextContent("arenaTitle");
+  });
+
+  // 32. Description updates correctly when switching between tabs
+  it("updates PageHeader description when switching between tabs", async () => {
+    mockGlobalEndpoint();
+    const user = userEvent.setup();
+    renderPage();
+
+    // Initially on global tab
+    expect(screen.getByText("description")).toBeInTheDocument();
+    expect(screen.queryByText("arenaDescription")).not.toBeInTheDocument();
+
+    // Switch to arena tab
+    await user.click(screen.getByText("tabArena"));
+    expect(screen.getByText("arenaDescription")).toBeInTheDocument();
+    expect(screen.queryByText("description")).not.toBeInTheDocument();
+
+    // Switch back to global tab
+    await user.click(screen.getByText("tabGlobal"));
+    expect(screen.getByText("description")).toBeInTheDocument();
+    expect(screen.queryByText("arenaDescription")).not.toBeInTheDocument();
+  });
 });

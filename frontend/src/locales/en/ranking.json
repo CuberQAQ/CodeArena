@@ -26,5 +26,7 @@
   "prevPage": "Previous",
   "nextPage": "Next",
   "totalUsers": "{{count}} users total",
-  "topPercent": "Top {{percent}}%"
+  "topPercent": "Top {{percent}}%",
+  "arenaTitle": "Arena Ranking",
+  "arenaDescription": "CodeArena users only, ranked by verified PP or Elo."
 }

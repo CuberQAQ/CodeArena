@@ -150,7 +150,10 @@ export default function RankingPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader
+        title={activeTab === "arena" ? t("arenaTitle") : t("title")}
+        description={activeTab === "arena" ? t("arenaDescription") : t("description")}
+      />
 
       {/* Tab + Filter bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
