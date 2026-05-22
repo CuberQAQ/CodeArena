@@ -12,15 +12,35 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("recharts", async () => {
-  const OriginalModule = await vi.importActual<typeof import("recharts")>("recharts");
-  return {
-    ...OriginalModule,
-    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
-      <div data-testid="responsive-container">{children}</div>
-    ),
-  };
-});
+vi.mock("recharts", () => ({
+  ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="responsive-container">{children}</div>
+  ),
+  PieChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Pie: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Cell: () => <div />,
+  Tooltip: ({ content }: { content?: React.ReactElement }) => {
+    const TooltipFn = content && typeof content.type === "function" ? content.type : null;
+    return (
+      <div data-testid="tooltip-mock">
+        <div data-testid="tooltip-inactive">
+          {TooltipFn ? TooltipFn({ active: false, payload: [] }) : null}
+        </div>
+        <div data-testid="tooltip-active">
+          {TooltipFn
+            ? TooltipFn({
+                active: true,
+                payload: [{ value: 20, payload: { difficulty: "Easy", count: 20, color: "#00FF00" } }],
+              })
+            : null}
+        </div>
+        <div data-testid="tooltip-active-no-payload">
+          {TooltipFn ? TooltipFn({ active: true, payload: [] }) : null}
+        </div>
+      </div>
+    );
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Import SUT
@@ -97,9 +117,10 @@ describe("StatsPanel", () => {
     expect(
       screen.getByText("charts.difficultyDistribution"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Easy")).toBeInTheDocument();
-    expect(screen.getByText("Medium")).toBeInTheDocument();
-    expect(screen.getByText("Hard")).toBeInTheDocument();
+    // Distribution items appear in both tooltip mock and distribution list
+    expect(screen.getAllByText("Easy").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Medium").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Hard").length).toBeGreaterThanOrEqual(1);
   });
 
   // Covers StatCard with sub label (lines 41-42)
@@ -116,5 +137,27 @@ describe("StatsPanel", () => {
     // Should show the no-stats message inside the distribution section
     const noStatsMessages = screen.getAllByText("charts.noStats");
     expect(noStatsMessages.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // Covers DifficultyTooltip: active=true with payload => renders difficulty and count
+  it("DifficultyTooltip renders content when active with payload", () => {
+    render(<StatsPanel stats={statsWithData} />);
+    const activeTooltip = screen.getByTestId("tooltip-active");
+    expect(activeTooltip).toHaveTextContent("Easy");
+    expect(activeTooltip).toHaveTextContent("charts.solved");
+  });
+
+  // Covers DifficultyTooltip: active=false => returns null
+  it("DifficultyTooltip returns null when not active", () => {
+    render(<StatsPanel stats={statsWithData} />);
+    const inactiveTooltip = screen.getByTestId("tooltip-inactive");
+    expect(inactiveTooltip.innerHTML).toBe("");
+  });
+
+  // Covers DifficultyTooltip: active=true but no payload => returns null
+  it("DifficultyTooltip returns null when active but no payload", () => {
+    render(<StatsPanel stats={statsWithData} />);
+    const noPayloadTooltip = screen.getByTestId("tooltip-active-no-payload");
+    expect(noPayloadTooltip.innerHTML).toBe("");
   });
 });

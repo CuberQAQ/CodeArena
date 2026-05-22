@@ -21,15 +21,47 @@ vi.mock("@/i18n", () => ({
   }, language: "en" },
 }));
 
-vi.mock("recharts", async () => {
-  const OriginalModule = await vi.importActual<typeof import("recharts")>("recharts");
-  return {
-    ...OriginalModule,
-    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
-      <div data-testid="responsive-container">{children}</div>
-    ),
-  };
-});
+vi.mock("recharts", () => ({
+  ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="responsive-container">{children}</div>
+  ),
+  LineChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Line: () => <div />,
+  XAxis: () => <div />,
+  YAxis: () => <div />,
+  CartesianGrid: () => <div />,
+  Tooltip: ({ content }: { content?: React.ReactElement }) => {
+    const TooltipFn = content && typeof content.type === "function" ? content.type : null;
+    return (
+      <div data-testid="tooltip-mock">
+        <div data-testid="tooltip-inactive">
+          {TooltipFn ? TooltipFn({ active: false, payload: [], label: "" }) : null}
+        </div>
+        <div data-testid="tooltip-active-positive">
+          {TooltipFn
+            ? TooltipFn({
+                active: true,
+                payload: [{ value: 1420, payload: { date: "2025-01-02", elo: 1420, change: 20 } }],
+                label: "01/02",
+              })
+            : null}
+        </div>
+        <div data-testid="tooltip-active-negative">
+          {TooltipFn
+            ? TooltipFn({
+                active: true,
+                payload: [{ value: 1390, payload: { date: "2025-01-03", elo: 1390, change: -30 } }],
+                label: "01/03",
+              })
+            : null}
+        </div>
+        <div data-testid="tooltip-active-no-payload">
+          {TooltipFn ? TooltipFn({ active: true, payload: [], label: "" }) : null}
+        </div>
+      </div>
+    );
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Import SUT
@@ -107,5 +139,35 @@ describe("EloChart", () => {
     render(<EloChart data={[{ date: "2025-01-01", elo: 1500, change: 0 }]} />);
     expect(screen.getByText("charts.eloTrend")).toBeInTheDocument();
     expect(screen.getByTestId("responsive-container")).toBeInTheDocument();
+  });
+
+  // Covers CustomTooltip: active=true with positive change payload
+  it("CustomTooltip renders content with positive elo change", () => {
+    render(<EloChart data={sampleData} />);
+    const tooltip = screen.getByTestId("tooltip-active-positive");
+    expect(tooltip).toHaveTextContent("01/02");
+    expect(tooltip).toHaveTextContent("+20");
+  });
+
+  // Covers CustomTooltip: active=true with negative change payload
+  it("CustomTooltip renders content with negative elo change", () => {
+    render(<EloChart data={sampleData} />);
+    const tooltip = screen.getByTestId("tooltip-active-negative");
+    expect(tooltip).toHaveTextContent("01/03");
+    expect(tooltip).toHaveTextContent("-30");
+  });
+
+  // Covers CustomTooltip: active=false => returns null
+  it("CustomTooltip returns null when not active", () => {
+    render(<EloChart data={sampleData} />);
+    const tooltip = screen.getByTestId("tooltip-inactive");
+    expect(tooltip.innerHTML).toBe("");
+  });
+
+  // Covers CustomTooltip: active=true but no payload => returns null
+  it("CustomTooltip returns null when active but no payload", () => {
+    render(<EloChart data={sampleData} />);
+    const tooltip = screen.getByTestId("tooltip-active-no-payload");
+    expect(tooltip.innerHTML).toBe("");
   });
 });

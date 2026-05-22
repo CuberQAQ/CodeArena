@@ -5,15 +5,37 @@ import { render, screen } from "@testing-library/react";
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock("recharts", async () => {
-  const OriginalModule = await vi.importActual<typeof import("recharts")>("recharts");
-  return {
-    ...OriginalModule,
-    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
-      <div data-testid="responsive-container">{children}</div>
-    ),
-  };
-});
+vi.mock("recharts", () => ({
+  ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="responsive-container">{children}</div>
+  ),
+  RadarChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PolarGrid: () => <div />,
+  PolarAngleAxis: () => <div />,
+  PolarRadiusAxis: () => <div />,
+  Radar: () => <div />,
+  Tooltip: ({ content }: { content?: React.ReactElement }) => {
+    const TooltipFn = content && typeof content.type === "function" ? content.type : null;
+    return (
+      <div data-testid="tooltip-mock">
+        <div data-testid="tooltip-inactive">
+          {TooltipFn ? TooltipFn({ active: false, payload: [] }) : null}
+        </div>
+        <div data-testid="tooltip-active">
+          {TooltipFn
+            ? TooltipFn({
+                active: true,
+                payload: [{ value: 1500, payload: { topic: "DP", value: 1500, fullMark: 2000 } }],
+              })
+            : null}
+        </div>
+        <div data-testid="tooltip-active-no-payload">
+          {TooltipFn ? TooltipFn({ active: true, payload: [] }) : null}
+        </div>
+      </div>
+    );
+  },
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -87,5 +109,27 @@ describe("RadarChart", () => {
   it("renders chart with zero value data point", () => {
     render(<RadarChart data={[{ topic: "DP", value: 0, fullMark: 2000 }]} />);
     expect(screen.getByText("radar.title")).toBeInTheDocument();
+  });
+
+  // Covers CustomTooltip: active=true with payload => renders topic and M-Elo
+  it("CustomTooltip renders content when active with payload", () => {
+    render(<RadarChart data={sampleData} />);
+    const activeTooltip = screen.getByTestId("tooltip-active");
+    expect(activeTooltip).toHaveTextContent("DP");
+    expect(activeTooltip).toHaveTextContent("1500");
+  });
+
+  // Covers CustomTooltip: active=false => returns null
+  it("CustomTooltip returns null when not active", () => {
+    render(<RadarChart data={sampleData} />);
+    const inactiveTooltip = screen.getByTestId("tooltip-inactive");
+    expect(inactiveTooltip.innerHTML).toBe("");
+  });
+
+  // Covers CustomTooltip: active=true but no payload => returns null
+  it("CustomTooltip returns null when active but no payload", () => {
+    render(<RadarChart data={sampleData} />);
+    const noPayloadTooltip = screen.getByTestId("tooltip-active-no-payload");
+    expect(noPayloadTooltip.innerHTML).toBe("");
   });
 });

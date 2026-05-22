@@ -91,6 +91,22 @@ const mockStatementWithLatex = {
     '<script type="math/tex">\\alpha + \\beta</script>',
 };
 
+// Mock data with tex-span elements (MathJax-rendered output that should be stripped)
+const mockStatementWithTexSpan = {
+  ...mockStatement,
+  body_html:
+    '<p>Formula: <span class="tex-span"><span class="katex">old render</span></span><script type="math/tex">x^2</script></p>',
+  note_html: null,
+};
+
+// Mock data with multiline $$$...$$$ delimiters
+const mockStatementWithMultilineDollar = {
+  ...mockStatement,
+  body_html:
+    '<p>Multi-line: $$$a + \nb + \nc$$$</p>',
+  note_html: null,
+};
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -241,6 +257,41 @@ describe("ProblemStatementViewer", () => {
         const allKatex = document.querySelectorAll(".katex");
         // At least the note katex should be present (plus inline + display in body)
         expect(allKatex.length).toBeGreaterThanOrEqual(2);
+      });
+    });
+
+    it("strips tex-span elements to prevent duplicate formula rendering", async () => {
+      mockGetProblemStatement.mockResolvedValue(mockStatementWithTexSpan);
+      render(<ProblemStatementViewer contestId={1920} index="A" />);
+
+      await waitFor(() => {
+        const container = document.querySelector(".cf-prose");
+        expect(container).toBeTruthy();
+        // tex-span elements should be removed
+        expect(container!.querySelector(".tex-span")).toBeNull();
+        // The script type="math/tex" should be replaced with KaTeX output
+        const katexSpan = container!.querySelector(".katex");
+        expect(katexSpan).toBeTruthy();
+        expect(katexSpan!.textContent).toContain("x^2");
+        // Should NOT contain the old rendered content from tex-span
+        expect(container!.textContent).not.toContain("old render");
+      });
+    });
+
+    it("handles multiline $$$...$$$ delimiters", async () => {
+      mockGetProblemStatement.mockResolvedValue(mockStatementWithMultilineDollar);
+      render(<ProblemStatementViewer contestId={1920} index="A" />);
+
+      await waitFor(() => {
+        const container = document.querySelector(".cf-prose");
+        expect(container).toBeTruthy();
+        // The multiline formula should be rendered by KaTeX
+        const katexSpan = container!.querySelector(".katex");
+        expect(katexSpan).toBeTruthy();
+        // The raw $$$ delimiters should be gone
+        expect(container!.innerHTML).not.toContain("$$$");
+        // The formula content should have been passed to KaTeX
+        expect(katexSpan!.textContent).toContain("a +");
       });
     });
   });

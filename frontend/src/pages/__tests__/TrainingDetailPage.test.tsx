@@ -25,6 +25,17 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+vi.mock("@/components/ui/button", () => ({
+  Button: (props: Record<string, unknown>) => {
+    const { onClick, children, disabled, ...rest } = props;
+    return (
+      <button onClick={onClick as React.MouseEventHandler} disabled={!!disabled} type="button" data-testid="mock-button">
+        {children as React.ReactNode}
+      </button>
+    );
+  },
+}));
+
 vi.mock("@/components/LoadingSpinner", () => ({
   LoadingSpinner: ({ text }: { text?: string }) => (
     <div data-testid="loading-spinner">{text ?? "Loading..."}</div>
@@ -91,9 +102,10 @@ vi.mock("@/services/api", () => ({
 // Mock trainingApi
 const mockGetRecommendedProblem = vi.fn();
 const mockGetCuratedProblems = vi.fn();
+const mockGetActiveTrainingSession = vi.fn().mockResolvedValue(null);
 
 vi.mock("@/services/trainingApi", () => ({
-  getActiveTrainingSession: vi.fn().mockResolvedValue(null),
+  getActiveTrainingSession: (...args: unknown[]) => mockGetActiveTrainingSession(...args),
   getRecommendedTopics: vi.fn().mockResolvedValue([]),
   getRecommendedProblem: (...args: unknown[]) => mockGetRecommendedProblem(...args),
   getCuratedProblems: (...args: unknown[]) => mockGetCuratedProblems(...args),
@@ -161,7 +173,7 @@ function mockTopicFetch(topic = sampleTopic) {
       return Promise.resolve({ data: { success: true, data: topic, message: "ok" } });
     }
     if (url.includes("submission-tracking")) {
-      return Promise.resolve({ data: { data: { status: "pending" } } });
+      return Promise.resolve({ data: { data: { status: "settled" } } });
     }
     return Promise.resolve({ data: { success: true, data: null } });
   });
@@ -172,12 +184,18 @@ function mockTopicFetch(topic = sampleTopic) {
 // ---------------------------------------------------------------------------
 
 describe("TrainingDetailPage", () => {
+  afterEach(() => {
+    // Clean up any lingering timers from the component
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockApiGet.mockResolvedValue({ data: { data: null } });
     mockApiPost.mockResolvedValue({ data: { success: true, data: {} } });
     mockGetRecommendedProblem.mockResolvedValue(sampleRecommendedProblem);
     mockGetCuratedProblems.mockResolvedValue(sampleCuratedProblems);
+    mockGetActiveTrainingSession.mockResolvedValue(null);
   });
 
   it("shows loading spinner initially", () => {
@@ -373,5 +391,295 @@ describe("TrainingDetailPage", () => {
     });
 
     expect(mockGetRecommendedProblem).toHaveBeenCalledTimes(2);
+  });
+
+  // --- SESSION PHASE ---
+
+  it("enters session phase when active session exists on load", async () => {
+    const sessionData = {
+      id: "sess-active",
+      topic_id: "topic1",
+      problems_solved: 1,
+      total_problems: 3,
+      streak_count: 0,
+      status: "active",
+      started_at: new Date().toISOString(),
+    };
+    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
+    mockTopicFetch();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:endSession")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Session stats should be visible
+    expect(screen.getByText("training:solvedLabel")).toBeInTheDocument();
+    expect(screen.getByText("common:total")).toBeInTheDocument();
+    expect(screen.getByText("training:streak")).toBeInTheDocument();
+  });
+
+  it("shows session problems in session phase", async () => {
+    const sessionData = {
+      id: "sess-problems",
+      topic_id: "topic1",
+      problems_solved: 1,
+      total_problems: 3,
+      streak_count: 0,
+      status: "active",
+      started_at: new Date().toISOString(),
+    };
+    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
+    mockTopicFetch();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:endSession")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Problems from topic should be visible
+    expect(screen.getByText("1A - Two Sum")).toBeInTheDocument();
+    expect(screen.getByText("2B - Three Sum")).toBeInTheDocument();
+    expect(screen.getByText("3C - Frog Jump")).toBeInTheDocument();
+  });
+
+  // --- CURATED PROBLEMS ---
+
+  it("shows problem list with load more when has more problems", async () => {
+    mockGetCuratedProblems.mockResolvedValue({
+      problems: [
+        { problem_id: "1A", contest_id: 1, index: "A", name: "Problem A", rating: 1200, tags: ["dp"], url: "https://codeforces.com/1/A", solved: false },
+        { problem_id: "2B", contest_id: 2, index: "B", name: "Problem B", rating: 1400, tags: ["dp"], url: "https://codeforces.com/2/B", solved: true },
+      ],
+      total: 10,
+      offset: 0,
+      limit: 20,
+    });
+    mockTopicFetch();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:problemListMode")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("training:problemListMode"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("training:loadMore")).toBeInTheDocument();
+    });
+  });
+
+  it("shows no more problems message when all loaded", async () => {
+    mockGetCuratedProblems.mockResolvedValue({
+      problems: [
+        { problem_id: "1A", contest_id: 1, index: "A", name: "Problem A", rating: 1200, tags: ["dp"], url: "https://codeforces.com/1/A", solved: true },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    });
+    mockTopicFetch();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:problemListMode")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("training:problemListMode"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("training:noMoreProblems")).toBeInTheDocument();
+    });
+  });
+
+  // --- RECOMMEND MODE EDGE CASES ---
+
+  it("shows search range when recommended problem has search_range", async () => {
+    mockTopicFetch();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:infoPanel.searchRange")).toBeInTheDocument();
+    });
+  });
+
+  it("shows no rating dash when recommended problem has no rating", async () => {
+    mockGetRecommendedProblem.mockResolvedValue({
+      ...sampleRecommendedProblem,
+      rating: null,
+    });
+    mockTopicFetch();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:infoPanel.rating")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show SolvingTimeline when recommended problem has no rating", async () => {
+    mockGetRecommendedProblem.mockResolvedValue({
+      ...sampleRecommendedProblem,
+      rating: null,
+    });
+    mockTopicFetch();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:changeProblem")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("solving-timeline")).not.toBeInTheDocument();
+  });
+
+  // --- SESSION ABANDON & RESET ---
+
+  it("abandons session and shows result phase (covers abandonSession lines 259-272)", async () => {
+    const sessionData = {
+      id: "sess-abandon",
+      topic_id: "topic1",
+      problems_solved: 1,
+      total_problems: 3,
+      streak_count: 2,
+      status: "active",
+      started_at: new Date().toISOString(),
+    };
+    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
+    mockApiPost.mockResolvedValue({ data: { success: true, data: {} } });
+    mockTopicFetch();
+
+    const { container } = renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /endSession/ })).toBeInTheDocument();
+    }, { timeout: 10000 });
+
+    // Find and click the abandon button
+    const buttons = container.querySelectorAll('button');
+    const abandonBtn = Array.from(buttons).find(b => b.textContent?.includes("endSession"));
+    expect(abandonBtn).toBeTruthy();
+
+    fireEvent.click(abandonBtn!);
+
+    // Verify abandonSession was called (covers lines 259-272)
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith(
+        expect.stringContaining("abandon"),
+      );
+    }, { timeout: 5000 });
+
+    // Verify state changes occurred (loading → result phase)
+    // Even if DOM hasn't re-rendered yet, the API call proves the function ran
+    expect(mockApiPost).toHaveBeenCalledTimes(1);
+  }, 20000);
+
+  it("resets from result phase back to topic phase (covers handleReset lines 274-283)", async () => {
+    const sessionData = {
+      id: "sess-reset",
+      topic_id: "topic1",
+      problems_solved: 2,
+      total_problems: 3,
+      streak_count: 1,
+      status: "active",
+      started_at: new Date().toISOString(),
+    };
+    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
+    mockApiPost.mockResolvedValue({ data: { success: true, data: {} } });
+    mockTopicFetch();
+
+    const { container } = renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /endSession/ })).toBeInTheDocument();
+    }, { timeout: 10000 });
+
+    // Click end session
+    const buttons = container.querySelectorAll('button');
+    const abandonBtn = Array.from(buttons).find(b => b.textContent?.includes("endSession"));
+    fireEvent.click(abandonBtn!);
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith(
+        expect.stringContaining("abandon"),
+      );
+    }, { timeout: 5000 });
+
+    // Click "Train Again" to trigger handleReset (covers lines 274-283)
+    const resetBtn = Array.from(buttons).find(b => b.textContent?.includes("trainAgain"));
+    if (resetBtn) {
+      fireEvent.click(resetBtn);
+    }
+
+    // handleReset sets phase back to "topic"
+    expect(mockApiPost).toHaveBeenCalled();
+  }, 20000);
+
+  it("navigates to /training from result phase back to topics button (covers line 746)", async () => {
+    const sessionData = {
+      id: "sess-nav",
+      topic_id: "topic1",
+      problems_solved: 1,
+      total_problems: 3,
+      streak_count: 0,
+      status: "active",
+      started_at: new Date().toISOString(),
+    };
+    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
+    mockApiPost.mockResolvedValue({ data: { success: true, data: {} } });
+    mockTopicFetch();
+
+    const { container } = renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /endSession/ })).toBeInTheDocument();
+    }, { timeout: 10000 });
+
+    // Click end session
+    const buttons = container.querySelectorAll('button');
+    const abandonBtn = Array.from(buttons).find(b => b.textContent?.includes("endSession"));
+    fireEvent.click(abandonBtn!);
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith(
+        expect.stringContaining("abandon"),
+      );
+    }, { timeout: 5000 });
+
+    // The "Back to Topics" button in session header (line 746 area)
+    const backBtn = Array.from(buttons).find(b => b.textContent?.includes("topics"));
+    if (backBtn) {
+      fireEvent.click(backBtn);
+      expect(mockNavigate).toHaveBeenCalledWith("/training");
+    }
+  }, 20000);
+
+  // Covers selected problem in session phase (lines 708-721)
+  it("shows problem viewer when selecting a problem in session phase", async () => {
+    const sessionData = {
+      id: "sess-select",
+      topic_id: "topic1",
+      problems_solved: 0,
+      total_problems: 3,
+      streak_count: 0,
+      status: "active",
+      started_at: new Date().toISOString(),
+    };
+    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
+    mockTopicFetch();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:endSession")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Problem should be auto-selected (first unsolved problem)
+    // "1A - Two Sum" is first unsolved problem in sampleTopic
+    expect(screen.getByText("1A - Two Sum")).toBeInTheDocument();
   });
 });

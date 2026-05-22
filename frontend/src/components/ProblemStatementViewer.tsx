@@ -139,8 +139,11 @@ function renderCfHtml(html: string): string {
   // Strip MathJax preview spans (would duplicate KaTeX output)
   result = result.replace(/<span class="MathJax_Preview"[^>]*>[\s\S]*?<\/span>/g, "");
 
-  // Replace $$$...$$$ (CF's newer inline math delimiter)
-  result = result.replace(/\$\$\$(.*?)\$\$\$/g, (_, tex) => {
+  // Strip tex-span elements (MathJax-rendered output, would duplicate KaTeX output)
+  result = result.replace(/<span class="tex-span"[^>]*>[\s\S]*?<\/span>/g, "");
+
+  // Replace $$$...$$$ (CF's newer inline math delimiter, supports multiline)
+  result = result.replace(/\$\$\$([\s\S]*?)\$\$\$/g, (_, tex) => {
     try {
       return katex.renderToString(tex.trim(), { throwOnError: false });
     } catch {

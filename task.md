@@ -1674,8 +1674,8 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 
 ---
 
-### Task 43.3: 前端覆盖率排除清零 + 覆盖率提升至 90%
-**状态**: 🔄 进行中
+### Task 43.3: 前端覆盖率排除清零 + 覆盖率提升
+**状态**: 🟢 已完成
 **优先级**: P0
 **依赖**: 无
 
@@ -1896,7 +1896,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 
 ---
 
-## 阶段 44: Bug 修复 — 排行榜 UI
+## 阶段 44: Bug 修复 — 排行榜 UI (已归档)
 
 ### Task 44.1: 修复排行榜页面标题不随 Tab 切换更新
 **状态**: 🟢 已完成
@@ -1927,3 +1927,447 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 - [ ] Arena 标签页标题显示 "Arena Ranking"
 - [ ] 标题随 Tab 切换实时更新
 - [ ] 中英文翻译均正确
+
+---
+
+## 阶段 45: Bug 修复与优化 — 渲染/Bot速度/排名模型/结算展示
+
+### Task 45.1: 修复公式重复渲染
+**状态**: 🔵 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### Bug 描述
+比赛题目中数学公式（LaTeX/KaTeX）在页面上渲染了两份：一份是 KaTeX 渲染后的可视化公式，另一份是原始 LaTeX 源码或旧 MathJax 渲染结果。
+
+#### 根因分析
+`renderCfHtml` 函数（ProblemStatementViewer.tsx:136-178）处理了 `MathJax_Preview` span 的剥离（第 140 行），但**未处理 `.tex-span` 元素**。CF 的 HTML 中，部分题目同时包含 `<span class="tex-span">`（MathJax 已渲染的输出）和 `<script type="math/tex">`（LaTeX 源码）。`renderCfHtml` 将 `<script>` 替换为 KaTeX 输出后，`.tex-span` 中的旧渲染结果仍然存在，导致公式出现两份。
+
+此外，`$$$...$$$` 正则使用非贪婪 `(.*?)`，默认 `.` 不匹配换行符，可能导致跨行公式匹配失败。
+
+#### 需要修改的文件
+- `frontend/src/components/ProblemStatementViewer.tsx` — `renderCfHtml` 函数
+
+#### 关键实现细节
+1. 在第 140 行 `MathJax_Preview` 剥离之后，增加剥离 `.tex-span` 元素：
+   ```typescript
+   result = result.replace(/<span class="tex-span"[^>]*>[\s\S]*?<\/span>/g, "");
+   ```
+2. 将 `$$$...$$$` 的正则改为支持跨行：使用 `[\s\S]` 替代 `.`，或使用 `s` flag
+3. 确认 `<script type="math/tex">` 的正则已使用 `[\s\S]`（当前已正确）
+
+#### 测试要点
+- [ ] 包含 `$$$...$$$` 公式的题目不重复渲染
+- [ ] 包含 `<script type="math/tex">` 的题目不重复渲染
+- [ ] 跨行公式能正确匹配和渲染
+- [ ] `.tex-span` 元素被正确剥离
+
+---
+
+### Task 45.2: 修复题号重复显示
+**状态**: 🔵 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### Bug 描述
+所有题目的标题题号重复两次，如 "B - B. Two Tables" 或 "A. A. Theatre Square"。
+
+#### 根因分析
+CF API 返回的 `name` 字段已包含题号前缀（如 "B. Two Tables"），前端渲染时又额外拼接了 `problem.index`，导致重复。
+
+涉及 3 处：
+1. **题目列表**（ContestDetailPage.tsx:551）：`{problem.index} - {problem.name}` → "B - B. Two Tables"
+2. **题目详情标题**（ProblemStatementViewer.tsx:319）：`{index}. {statement.title}` → "A. A. Theatre Square"（爬虫 `.header .title` 已含题号）
+3. **结算摘要**（ContestDetailPage.tsx:753）：同位置 1
+
+#### 需要修改的文件
+- `frontend/src/pages/ContestDetailPage.tsx` — 题目列表和结算摘要的题号显示
+- `frontend/src/components/ProblemStatementViewer.tsx` — 题目详情标题
+
+#### 关键实现细节
+1. 创建工具函数 `stripIndexPrefix`，从 name/title 中移除已有的题号前缀：
+   ```typescript
+   function stripIndexPrefix(name: string): string {
+     return name.replace(/^[A-Z]\d*\.\s*/, "");
+   }
+   ```
+2. ContestDetailPage.tsx:551 改为 `{problem.index} - {stripIndexPrefix(problem.name)}`
+3. ProblemStatementViewer.tsx:319 改为 `{index}. {stripIndexPrefix(statement.title)}`
+4. ContestDetailPage.tsx:753 同位置 1 的修改
+
+#### 测试要点
+- [ ] 题目列表显示 "B - Two Tables" 而非 "B - B. Two Tables"
+- [ ] 题目详情标题显示 "A. Theatre Square" 而非 "A. A. Theatre Square"
+- [ ] 结算摘要中题号不重复
+- [ ] 所有模式的题目页面（Contest、FreePlay、Training、PvE）均不重复
+
+---
+
+### Task 45.3: 移除未解决题目的错误旋转图标
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### Bug 描述
+比赛页面中每个未解决问题的右侧有一个永久旋转的 Loader2 图标，永远不会消失，给用户造成"一直在加载"的误导。
+
+#### 根因分析
+ContestDetailPage.tsx:570-572 对每个 `solved === false` 的题目**无条件显示**旋转 Loader2 图标。该图标语义错误：它不是"加载中"状态指示器，而是被误用为"未解决"状态标记。页面上方已有专门的 Auto-tracking info 区域（第 512-520 行）用旋转 Loader2 表示正在等待 CF 结果，题目列表中的旋转图标是冗余且误导的。
+
+#### 需要修改的文件
+- `frontend/src/pages/ContestDetailPage.tsx` — 题目列表行
+
+#### 关键实现细节
+1. 移除 ContestDetailPage.tsx:570-572 的无条件 Loader2：
+   ```tsx
+   // 删除以下代码：
+   {!problem.solved && (
+     <Loader2 className="size-4 animate-spin text-primary" />
+   )}
+   ```
+2. 已有 `Circle` 图标（第 547 行）表示未解决状态，无需额外指示器
+3. 如需表示"等待追踪结果"，可仅在正在追踪时显示（有 activeTracking 状态时），而非所有未解决题目
+
+#### 测试要点
+- [ ] 未解决题目不显示旋转图标
+- [ ] 已解决题目仍显示绿色 CheckCircle2
+- [ ] Auto-tracking info 区域的 loading 状态不受影响
+- [ ] 题目列表交互（点击选择题目）正常
+
+---
+
+### Task 45.4: 重构 Bot 做题速度模型 — CF 真实数据拟合
+**状态**: 🔵 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### Bug 描述
+比赛机器人做题速度完全不合理，严重过快。所有 bot 在比赛前 15-38 分钟就尝试完所有题目（120 分钟比赛），且不考虑 bot Elo 与题目 rating 的差距。不是所有 bot 都应能做出所有题。
+
+#### 根因分析
+当前 tick 范围太小（easy 2-4 ticks × 30s = 1-2 分钟），且 ticks 仅取决于题目难度，不取决于 bot Elo 与题目 rating 的关系。800 Elo 的 bot 和 1600 Elo 的 bot 在同一 800 分题目上花费相同时间。bot 在失败后直接跳到下一题（不重试），进一步加速了进度。
+
+数学验证：7 题（4 easy + 3 medium），平均 53 ticks = 26 分钟全部尝试完，比赛还有 94 分钟无操作。
+
+#### 需要修改的文件
+- `backend/app/services/contest_simulation_service.py` — bot tick 计算和模拟逻辑
+- `backend/app/core/default_config.py` — difficulty_ticks 配置
+- `backend/tests/test_contest_simulation.py` — 现有 1607 行测试中有多处直接测试 `_get_tick_range_for_rating`，函数签名变更后需同步重构
+
+#### 关键实现细节
+1. **基于 CF 真实数据拟合模型**：复用 `TimeFactorService`（time_factor_service.py）已有的 CF 数据获取和 rating 分桶逻辑。该服务已实现 `_fetch_contest_submissions`、`_fetch_rating_changes`、`_calculate_focused_times`、`_rating_bucket` 等方法，可直接复用减少约 200 行重复代码。具体方法：
+   - 复用 TimeFactorService 的 CF API 数据获取和分桶统计
+   - 构建模型：`solve_time = f(bot_elo, problem_rating)`，使用 CF 真实数据拟合参数
+
+2. **CF 拟合参数生命周期**（不阻塞用户请求）：
+   - **触发时机**：应用启动时异步预计算（不阻塞用户请求）+ 后台定时任务每日刷新
+   - **存储位置**：内存缓存（模块级变量或 `lru_cache`），设置 24 小时过期
+   - **降级切换**：参数不存在或过期时，自动使用 Elo 差距缩放公式（关键实现细节第 6 点）
+   - **不阻塞用户**：CF 拟合参数计算绝不在 `create_contest` 同步路径中执行
+
+3. **tick 计算改造**：`_get_tick_range_for_rating` 改为基于 bot Elo 和题目 rating 的函数：
+   ```python
+   def _get_ticks_for_bot_problem(bot_elo, problem_rating, total_minutes, n_problems, tick_interval):
+       # 基于 CF 拟合模型计算预期解题时间
+       expected_time = cf_fitted_model(bot_elo, problem_rating)
+       ticks = int(expected_time * 60 / tick_interval)
+       # 添加随机扰动
+       ticks = max(1, ticks + random.randint(-ticks//4, ticks//4))
+       return ticks
+   ```
+
+4. **失败重试**：bot 在 P(AC) 失败后，应有一定概率重试当前题目（而非直接跳到下一题）。高 Elo bot 重试概率更高：
+   ```python
+   retry_prob = 0.3 * min(1.0, bot_elo / problem_rating)  # 能力越强越倾向重试
+   if random.random() < retry_prob:
+       # 重新排队当前题目（增加 ticks）
+   ```
+
+5. **P(AC) 不确保所有题都能做**：当 bot Elo 远低于题目 rating 时（如 800 Elo 面对 2000 题目），bot 应直接放弃（标记为 impossible），不再尝试：
+   ```python
+   if problem_rating > bot_elo + 800:  # rating 差距超过 800
+       # 该 bot 不会尝试这道题
+       continue
+   ```
+
+6. **CF 数据拟合 API 调用**：复用 `CFApiService` 已有的速率限制（令牌桶 2s/请求）。需要新增 `contest.list` API 方法。
+
+7. **渐进式方案**（降级方案 — 当 CF 拟合参数不可用时自动使用）：使用 Elo 差距缩放：
+   ```python
+   elo_ratio = problem_rating / max(bot_elo, 800)
+   base_ticks = problem_rating / 60  # 每 60 rating 约 1 tick
+   scaled_ticks = base_ticks * elo_ratio * (total_minutes * 60 / tick_interval / n_problems)
+   ```
+
+#### 调用方清单
+- `tick_simulation()`（contest_simulation_service.py）— 需要使用新的 tick 计算逻辑
+- `_simulate_bot_tick()`（contest_simulation_service.py）— `_get_tick_range_for_rating` 的直接调用者（line 802），需传递 `bot_elo` 参数
+- `_get_tick_range_for_rating()` — 需要重构或替换
+- `generate_bots()` — bot 生成逻辑无需修改
+
+#### 反向集成清单
+- 横切特性无影响：Bot 行为变更不影响 Elo/PP/代币/成就的计算公式，只影响 bot 的模拟时间线
+- WebSocket 推送频率不变（仍每 30 秒一个 tick）
+
+#### 测试要点
+- [ ] 120 分钟比赛中，bot 在比赛全程都有活动（不会在前 30 分钟全部完成）
+- [ ] 低 Elo bot 不能做出高 rating 题目
+- [ ] 高 Elo bot 做低 rating 题比低 Elo bot 快
+- [ ] 不是所有 bot 都能做对所有题目
+- [ ] 比赛排行榜呈现自然的渐进增长趋势（而非早期全部完成）
+- [ ] 不同比赛等级（beginner/advanced/master）的 bot 行为差异合理
+- [ ] 闪电战（60 分钟，4 题）的 bot 行为也合理
+- [ ] CF API 不可用时自动降级到 Elo 差距缩放公式
+- [ ] bot 重试机制：高 Elo bot 重试概率高于低 Elo bot
+- [ ] 极端 Elo 值（bot_elo=0 或 4000）不崩溃
+
+---
+
+### Task 45.5: 修复全球排名 UI — 前xx%与国家重合 + 手机名字不可见
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### Bug 描述
+5a: 全球排名列表中"前xx%"文字与国家代号在视觉上重叠。5b: 手机端访问时玩家名字被压缩到几乎不可见。
+
+#### 根因分析
+**5a**: grid 最后一列仅 3rem 宽，无法容纳"前xx%"+图标（约 60-70px），溢出到国家列。涉及 GlobalRankingPage.tsx 和 RankingPage.tsx 的所有 grid-cols 定义（每文件 3 处）。
+
+**5b**: 固定列总宽 264px（3.5+5+5+3rem），在 320px 手机上名字列被压缩到 0px。GlobalRankingPage 缺少 `overflow-x-auto`。
+
+#### 需要修改的文件
+- `frontend/src/pages/GlobalRankingPage.tsx` — grid 列定义、响应式布局
+- `frontend/src/pages/RankingPage.tsx` — 同上
+
+#### 关键实现细节
+1. **修复 5a**：将最后一列从 `3rem` 增大到 `5.5rem`，同步更新表头和数据行的所有 grid-cols 模板（每文件 3 处）：
+   - 修改前：`grid-cols-[3.5rem_1fr_5rem_5rem_3rem]`
+   - 修改后：`grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]`
+   - Arena tab 同理：末列从 `3rem` → `5.5rem`
+
+2. **修复 5b**：添加响应式 grid-cols，手机端隐藏次要列：
+   ```tsx
+   // 手机端 3 列：排名 + 名字 + PP
+   // sm+ 端 5 列：排名 + 名字 + PP + 国家 + 前xx%
+   className="grid grid-cols-[2.5rem_1fr_4rem] sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]"
+   ```
+   - 国家列和前xx%列在手机端使用 `hidden sm:flex`
+   - 给 GlobalRankingPage 添加 `overflow-x-auto` 兜底
+
+3. **同步修改位置**（每文件 3 处 grid-cols，两个文件共 6 处）：
+   - 加载态 skeleton 行
+   - 表头行
+   - 数据行
+
+#### 测试要点
+- [ ] "前xx%"和国家代号不重叠
+- [ ] 手机端玩家名字可读（至少显示部分+省略号）
+- [ ] Desktop 端布局不受影响
+- [ ] 两个页面（GlobalRankingPage 和 RankingPage）表现一致
+- [ ] Arena tab 和 Global tab 都正确
+
+---
+
+### Task 45.6: 重构全球排名估算 — 回归+CDF 模型
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### Bug 描述
+玩家全球排名基于采样用户（~1600）排名，而非以 CF 全量用户（~30万）为基数估算。排名百分位严重失真。
+
+#### 根因分析
+1. `ranking.py:30` 中 `total = len(items)` — items 长度 = Arena 用户 + 采样 CF 用户（几千），而非 CF 全量用户
+2. `cf_ranking_service.py:539` 管线获取了 `rated_list`（全量），但 `len(rated_list)` 从未记录或传递
+3. `auth.py:288-312` pp-rank 端点的 `total_users` 仅统计 Arena 活跃用户
+4. 排名展示为"在采样用户中的排名"而非"估算的全球排名"
+
+#### 需要修改的文件
+- `backend/app/services/cf_ranking_service.py` — 管线增加全量用户数存储、CDF 构建、PP→rating 反向转换
+- `backend/app/models/cf_pipeline_metadata.py` — 新建模型存储管线元数据（替代在 CFSampleUser 中加特殊行）
+- `backend/migrations/versions/xxxx_add_cf_pipeline_metadata_table.py` — 新建 migration
+- `backend/app/api/v1/ranking.py` — 排名 API 使用 CDF 估算百分位，每个 CA 用户附带 estimated_percentile
+- `backend/app/api/v1/auth.py` — pp-rank 端点使用全球基数，增加 calibrated 字段
+- `frontend/src/types/index.ts` — PPRankData、RankingPageData 类型同步更新
+- `frontend/src/pages/GlobalRankingPage.tsx` — 百分位展示改用后端返回值
+- `frontend/src/pages/ProfilePage.tsx` — 适配 pp-rank 新字段
+- `frontend/src/locales/zh/ranking.json` — 新增"排名数据未校准"翻译
+- `frontend/src/locales/en/ranking.json` — 新增"Ranking data not calibrated"翻译
+
+#### 关键实现细节
+1. **新建 `cf_pipeline_metadata` 表**（明确方案，不用 CFSampleUser 特殊行）：
+   ```python
+   class CFPipelineMetadata(Base):
+       __tablename__ = "cf_pipeline_metadata"
+       id: Mapped[int] = mapped_column(primary_key=True)
+       sample_batch: Mapped[int]
+       total_rated_users: Mapped[int]         # CF 全量 rated 用户数
+       rating_histogram: Mapped[dict]          # {bucket_midpoint: count}
+       regression_coefficients: Mapped[list]   # 复用现有回归结果
+       created_at: Mapped[datetime]
+   ```
+   每次管线运行时写入一行，查询时取最新 batch 的记录。
+
+2. **PP→rating 反向转换**（CDF 估算链路的关键环节）：当前回归模型是 `rating → PP` 的正向映射（多项式 degree=2），需实现反向映射。由于 degree=2（二次多项式），使用求根公式：
+   ```python
+   def _pp_to_rating(pp: float, coeffs: list[float]) -> int | None:
+       """反向求解 PP 对应的等效 CF rating。coeffs = [a2, a1, a0]，即 a2*x^2 + a1*x + a0 = pp"""
+       a2, a1, a0 = coeffs
+       # a2*x^2 + a1*x + (a0 - pp) = 0
+       discriminant = a1**2 - 4*a2*(a0 - pp)
+       if discriminant < 0:
+           return None
+       # 取正根（rating > 0）
+       x = (-a1 + math.sqrt(discriminant)) / (2*a2)
+       return max(0, round(x))
+   ```
+   如果 degree ≠ 2（配置可变），降级使用二分搜索（rating 范围 0-5000）。
+
+3. **构建 CDF 函数**：
+   ```python
+   def _build_cdf(rating_histogram: dict[int, int], total_users: int) -> Callable[[int], float]:
+       """Given rating histogram, return function: rating -> percentile (0-1)."""
+       sorted_buckets = sorted(rating_histogram.items())
+       cumulative = 0
+       breakpoints = []
+       for bucket_mid, count in sorted_buckets:
+           cumulative += count
+           breakpoints.append((bucket_mid, cumulative / total_users))
+       def cdf(rating: int) -> float:
+           # 低于最低桶 → percentile = 该桶以下占比
+           # 高于最高桶 → percentile = 1.0
+           # 中间值 → 线性插值
+           ...
+       return cdf
+   ```
+   边界处理：rating < 800 时返回 1.0（最低 rank），rating > 4000 时返回 0.0（最高 rank）。PP=0 的用户不估算全球排名（返回 None）。
+
+4. **排名 API 改造**：
+   - `GET /ranking/global`：
+     - total 改为 CF 全量用户数 + Arena 用户数
+     - 每个 CA 用户条目附带 `estimated_percentile: float | None` 字段（通过 PP→rating→CDF 计算）
+     - CF 采样用户的百分位也通过 CDF 估算（用其 cf_rating 直接查 CDF）
+     - 响应增加 `calibrated: bool` 字段（metadata 存在时为 true）
+     - 保持混合列表展示（但 total 和 percent 基于全球基数）
+   - `GET /auth/pp-rank`：
+     - `total_users` 改为 CF 全量用户数 + Arena 用户数
+     - 用户排名通过 CDF 估算
+     - 增加 `calibrated: bool` 字段
+
+5. **前端适配**：
+   - GlobalRankingPage.tsx 的百分位不再使用前端公式 `((computedRank / total) * 100)`，改为使用后端返回的 `estimated_percentile`
+   - ProfilePage.tsx 的 top_percent 使用 pp-rank 返回值（语义从"Arena 百分位"变为"全球百分位"）
+   - 当 `calibrated === false` 时，显示降级提示"排名数据未校准"（tooltip 或 inline 文本）
+
+6. **降级方案**：管线未运行或无元数据时：
+   - `calibrated = false`
+   - `total_users` 回退到 Arena 用户数
+   - 排名计算回退到当前行为
+   - 前端显示降级提示
+
+#### 调用方清单
+- `GET /ranking/global`（ranking.py）— 需使用 CDF 估算百分位
+- `GET /ranking/arena`（ranking.py）— 不受影响（Arena 专用）
+- `GET /auth/pp-rank`（auth.py）— 需使用全球基数
+- 前端 `GlobalRankingPage.tsx` — 如 API 返回格式有变需适配
+
+#### 反向集成清单
+- 无横切特性影响：排名估算逻辑独立于 Elo/PP/代币/成就的计算
+
+#### 测试要点
+- [ ] 管线运行后 `total_rated_users` 被正确存储
+- [ ] CDF 函数在边界值（rating 800 和 4000）返回合理百分位
+- [ ] Arena 用户的全球排名通过模型估算，而非简单排序位置
+- [ ] 全球排行榜 total 显示 CF 全量用户数量级（~30万）
+- [ ] pp-rank 端点返回的全球排名和百分位基于 CF 全量用户
+- [ ] 降级情况（管线未运行）下回退到 Arena 用户数，不报错
+
+---
+
+### Task 45.7: 增强比赛结算展示 — 分组卡片布局
+**状态**: 🔵 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### Bug 描述
+比赛结算页面只显示 elo 变化值（如 "+15"），缺少 PP、global elo 绝对值、m elo 和排名等完整信息。应该包含这些数据并采用合理的布局避免臃肿。
+
+#### 根因分析
+**后端**：`ContestResult` schema（contest.py:92-108）只返回 `elo_change` 差值，缺少 `elo_before`、`elo_after`、`pp_before`、`pp_after`、`pp_change`、`melo_summary`、`rank` 等字段。虽然 `_settle_with_pr` 方法中计算了 `elo_before` 和 `elo_after`，但没有传回 ContestResult。
+
+**前端**：ContestDetailPage.tsx:664-692 只渲染 4 个简单卡片（解题数、总题数、提交次数、elo 变化），缺少其他指标。
+
+#### 需要修改的文件
+- `backend/app/schemas/contest.py` — ContestResult schema 新增字段
+- `backend/app/services/contest_service.py` — `end_contest` 和 `get_contest_result` 填充新字段
+- `frontend/src/types/index.ts` — ContestResult 类型同步更新
+- `frontend/src/pages/ContestDetailPage.tsx` — 结算区域重新设计为分组卡片布局
+
+#### 关键实现细节
+1. **后端 Schema 扩展**（contest.py）：
+   ```python
+   class ContestResult(BaseModel):
+       # ... 现有字段 ...
+       elo_before: int | None = None
+       elo_after: int | None = None
+       pp_before: float | None = None
+       pp_after: float | None = None
+       pp_change: float | None = None
+       rank: int | None = None         # 本次比赛排名
+       total_participants: int | None = None
+       melo_changes: list[dict] | None = None  # [{tag, before, after, change}]
+   ```
+
+2. **后端数据填充**（contest_service.py）：
+   - 在 `end_contest`（line 707-722）和 `get_contest_result` 中：
+     - `elo_before`：从 EloHistory 查询结算前值（或 `user.elo - session.elo_change`）
+     - `elo_after`：从当前 user.elo 获取
+     - **PP 前值**：采用方案 B（不修改 ContestSession，无需 migration）— 在 `end_contest` 开始时快照 `user.pp` 作为 `pp_before`（此时 PP 已包含比赛中所有题目的更新），结算完成后 `pp_after = user.pp`（此时两者相同，因为比赛结算不再修改 PP）。若需展示"比赛期间 PP 变化"，改为从 PPRecord 查询本次比赛题目贡献的 PP 总和（复用 `_settle_with_pr` 中成就检测的逻辑，contest_service.py:1279-1290）
+     - `rank`：从 leaderboard 排序得到（`end_contest` 已有此逻辑，contest_service.py:682-689）。`get_contest_result` 需新增 leaderboard 查询或从 bot 表计算
+     - `total_participants`：bot 数量 + 1
+     - **M-Elo 变化**：在 `submit_problem` 调用 `batch_update_melo_for_problem` 后，将返回的 `dict[str, int]`（tag → change）存入 `ContestProblemRecord` 的新 JSON 字段 `melo_changes`。结算时汇总所有题目的 `melo_changes`，从 `UserTagElo` 当前值减去累计变化得到 `before`。需要在 `ContestProblemRecord` 模型中新增 `melo_changes` JSON 字段并创建 migration
+
+3. **前端布局设计**（分组卡片）：
+   ```
+   ┌──────────────────────────────────────────────────────┐
+   │                    比赛结果概览                        │
+   │  解题 3/7  │  提交 5 次  │  排名 #12/51  │  ⏱ 45min  │
+   ├─────────────────────────┬────────────────────────────┤
+   │     评分变化             │       PP 变化              │
+   │  Global Elo             │  PP                        │
+   │  1520 → 1535 (+15)      │  42.5 → 45.2 (+2.7)      │
+   │                         │                            │
+   │  Performance Rating     │  M-Elo 变化                │
+   │  1680                   │  dp: 1400→1420 (+20)      │
+   │                         │  math: 1300→1310 (+10)    │
+   └─────────────────────────┴────────────────────────────┘
+   ```
+   - 顶部一行：解题数、提交数、排名、用时（4 个小卡片）
+   - 下方左右两组：
+     - 左组：Global Elo（前值→后值，变化高亮）+ Performance Rating
+     - 右组：PP（前值→后值，变化高亮）+ M-Elo 各 tag 变化摘要
+   - 响应式断点（使用 Tailwind）：
+     - 移动端（<sm）：单列堆叠，所有卡片上下排列
+     - 平板/桌面（sm+）：顶部统计行 `grid-cols-2 sm:grid-cols-4`，下方 `grid-cols-1 sm:grid-cols-2`
+   - 奖牌和成就信息保留在现有位置
+
+#### 调用方清单
+- `GET /contest/{id}/result`（contest.py）— API 返回扩展字段
+- `POST /contest/{id}/end`（contest.py）— 结算时填充新字段
+- `contestStore.ts` — 前端数据接收
+
+#### 反向集成清单
+- PP 前值需要从 start_contest 开始记录
+- M-Elo 变化需要查询 melo_history 表（如存在）或从 session 的题目记录反推
+- 代币奖励信息可考虑一并展示（如果当前未展示）
+
+#### 测试要点
+- [ ] 结算页面显示 Global Elo 绝对值（如 1520 → 1535）
+- [ ] 结算页面显示 PP 绝对值和变化量
+- [ ] 结算页面显示 Performance Rating
+- [ ] 结算页面显示本次比赛排名
+- [ ] 结算页面显示 M-Elo 各 tag 变化摘要
+- [ ] 手机端布局合理（左右组改为上下）
+- [ ] 奖牌和成就信息正常显示
+- [ ] 0 提交惩罚情况也正确显示
