@@ -1826,7 +1826,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ---
 
 ### Task 43.7: 全栈 E2E CI Pipeline + 横切特性矩阵
-**状态**: 🔄 进行中
+**状态**: 🟢 已完成
 **优先级**: P1
 **依赖**: Task 43.5
 
@@ -1866,7 +1866,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ---
 
 ### Task 43.8: 质量度量体系 — Codecov + 变异分数 + 执行时间
-**状态**: ⬜ 待开发
+**状态**: 🔄 进行中
 **优先级**: P2
 **依赖**: Task 43.2, 43.4
 

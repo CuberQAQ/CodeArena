@@ -48,6 +48,13 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Run unit tests
         run: pytest --tb=short -q
+      - name: Upload backend coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: backend/coverage.json
+          flags: backend
+          fail_ci_if_error: false
+        continue-on-error: true
       - name: Cross-cutting feature matrix check
         run: pytest tests/test_crosscut_matrix.py -v --no-cov
 
@@ -77,7 +84,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: Run integration tests
-        run: pytest tests/integration/ --tb=short -q -v
+        run: pytest tests/integration/ --tb=short -q -v --durations=10
 
   frontend-lint:
     runs-on: ubuntu-latest
@@ -112,6 +119,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run test:coverage
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: frontend/coverage/coverage-final.json
+          flags: frontend
+          fail_ci_if_error: false
+        continue-on-error: true
 
   backend-security:
     runs-on: ubuntu-latest

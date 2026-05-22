@@ -25,7 +25,7 @@ ignore = ["B008", "N818", "E712", "B904", "B017", "B007", "SIM117", "SIM102"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=app --cov-fail-under=80 --cov-report=term-missing"
+addopts = "--cov=app --cov-fail-under=80 --cov-report=term-missing --cov-report=json"
 
 [tool.coverage.run]
 omit = ["migrations/*", "app/core/config.py"]

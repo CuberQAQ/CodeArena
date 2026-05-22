@@ -1,0 +1,19 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 5%
+    patch:
+      default:
+        target: 80%
+
+comment:
+  layout: "header, diff, files, footer"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "backend/migrations/**"
+  - "frontend/src/types/**"
+  - "frontend/src/**/*.d.ts"
