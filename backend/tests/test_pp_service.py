@@ -11,7 +11,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import Float, Integer, String, event
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -30,11 +30,22 @@ class _TestUser(_TestBase):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    username: Mapped[str] = mapped_column(String(50), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    cf_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cf_handle_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    cf_verification_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
     pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class _TestPPRecord(_TestBase):
@@ -45,12 +56,13 @@ class _TestPPRecord(_TestBase):
     cf_problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
     problem_rating: Mapped[int] = mapped_column(Integer, nullable=False)
     base_pp: Mapped[float] = mapped_column(Float, nullable=False)
-    solved_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.now)
+    solved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     hints_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     wa_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     time_spent_minutes: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     performance_factor: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     final_pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    overkill_multiplier: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 from PIL import Image
-from sqlalchemy import DateTime, String, event
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -50,6 +50,21 @@ class _TestUser(_TestBase):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String(50), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    cf_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cf_handle_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    cf_verification_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
+    pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_reset_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +427,7 @@ class TestGenerateDefaultAvatar:
     async def test_generates_svg_with_username_initial(self, db):
         """Should return SVG containing the uppercase first letter of the username."""
         user_id = uuid.uuid4()
-        user = _TestUser(id=user_id, username="alice")
+        user = _TestUser(id=user_id, username="alice", email="alice@test.com", password_hash="hash")
         db.add(user)
         await db.flush()
 
@@ -425,7 +440,7 @@ class TestGenerateDefaultAvatar:
     async def test_lowercase_username_gives_uppercase_initial(self, db):
         """The initial should always be uppercase."""
         user_id = uuid.uuid4()
-        user = _TestUser(id=user_id, username="bob")
+        user = _TestUser(id=user_id, username="bob", email="bob@test.com", password_hash="hash")
         db.add(user)
         await db.flush()
 
@@ -444,7 +459,7 @@ class TestGenerateDefaultAvatar:
     async def test_consistent_color_for_same_user(self, db):
         """Same user_id should always produce the same SVG (deterministic color)."""
         user_id = uuid.uuid4()
-        user = _TestUser(id=user_id, username="charlie")
+        user = _TestUser(id=user_id, username="charlie", email="charlie@test.com", password_hash="hash")
         db.add(user)
         await db.flush()
 
@@ -456,7 +471,7 @@ class TestGenerateDefaultAvatar:
     async def test_svg_has_correct_dimensions(self, db):
         """SVG should be 256x256 with circular viewBox."""
         user_id = uuid.uuid4()
-        user = _TestUser(id=user_id, username="test")
+        user = _TestUser(id=user_id, username="test", email="test@test.com", password_hash="hash")
         db.add(user)
         await db.flush()
 
@@ -469,7 +484,7 @@ class TestGenerateDefaultAvatar:
     async def test_svg_has_circular_background(self, db):
         """SVG rect should have rx=128 for a circular shape."""
         user_id = uuid.uuid4()
-        user = _TestUser(id=user_id, username="diana")
+        user = _TestUser(id=user_id, username="diana", email="diana@test.com", password_hash="hash")
         db.add(user)
         await db.flush()
 
@@ -480,7 +495,7 @@ class TestGenerateDefaultAvatar:
     async def test_color_is_from_palette(self, db):
         """The fill color in the SVG must be one of the AVATAR_COLORS."""
         user_id = uuid.uuid4()
-        user = _TestUser(id=user_id, username="eve")
+        user = _TestUser(id=user_id, username="eve", email="eve@test.com", password_hash="hash")
         db.add(user)
         await db.flush()
 
@@ -497,7 +512,7 @@ class TestGenerateDefaultAvatar:
     async def test_svg_media_type_format(self, db):
         """SVG should be a valid SVG with proper namespace."""
         user_id = uuid.uuid4()
-        user = _TestUser(id=user_id, username="frank")
+        user = _TestUser(id=user_id, username="frank", email="frank@test.com", password_hash="hash")
         db.add(user)
         await db.flush()
 

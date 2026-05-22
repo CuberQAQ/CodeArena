@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import JSON, DateTime, Float, Integer, String, event
+from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, event
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -73,7 +73,21 @@ class _TestUser(_TestBase):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String(50), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    cf_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cf_handle_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    cf_verification_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
+    pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +147,8 @@ def _make_user(**kwargs) -> _TestUser:
     defaults = {
         "id": uuid.uuid4(),
         "username": f"user_{uuid.uuid4().hex[:8]}",
+        "email": f"user_{uuid.uuid4().hex[:8]}@test.com",
+        "password_hash": "hash",
         "elo": 1500,
     }
     defaults.update(kwargs)
@@ -1419,6 +1435,7 @@ class _TestEloHistory(_TestBase):
     reason: Mapped[str] = mapped_column(String(50), nullable=False)
     time_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class _TestTokenTransaction(_TestBase):
@@ -1427,9 +1444,11 @@ class _TestTokenTransaction(_TestBase):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    tx_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
+    reference_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class _TestPPRecord(_TestBase):
@@ -1437,11 +1456,16 @@ class _TestPPRecord(_TestBase):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
-    problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    cf_problem_id: Mapped[str] = mapped_column(String(50), nullable=False)
     problem_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    base_pp: Mapped[float] = mapped_column(Float, nullable=False)
+    solved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    hints_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     wa_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    time_spent: Mapped[float] = mapped_column(Integer, default=0, nullable=False)
-    user_elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
+    time_spent_minutes: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    performance_factor: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    final_pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    overkill_multiplier: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
 
 
 class TestPrEloSettlement:

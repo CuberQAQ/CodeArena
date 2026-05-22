@@ -10,7 +10,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint, event
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, UniqueConstraint, event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -34,8 +34,19 @@ class _TestUser(_TestBase):
     username: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    cf_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cf_handle_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    cf_verification_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
+    pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class _TestUserTagElo(_TestBase):
@@ -47,6 +58,8 @@ class _TestUserTagElo(_TestBase):
     elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
     total_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     first_ac_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (UniqueConstraint("user_id", "tag", name="uq_user_tag_elo_user_tag"),)
 

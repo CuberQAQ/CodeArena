@@ -50,34 +50,79 @@ class _TestUser(_TestBase):
     username: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    cf_handle: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cf_handle_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    cf_verification_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     elo: Mapped[int] = mapped_column(Integer, default=1200, nullable=False)
     pp: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    daily_tokens_reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class _TestChallengeSession(_TestBase):
     __tablename__ = "challenge_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    challenger_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    opponent_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    problem_id: Mapped[str] = mapped_column(String(50), default="", nullable=False)
+    problem_rating: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    challenger_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    opponent_submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    challenger_solved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    opponent_solved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    challenger_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    opponent_time: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    result: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    opponent_elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    opponent_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    challenger_tokens_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    problem_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    problem_tags: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    hints_used_challenger: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    hints_used_opponent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class _TestTrainingSession(_TestBase):
     __tablename__ = "training_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    topic_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    problems_solved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_problems: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    streak_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class _TestContestSession(_TestBase):
     __tablename__ = "contest_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    contest_tier: Mapped[str] = mapped_column(String(20), nullable=False)
+    problems: Mapped[dict | list | None] = mapped_column(String(2000), nullable=True)
+    total_problems: Mapped[int] = mapped_column(Integer, nullable=False)
+    problems_solved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    submissions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    time_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    elo_change: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -194,8 +239,8 @@ class TestGetSystemStats:
 
     @pytest.mark.asyncio
     async def test_with_challenge_sessions(self, db):
-        db.add(_TestChallengeSession(status="active"))
-        db.add(_TestChallengeSession(status="completed"))
+        db.add(_TestChallengeSession(challenger_id=uuid.uuid4(), opponent_id=uuid.uuid4(), status="active"))
+        db.add(_TestChallengeSession(challenger_id=uuid.uuid4(), opponent_id=uuid.uuid4(), status="completed"))
         await db.commit()
 
         stats = await get_system_stats(db)
@@ -204,9 +249,9 @@ class TestGetSystemStats:
 
     @pytest.mark.asyncio
     async def test_with_training_sessions(self, db):
-        db.add(_TestTrainingSession(status="active"))
-        db.add(_TestTrainingSession(status="completed"))
-        db.add(_TestTrainingSession(status="abandoned"))
+        db.add(_TestTrainingSession(user_id=uuid.uuid4(), topic_id=uuid.uuid4(), status="active"))
+        db.add(_TestTrainingSession(user_id=uuid.uuid4(), topic_id=uuid.uuid4(), status="completed"))
+        db.add(_TestTrainingSession(user_id=uuid.uuid4(), topic_id=uuid.uuid4(), status="abandoned"))
         await db.commit()
 
         stats = await get_system_stats(db)
@@ -215,8 +260,16 @@ class TestGetSystemStats:
 
     @pytest.mark.asyncio
     async def test_with_contest_sessions(self, db):
-        db.add(_TestContestSession(status="active"))
-        db.add(_TestContestSession(status="completed"))
+        db.add(
+            _TestContestSession(
+                user_id=uuid.uuid4(), contest_tier="div2", total_problems=5, time_limit=120, status="active"
+            )
+        )
+        db.add(
+            _TestContestSession(
+                user_id=uuid.uuid4(), contest_tier="div2", total_problems=5, time_limit=120, status="completed"
+            )
+        )
         await db.commit()
 
         stats = await get_system_stats(db)

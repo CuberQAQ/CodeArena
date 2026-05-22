@@ -16,7 +16,7 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from sqlalchemy import Boolean, Float, Integer, String, event
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -50,6 +50,11 @@ class _TestUser(_TestBase):
     elo: Mapped[int] = mapped_column(Integer, server_default="1200", nullable=False)
     pp: Mapped[float] = mapped_column(Float, server_default="0", nullable=False)
     tokens: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    daily_tokens_earned: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    daily_tokens_reset_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
 
