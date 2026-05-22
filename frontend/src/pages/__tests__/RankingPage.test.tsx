@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { http, HttpResponse } from "msw";
@@ -251,7 +251,7 @@ describe("RankingPage", () => {
         });
       }),
     );
-    const user = userEvent.setup();
+    const _user = userEvent.setup();
     renderPage();
 
     await waitFor(() => {

@@ -115,7 +115,7 @@ describe("AchievementPopup", () => {
   });
 
   it("renders different color themes for different types", () => {
-    const { container } = render(
+    render(
       <AchievementPopup
         achievements={multipleAchievements}
       />,

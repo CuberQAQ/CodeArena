@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
@@ -269,6 +268,113 @@ describe("DashboardCharts", () => {
     await waitFor(() => {
       // totalSolved should be 3 (from pp contributions) since melo total_submissions is 0
       expect(screen.getByTestId("stats-panel")).toHaveTextContent("3");
+    });
+  });
+
+  // Covers shield_active=true branch in buildRadarDataFromMElo (line 52)
+  it("uses global elo when shield is active for a tag", async () => {
+    const { getMElo } = await import("@/services/trainingApi");
+    (getMElo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      global_elo: 1500,
+      melos: [
+        { tag: "dp", elo: 1600, shield_active: true, total_submissions: 5 },
+        { tag: "greedy", elo: 1400, shield_active: false, total_submissions: 3 },
+      ],
+    });
+
+    server.use(
+      http.get("*/api/v1/auth/elo-history", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/pp-contributions", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+    );
+
+    render(<DashboardCharts transactions={[]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("radar-chart")).toBeInTheDocument();
+    });
+  });
+
+  // Covers buildStatsFromData fallback branch (lines 124-131)
+  it("builds difficulty distribution from radar data when no pp contributions", async () => {
+    const { getMElo } = await import("@/services/trainingApi");
+    (getMElo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      global_elo: 1500,
+      melos: [
+        { tag: "dp", elo: 1600, shield_active: false, total_submissions: 10 },
+      ],
+    });
+
+    server.use(
+      http.get("*/api/v1/auth/elo-history", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/pp-contributions", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+    );
+
+    render(<DashboardCharts transactions={[]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("stats-panel")).toBeInTheDocument();
+    });
+  });
+
+  // Covers getMElo rejection (line 172 catch)
+  it("handles getMElo rejection gracefully", async () => {
+    const { getMElo } = await import("@/services/trainingApi");
+    (getMElo as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Network error"));
+
+    server.use(
+      http.get("*/api/v1/auth/elo-history", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/pp-contributions", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+    );
+
+    render(<DashboardCharts transactions={[]} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("analytics")).toBeInTheDocument();
+    });
+  });
+
+  // Covers pp.rating == null check (line 109)
+  it("handles pp contributions with null ratings", async () => {
+    const { getMElo } = await import("@/services/trainingApi");
+    (getMElo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      global_elo: 1500,
+      melos: [
+        { tag: "dp", elo: 1600, shield_active: false, total_submissions: 5 },
+      ],
+    });
+
+    server.use(
+      http.get("*/api/v1/auth/elo-history", () =>
+        HttpResponse.json({ success: true, data: [], message: "ok" }),
+      ),
+      http.get("*/api/v1/auth/pp-contributions", () =>
+        HttpResponse.json({
+          success: true,
+          data: [
+            { problem_name: "1920A", rating: null, pp: 10 },
+            { problem_name: "1920B", rating: 1500, pp: 25.5 },
+          ],
+          message: "ok",
+        }),
+      ),
+    );
+
+    render(<DashboardCharts transactions={[]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("stats-panel")).toBeInTheDocument();
     });
   });
 });

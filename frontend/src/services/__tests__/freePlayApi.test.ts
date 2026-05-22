@@ -5,6 +5,7 @@ import {
   freePlayStart,
   freePlaySubmit,
   freePlayQuit,
+  freePlayGetActive,
 } from "../freePlayApi";
 
 // ---------------------------------------------------------------------------
@@ -12,10 +13,12 @@ import {
 // ---------------------------------------------------------------------------
 
 const mockPost = vi.fn();
+const mockGet = vi.fn();
 
 vi.mock("@/services/api", () => ({
   default: {
     post: (...args: unknown[]) => mockPost(...args),
+    get: (...args: unknown[]) => mockGet(...args),
   },
 }));
 
@@ -34,6 +37,7 @@ function makeApiReply<T>(data: T) {
 describe("freePlayApi", () => {
   beforeEach(() => {
     mockPost.mockReset();
+    mockGet.mockReset();
     vi.clearAllMocks();
   });
 
@@ -174,6 +178,36 @@ describe("freePlayApi", () => {
       mockPost.mockRejectedValueOnce(new Error("Cannot quit"));
 
       await expect(freePlayQuit("bad-session")).rejects.toThrow("Cannot quit");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // freePlayGetActive
+  // -----------------------------------------------------------------------
+
+  describe("freePlayGetActive", () => {
+    it("calls api.get with correct URL and returns session data", async () => {
+      const fakeSession = { session_id: "fp-session-active" };
+      mockGet.mockResolvedValueOnce(makeApiReply(fakeSession));
+
+      const result = await freePlayGetActive();
+
+      expect(mockGet).toHaveBeenCalledWith("/free-play/active");
+      expect(result).toEqual(fakeSession);
+    });
+
+    it("returns null when API returns null data", async () => {
+      mockGet.mockResolvedValueOnce(makeApiReply(null));
+
+      const result = await freePlayGetActive();
+
+      expect(result).toBeNull();
+    });
+
+    it("propagates errors from api.get", async () => {
+      mockGet.mockRejectedValueOnce(new Error("Server error"));
+
+      await expect(freePlayGetActive()).rejects.toThrow("Server error");
     });
   });
 });

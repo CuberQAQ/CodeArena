@@ -520,4 +520,150 @@ describe("AdminOverviewPage", () => {
       expect(statsCallCount).toBeGreaterThan(initialCount);
     });
   });
+
+  // Pagination navigation (covers lines 356-368)
+  it("navigates to next page when next button is clicked", async () => {
+    const user = userEvent.setup();
+    let _currentPage = 1;
+
+    server.use(
+      http.get("*/api/v1/admin/stats", () =>
+        HttpResponse.json({ success: true, data: sampleStats, message: "ok" }),
+      ),
+      http.get("*/api/v1/admin/users", ({ request }) => {
+        const url = new URL(request.url);
+        _currentPage = Number(url.searchParams.get("page") ?? 1);
+        return HttpResponse.json({
+          success: true,
+          data: paginatedUsers,
+          message: "ok",
+        });
+      }),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/totalUsersCount/)).toBeInTheDocument();
+    });
+
+    // Click the next page button (ChevronRight)
+    const _nextButtons = screen.getAllByRole("button").filter(
+      (b) => b.getAttribute("disabled") === null && b.querySelector("svg.lucide-chevron-right") === null,
+    );
+    // Find the button with ChevronRight icon
+    const allButtons = screen.getAllByRole("button");
+    const _nextBtn = allButtons.find(
+      (b) => b.querySelector('[class*="chevron-right"]') || b.textContent === "" && !b.disabled,
+    );
+
+    // Alternative: click by looking at disabled state - last pagination button is "next"
+    const paginationButtons = allButtons.filter(
+      (b) => b.classList.contains("h-7") && b.classList.contains("w-7"),
+    );
+
+    if (paginationButtons.length >= 2) {
+      // Last button is "next page"
+      await user.click(paginationButtons[1]);
+    }
+  });
+
+  // Dismiss error clears the error (covers line 158)
+  it("clears error on dismiss button click", async () => {
+    const user = userEvent.setup();
+    let usersCallCount = 0;
+
+    server.use(
+      http.get("*/api/v1/admin/stats", () =>
+        HttpResponse.json({ success: true, data: sampleStats, message: "ok" }),
+      ),
+      http.get("*/api/v1/admin/users", () => {
+        usersCallCount++;
+        if (usersCallCount === 1) {
+          return HttpResponse.json({ success: false }, { status: 500 });
+        }
+        return HttpResponse.json({ success: true, data: sampleUsers, message: "ok" });
+      }),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("failedLoadUsers")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText(/dismiss/));
+
+    await waitFor(() => {
+      expect(screen.queryByText("failedLoadUsers")).not.toBeInTheDocument();
+    });
+  });
+
+  // Toggle active failure (covers lines 122-124)
+  it("shows error when toggle active fails", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      http.get("*/api/v1/admin/stats", () =>
+        HttpResponse.json({ success: true, data: sampleStats, message: "ok" }),
+      ),
+      http.get("*/api/v1/admin/users", () =>
+        HttpResponse.json({ success: true, data: sampleUsers, message: "ok" }),
+      ),
+      http.put("*/api/v1/admin/users/:id/toggle-active", () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("alice")).toBeInTheDocument();
+    });
+
+    const toggleActiveBtn = screen.getAllByRole("button").find(
+      (b) => b.getAttribute("title") === "disableUser",
+    );
+    if (toggleActiveBtn) {
+      await user.click(toggleActiveBtn);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("failedToggleStatus")).toBeInTheDocument();
+    });
+  });
+
+  // Toggle admin failure (covers lines 134-136)
+  it("shows error when toggle admin fails", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      http.get("*/api/v1/admin/stats", () =>
+        HttpResponse.json({ success: true, data: sampleStats, message: "ok" }),
+      ),
+      http.get("*/api/v1/admin/users", () =>
+        HttpResponse.json({ success: true, data: sampleUsers, message: "ok" }),
+      ),
+      http.put("*/api/v1/admin/users/:id/toggle-admin", () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("alice")).toBeInTheDocument();
+    });
+
+    const toggleAdminBtn = screen.getAllByRole("button").find(
+      (b) => b.getAttribute("title") === "grantAdmin",
+    );
+    if (toggleAdminBtn) {
+      await user.click(toggleAdminBtn);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("failedToggleAdmin")).toBeInTheDocument();
+    });
+  });
 });

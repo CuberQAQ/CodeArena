@@ -826,16 +826,21 @@ describe("FreePlaySessionPage", () => {
         expect(screen.getByText("free_play:session.quit")).toBeInTheDocument();
       });
 
-      // Timer should show approximately 1:00 (60 seconds elapsed)
-      // The timer text is "M:SS" format, so we check for 1:00 or close
+      // Wait for timer to reflect the elapsed time from started_at.
+      // initialSeconds is computed asynchronously via setState chain,
+      // so the timer may briefly show 0:00 before updating.
+      await waitFor(() => {
+        const timerEl = screen.getByText(/\d+:\d+/);
+        const timerText = timerEl.textContent || "";
+        const parts = timerText.split(":");
+        const seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        expect(seconds).toBeGreaterThanOrEqual(59);
+      });
+
       const timerEl = screen.getByText(/\d+:\d+/);
-      expect(timerEl).toBeInTheDocument();
-      // Parse the timer value - it should be around 60 seconds
       const timerText = timerEl.textContent || "";
       const parts = timerText.split(":");
       const seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      // Allow some tolerance since the test runs async
-      expect(seconds).toBeGreaterThanOrEqual(59);
       expect(seconds).toBeLessThanOrEqual(65);
     });
 
@@ -861,14 +866,22 @@ describe("FreePlaySessionPage", () => {
         expect(screen.getByText("Recovered")).toBeInTheDocument();
       });
 
-      // Timer should show approximately 5:00 (300 seconds elapsed)
+      // Wait for timer to reflect the elapsed time from started_at.
+      // The started_at comes from an async API call, so there are multiple
+      // async state updates before the timer shows the correct value.
+      await waitFor(() => {
+        const timerEl = screen.getByText(/\d+:\d+/);
+        const timerText = timerEl.textContent || "";
+        const parts = timerText.split(":");
+        const seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        expect(seconds).toBeGreaterThanOrEqual(295);
+      });
+
       const timerEl = screen.getByText(/\d+:\d+/);
       const timerText = timerEl.textContent || "";
       const parts = timerText.split(":");
       const seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      // Allow some tolerance
-      expect(seconds).toBeGreaterThanOrEqual(295);
-      expect(seconds).toBeLessThanOrEqual(305);
+      expect(seconds).toBeLessThanOrEqual(310);
     });
   });
 });

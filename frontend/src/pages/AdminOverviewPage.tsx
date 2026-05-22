@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Settings,
@@ -79,7 +79,7 @@ export default function AdminOverviewPage() {
     }
   };
 
-  const fetchUsers = async (page: number, search: string) => {
+  const fetchUsers = useCallback(async (page: number, search: string) => {
     try {
       const params = new URLSearchParams({ page: String(page), page_size: "10" });
       if (search) params.set("search", search);
@@ -90,7 +90,7 @@ export default function AdminOverviewPage() {
     } catch (err) {
       setError(extractApiError(err, t("failedLoadUsers")));
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     if (hasFetchedRef.current) return;
@@ -100,7 +100,7 @@ export default function AdminOverviewPage() {
       await Promise.all([fetchStats(), fetchUsers(1, "")]);
       setLoading(false);
     })();
-  }, []);
+  }, [fetchUsers]);
 
   const handleSearch = () => {
     setUserSearch(searchInput);

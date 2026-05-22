@@ -320,7 +320,7 @@ describe("CFBindPage", () => {
 
   // 13. Submit with empty handle does not call API (covers line 64)
   it("does not submit when cfHandle is empty", async () => {
-    const user = userEvent.setup();
+    const _user = userEvent.setup();
     renderPage();
 
     // Click bind without entering a handle - the button should be disabled

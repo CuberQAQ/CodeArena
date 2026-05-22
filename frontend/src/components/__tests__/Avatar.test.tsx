@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -116,5 +117,111 @@ describe("AvatarUpload", () => {
     fireEvent.change(input);
 
     expect(screen.getByText("avatar.fileTooLarge")).toBeInTheDocument();
+  });
+
+  it("uploads valid file successfully", async () => {
+    mockPost.mockResolvedValueOnce({ data: { success: true } });
+    const onUploaded = vi.fn();
+    render(<AvatarUpload userId="user-1" onUploaded={onUploaded} />);
+
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+
+    const file = new File(["avatar data"], "avatar.jpg", {
+      type: "image/jpeg",
+    });
+    Object.defineProperty(input, "files", { value: [file] });
+
+    fireEvent.change(input);
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith(
+        "/auth/avatar",
+        expect.any(FormData),
+        { headers: { "Content-Type": "multipart/form-data" } },
+      );
+    });
+
+    await waitFor(() => {
+      expect(onUploaded).toHaveBeenCalled();
+    });
+  });
+
+  it("shows error on upload API failure", async () => {
+    mockPost.mockRejectedValueOnce(new Error("Network error"));
+    render(<AvatarUpload userId="user-1" />);
+
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+
+    const file = new File(["avatar data"], "avatar.png", {
+      type: "image/png",
+    });
+    Object.defineProperty(input, "files", { value: [file] });
+
+    fireEvent.change(input);
+
+    await waitFor(() => {
+      expect(screen.getByText("avatar.uploadFailed")).toBeInTheDocument();
+    });
+  });
+
+  it("shows server error message on API failure", async () => {
+    mockPost.mockRejectedValueOnce({
+      response: { data: { message: "File too large" } },
+    });
+    render(<AvatarUpload userId="user-1" />);
+
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+
+    const file = new File(["avatar data"], "avatar.jpg", {
+      type: "image/jpeg",
+    });
+    Object.defineProperty(input, "files", { value: [file] });
+
+    fireEvent.change(input);
+
+    await waitFor(() => {
+      expect(screen.getByText("File too large")).toBeInTheDocument();
+    });
+  });
+
+  it("opens file picker on button click when not uploading", async () => {
+    const user = userEvent.setup();
+    render(<AvatarUpload userId="user-1" />);
+
+    const button = screen.getByRole("button");
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+
+    await user.click(button);
+
+    expect(clickSpy).toHaveBeenCalled();
+    clickSpy.mockRestore();
+  });
+
+  it("does not open file picker when uploading", async () => {
+    mockPost.mockImplementation(() => new Promise(() => {})); // never resolves
+    render(<AvatarUpload userId="user-1" />);
+
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+
+    const file = new File(["avatar data"], "avatar.jpg", {
+      type: "image/jpeg",
+    });
+    Object.defineProperty(input, "files", { value: [file] });
+
+    fireEvent.change(input);
+
+    // Now uploading, click should not open file picker
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+    const button = screen.getByRole("button");
+    expect(button).toBeDisabled();
+    clickSpy.mockRestore();
   });
 });

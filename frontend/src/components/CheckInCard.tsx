@@ -22,9 +22,10 @@ export function CheckInCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch initial check-in status
     fetchStatus();
   }, [fetchStatus]);
 

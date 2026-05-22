@@ -369,7 +369,7 @@ export default function ContestDetailPage() {
     return () => {
       if (trackingPollRef.current) clearInterval(trackingPollRef.current);
     };
-  }, [contestId, phase, disconnectWs]);
+  }, [contestId, phase, disconnectWs, t]);
 
   // Show achievement popup when contest result has achievements
   useEffect(() => {
@@ -593,6 +593,7 @@ export default function ContestDetailPage() {
                     blindBox={false}
                   />
                   {/* Solving Timeline: predicted Elo change at solve-time milestones */}
+                  {/* eslint-disable react-hooks/refs */}
                   {selectedProblem.rating != null && currentUser?.elo != null && (
                     <SolvingTimeline
                       problemId={selectedProblem.problem_id}
@@ -601,6 +602,7 @@ export default function ContestDetailPage() {
                       startTime={contestStartTimeRef.current}
                     />
                   )}
+                  {/* eslint-enable react-hooks/refs */}
                 </>
               );
             })()}

@@ -156,7 +156,7 @@ export default function TrainingDetailPage() {
     return () => {
       if (trackingPollRef.current) clearInterval(trackingPollRef.current);
     };
-  }, [session, phase, topicId]);
+  }, [session, phase, topicId, t]);
 
   // Auto-select first unsolved problem when entering session phase
   useEffect(() => {
@@ -187,11 +187,13 @@ export default function TrainingDetailPage() {
   }, [topicId]);
 
   // Fetch recommended problem when topic phase starts and mode is recommend
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (phase === "topic" && detailMode === "recommend" && topicId) {
       fetchRecommendedProblem();
     }
   }, [phase, detailMode, topicId, fetchRecommendedProblem]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // -- Fetch curated problems --
   const fetchCuratedProblems = useCallback(async (append = false) => {
@@ -226,11 +228,13 @@ export default function TrainingDetailPage() {
   }, [topicId, curatedOffset, filterMinRating, filterMaxRating]);
 
   // Fetch curated problems when switching to list mode
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (phase === "topic" && detailMode === "list" && topicId && curatedProblems.length === 0) {
       fetchCuratedProblems(false);
     }
   }, [phase, detailMode, topicId, curatedProblems.length, fetchCuratedProblems]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // -- Session management --
   const startSession = async () => {

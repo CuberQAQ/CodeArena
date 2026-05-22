@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, rerender } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -110,7 +110,7 @@ describe("StreakEffect", () => {
 
   // Covers text shadow "none" branch
   it("does not apply text shadow at low streak values", () => {
-    const { container } = render(<StreakEffect streak={1} />);
+    render(<StreakEffect streak={1} />);
     const span = screen.getByText("1");
     expect(span.style.textShadow).toBe("none");
   });

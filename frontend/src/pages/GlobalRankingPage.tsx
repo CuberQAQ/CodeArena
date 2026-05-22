@@ -102,6 +102,7 @@ export default function GlobalRankingPage() {
   }, []);
 
   // ---- Re-fetch when page/country/sort changes ----
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (activeTab === "global") {
       fetchGlobal(page, appliedCountry);
@@ -109,6 +110,7 @@ export default function GlobalRankingPage() {
       fetchArena(page, appliedCountry, arenaSort);
     }
   }, [activeTab, page, appliedCountry, arenaSort, fetchGlobal, fetchArena]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ---- Tab switch handler ----
   const handleTabChange = (tab: TabKey) => {

@@ -113,10 +113,7 @@ describe("CoinAnimation", () => {
   describe("animation frame path", () => {
     it("counts up amount through animation frames", () => {
       // We need to mock performance.now for rAF-based animation
-      const originalRAF = window.requestAnimationFrame;
-      const originalCAF = window.cancelAnimationFrame;
       let rafCallback: FrameRequestCallback | null = null;
-      const currentTime = 0;
 
       vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
         rafCallback = cb;

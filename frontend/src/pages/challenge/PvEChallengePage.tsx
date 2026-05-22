@@ -173,7 +173,7 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [sessionId, phase]);
+  }, [sessionId, phase, t]);
 
   const handleQuit = async () => {
     setSubmitting(true);
@@ -263,6 +263,7 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
       </div>
 
       {/* Side panel - Solving Timeline */}
+      {/* eslint-disable react-hooks/refs */}
       {problem && problem.rating != null && user?.elo != null && (
         <div className="w-full shrink-0 lg:w-72">
           <SolvingTimeline
@@ -273,6 +274,7 @@ function InProgressPhase({ onNavigateBack }: { onNavigateBack: () => void }) {
           />
         </div>
       )}
+      {/* eslint-enable react-hooks/refs */}
     </div>
   );
 }

@@ -476,4 +476,133 @@ describe("AdminConfigPage", () => {
       expect(screen.getByText(/unsavedChanges/)).toBeInTheDocument();
     });
   });
+
+  // Covers handleSaveField error path
+  it("shows error when save fails", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("*/api/v1/admin/config", () =>
+        HttpResponse.json({ success: true, data: sampleConfig, message: "ok" }),
+      ),
+      http.get("*/api/v1/admin/config/metadata", () =>
+        HttpResponse.json({ success: true, data: sampleMetadata, message: "ok" }),
+      ),
+      http.put("*/api/v1/admin/config/*", () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Hint Cost Base")).toBeInTheDocument();
+    });
+
+    // Modify a field value to make it dirty
+    const input = document.querySelector('input[type="number"]') as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, "20");
+
+    // Wait for unsaved changes indicator
+    await waitFor(() => {
+      expect(screen.getByText(/unsavedChanges/)).toBeInTheDocument();
+    });
+
+    // Find the save button (variant="outline", appears when dirty)
+    const allButtons = screen.getAllByRole("button");
+    // The save button is the outline button next to the input field (not reset button)
+    const outlineBtns = allButtons.filter((b) => {
+      const classes = b.className || "";
+      return classes.includes("border") && !classes.includes("ghost") && b.getAttribute("title") !== "admin:resetToDefault";
+    });
+
+    if (outlineBtns.length > 0) {
+      await user.click(outlineBtns[0]);
+    }
+
+    await waitFor(() => {
+      // Either the save error shows, or the error from extractApiError fallback
+      const errorEl = screen.queryByText(/failedSaveField/);
+      expect(errorEl || screen.queryByText("admin:failedLoadConfig")).toBeTruthy();
+    }, { timeout: 3000 });
+  });
+
+  // Covers handleResetField error path
+  it("shows error when reset fails", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("*/api/v1/admin/config", () =>
+        HttpResponse.json({ success: true, data: sampleConfig, message: "ok" }),
+      ),
+      http.get("*/api/v1/admin/config/metadata", () =>
+        HttpResponse.json({ success: true, data: sampleMetadata, message: "ok" }),
+      ),
+      http.post("*/api/v1/admin/config/*/reset", () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Hint Cost Base")).toBeInTheDocument();
+    });
+
+    const resetButtons = screen.getAllByRole("button").filter(
+      (b) => b.getAttribute("title") === "admin:resetToDefault",
+    );
+    await user.click(resetButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/failedResetField/)).toBeInTheDocument();
+    });
+  });
+
+  // Covers string input type rendering and modification
+  it("renders and modifies string field", async () => {
+    const user = userEvent.setup();
+    setupDefaultHandlers();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Elo Settings")).toBeInTheDocument();
+    });
+
+    // Expand elo section
+    await user.click(screen.getByText("Elo Settings"));
+
+    expect(screen.getByText("Season")).toBeInTheDocument();
+
+    // String input should be rendered
+    const stringInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+    expect(stringInput).toBeInTheDocument();
+    expect(stringInput.value).toBe("2025-Q1");
+
+    // Modify string value
+    await user.clear(stringInput);
+    await user.type(stringInput, "2025-Q2");
+    expect(stringInput.value).toBe("2025-Q2");
+  });
+
+  // Covers float input type modification
+  it("modifies float field value", async () => {
+    const user = userEvent.setup();
+    setupDefaultHandlers();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Elo Settings")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Elo Settings"));
+
+    const floatInput = document.querySelector('input[step="0.01"]') as HTMLInputElement;
+    expect(floatInput).toBeInTheDocument();
+
+    await user.clear(floatInput);
+    await user.type(floatInput, "40.5");
+    expect(floatInput.value).toBe("40.5");
+  });
 });

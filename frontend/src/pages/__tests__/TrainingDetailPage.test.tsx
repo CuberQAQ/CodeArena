@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 // ---------------------------------------------------------------------------
@@ -27,7 +26,7 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/components/ui/button", () => ({
   Button: (props: Record<string, unknown>) => {
-    const { onClick, children, disabled, ...rest } = props;
+    const { onClick, children, disabled, ..._rest } = props;
     return (
       <button onClick={onClick as React.MouseEventHandler} disabled={!!disabled} type="button" data-testid="mock-button">
         {children as React.ReactNode}

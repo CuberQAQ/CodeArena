@@ -465,5 +465,41 @@ describe("contestApi", () => {
       // Should not have added any new state change calls from onerror alone
       expect(onStateChange.mock.calls.length).toBe(callsBefore);
     });
+
+    it("builds wss URL when VITE_WS_BASE_URL starts with https", () => {
+      const origEnv = import.meta.env.VITE_WS_BASE_URL;
+      import.meta.env.VITE_WS_BASE_URL = "https://example.com";
+      localStorage.setItem("access_token", "my-token");
+
+      connectContestWs("contest-wss", {
+        onStateChange: vi.fn(),
+        onLeaderboard: vi.fn(),
+        onContestEnded: vi.fn(),
+      });
+
+      const wsInstance = mockWsInstances[mockWsInstances.length - 1];
+      expect(wsInstance.url).toContain("wss://example.com/api/v1/contest/contest-wss/live");
+      expect(wsInstance.url).toContain("token=my-token");
+
+      import.meta.env.VITE_WS_BASE_URL = origEnv;
+    });
+
+    it("builds ws URL when VITE_WS_BASE_URL starts with http", () => {
+      const origEnv = import.meta.env.VITE_WS_BASE_URL;
+      import.meta.env.VITE_WS_BASE_URL = "http://example.com";
+      localStorage.setItem("access_token", "my-token");
+
+      connectContestWs("contest-ws", {
+        onStateChange: vi.fn(),
+        onLeaderboard: vi.fn(),
+        onContestEnded: vi.fn(),
+      });
+
+      const wsInstance = mockWsInstances[mockWsInstances.length - 1];
+      expect(wsInstance.url).toContain("ws://example.com/api/v1/contest/contest-ws/live");
+      expect(wsInstance.url).toContain("token=my-token");
+
+      import.meta.env.VITE_WS_BASE_URL = origEnv;
+    });
   });
 });

@@ -87,7 +87,7 @@ describe("MatchWaiting", () => {
 
   it("does not render pulsing ring in reduced motion", () => {
     mockReducedMotion = true;
-    const { container } = render(<MatchWaiting />);
+    render(<MatchWaiting />);
     // In reduced motion, the pulsing ring animation is skipped
     expect(screen.getByText("Finding Opponent...")).toBeInTheDocument();
     mockReducedMotion = false;

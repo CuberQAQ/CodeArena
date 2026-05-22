@@ -118,7 +118,7 @@ export default function ChallengePage() {
         })
         .catch(() => {});
     }
-  }, [urlSessionId]);
+  }, [urlSessionId, navigate]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -188,7 +188,7 @@ export default function ChallengePage() {
     return () => {
       if (trackingPollRef.current) clearInterval(trackingPollRef.current);
     };
-  }, [sessionId, phase]);
+  }, [sessionId, phase, t]);
 
   // Timer for in-progress phase
   const startTimer = useCallback(() => {
@@ -723,6 +723,7 @@ export default function ChallengePage() {
         </div>
 
         {/* Side panel - Solving Timeline */}
+        {/* eslint-disable react-hooks/refs */}
         {problem && problem.rating != null && user?.elo != null && (
           <div className="w-full shrink-0 lg:w-72">
             <SolvingTimeline
@@ -733,6 +734,7 @@ export default function ChallengePage() {
             />
           </div>
         )}
+        {/* eslint-enable react-hooks/refs */}
       </div>
     );
   }

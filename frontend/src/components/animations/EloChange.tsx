@@ -29,9 +29,7 @@ export function EloChange({ value, triggerKey, className = "" }: EloChangeProps)
       setVisible(false);
       return;
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- trigger animation on value change
     setVisible(true);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset counter for new value
     setDisplayValue(0);
 
     if (reduced) {

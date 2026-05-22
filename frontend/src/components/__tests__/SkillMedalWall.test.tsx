@@ -43,8 +43,10 @@ describe("SkillMedalWall", () => {
     ];
 
     render(<SkillMedalWall skills={skills} />);
-    expect(screen.getByText("dp")).toBeInTheDocument();
-    expect(screen.getByText("greedy")).toBeInTheDocument();
+    // Component maps CF tags through CF_TAG_TO_SLUG and calls t(`training:topic.${slug}`)
+    // The mock t() returns the key as-is, so we get "training:topic.dp" etc.
+    expect(screen.getByText("training:topic.dp")).toBeInTheDocument();
+    expect(screen.getByText("training:topic.greedy")).toBeInTheDocument();
     expect(screen.getAllByTestId("medal-badge").length).toBe(2);
   });
 
@@ -54,7 +56,8 @@ describe("SkillMedalWall", () => {
     ];
 
     render(<SkillMedalWall skills={skills} />);
-    expect(screen.getByText("math")).toBeInTheDocument();
+    // Component maps "math" through CF_TAG_TO_SLUG and calls t(`training:topic.math`)
+    expect(screen.getByText("training:topic.math")).toBeInTheDocument();
     expect(screen.getByTestId("medal-badge")).toHaveTextContent("unranked-none");
   });
 

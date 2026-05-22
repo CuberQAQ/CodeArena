@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Settings,
@@ -34,6 +34,24 @@ interface ConfigSection {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// Flatten the nested config into dot-path keys
+function flattenConfig(obj: Record<string, unknown>, prefix = ""): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      Object.assign(result, flattenConfig(value as Record<string, unknown>, fullKey));
+    } else {
+      result[fullKey] = value;
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -50,21 +68,7 @@ export default function AdminConfigPage() {
   const [originalConfig, setOriginalConfig] = useState<Record<string, unknown>>({});
   const hasFetchedRef = useRef(false);
 
-  // Flatten the nested config into dot-path keys
-  const flattenConfig = (obj: Record<string, unknown>, prefix = ""): Record<string, unknown> => {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      const fullKey = prefix ? `${prefix}.${key}` : key;
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        Object.assign(result, flattenConfig(value as Record<string, unknown>, fullKey));
-      } else {
-        result[fullKey] = value;
-      }
-    }
-    return result;
-  };
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -90,13 +94,13 @@ export default function AdminConfigPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     if (hasFetchedRef.current) return;
     hasFetchedRef.current = true;
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const toggleSection = (key: string) => {
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));

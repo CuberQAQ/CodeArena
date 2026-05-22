@@ -40,7 +40,7 @@ vi.mock("@/components/Avatar", () => ({
 
 vi.mock("@/utils", () => ({
   getRatingColor: () => "#000000",
-  getDifficultyLabelKey: (elo: number) => "rating.newbie",
+  getDifficultyLabelKey: (_elo: number) => "rating.newbie",
   ratingToMedal: () => ({ level: "bronze", type: "arena" }),
 }));
 

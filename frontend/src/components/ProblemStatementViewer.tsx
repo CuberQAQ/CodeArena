@@ -214,6 +214,7 @@ export function ProblemStatementViewer({
 
   useEffect(() => {
     if (!blindBox) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch statement when not blind box
       void fetchStatement();
     }
   }, [blindBox, fetchStatement]);

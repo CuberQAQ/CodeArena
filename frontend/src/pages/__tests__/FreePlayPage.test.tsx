@@ -342,4 +342,94 @@ describe("FreePlayPage", () => {
     expect(screen.getByText("Medium Rec")).toBeInTheDocument();
     expect(screen.getByText("Hard Rec")).toBeInTheDocument();
   });
+
+  // 16. Extra tags selected from more tags dialog appear in the tag list (lines 540-553)
+  it("shows extra selected tags from more tags dialog", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Open the more tags dialog
+    await user.click(screen.getByText("moreTags"));
+
+    // Select a tag that is NOT in PRESET_TAGS (e.g., "trees" at index ~20)
+    const treesTag = screen.getByText("trees");
+    await user.click(treesTag);
+
+    // Close dialog
+    await user.click(screen.getByText("OK"));
+
+    // The extra selected tag should be visible in the extra tags section
+    expect(screen.getByText("trees")).toBeInTheDocument();
+  });
+
+  // 17. Recommend with no result shows error message (covers else branch)
+  it("shows error when recommend returns found=false with default message", async () => {
+    mockFreePlayRecommend.mockResolvedValue({
+      found: false,
+      problems: [],
+      message: undefined,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("tabs.recommend"));
+    await user.click(screen.getByText("recommendProblem"));
+
+    await waitFor(() => {
+      expect(screen.getByText("noProblemFound")).toBeInTheDocument();
+    });
+  });
+
+  // 18. Search with no result shows error with default message
+  it("shows error when search returns found=false with default message", async () => {
+    mockFreePlaySearch.mockResolvedValue({
+      found: false,
+      problems: [],
+      message: undefined,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("searchProblems"));
+
+    await waitFor(() => {
+      expect(screen.getByText("noProblemFound")).toBeInTheDocument();
+    });
+  });
+
+  // 19. More tags dialog search/filter (covers lines 150-156, 187-189)
+  it("filters tags by search in more tags dialog", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("moreTags"));
+
+    // Type in search box to filter
+    const searchInput = screen.getByPlaceholderText("searchTagsPlaceholder");
+    await user.type(searchInput, "xyz");
+
+    // Should show no results indicator
+    await waitFor(() => {
+      expect(screen.getByText("-")).toBeInTheDocument();
+    });
+  });
+
+  // 20. Problem without rating renders without rating badge (covers line 245 null branch)
+  it("renders problem card without rating badge when rating is null", async () => {
+    mockFreePlaySearch.mockResolvedValue({
+      found: true,
+      problems: [{ ...SAMPLE_PROBLEM, rating: null }],
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("searchProblems"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Two Sum")).toBeInTheDocument();
+    });
+
+    // Should not crash and the problem card should render
+    expect(screen.getByText("free_play:startProblem")).toBeInTheDocument();
+  });
 });

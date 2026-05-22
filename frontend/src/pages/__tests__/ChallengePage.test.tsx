@@ -1988,7 +1988,7 @@ describe("ChallengePage", () => {
         ),
       );
 
-      const { container } = renderWithRoutes("/challenge/reset-url-test");
+      const { container: _container } = renderWithRoutes("/challenge/reset-url-test");
 
       await waitFor(() => {
         expect(screen.getByText("victory")).toBeInTheDocument();

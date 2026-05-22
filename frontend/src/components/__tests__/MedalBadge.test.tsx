@@ -52,7 +52,7 @@ describe("MedalBadge", () => {
   });
 
   it("applies custom size", () => {
-    const { container } = render(
+    render(
       <MedalBadge level="regional" type="gold" size="lg" />,
     );
     // lg uses text-sm for the label

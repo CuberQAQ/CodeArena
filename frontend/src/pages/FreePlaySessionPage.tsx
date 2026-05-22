@@ -48,14 +48,20 @@ function useElapsedTime(running: boolean, initialSeconds: number = 0): number {
   const initialRef = useRef(initialSeconds);
 
   // Always keep the ref in sync so when the timer starts it uses the latest value
+  // eslint-disable-next-line react-hooks/refs -- sync ref with latest initialSeconds
   initialRef.current = initialSeconds;
 
-  // Sync initial value when not running
+  // Sync when initialSeconds changes (handles async state updates like startedAt from API)
   useEffect(() => {
     if (!running) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync elapsed when timer not running
+      setElapsed(initialSeconds);
+    } else if (initialSeconds > 0 && elapsed < initialSeconds) {
+      // If timer already started but initialSeconds updated to a higher value
+      // (e.g. after startedAt was fetched from API), resync the elapsed time
       setElapsed(initialSeconds);
     }
-  }, [running, initialSeconds]);
+  }, [running, initialSeconds, elapsed]);
 
   useEffect(() => {
     if (running) {
@@ -105,16 +111,17 @@ function ResultView({
   const tokensEarned = submitResult?.tokens_earned ?? 0;
   const overkillMultiplier = submitResult?.overkill_multiplier ?? 1.0;
   const isOverkill = overkillMultiplier > 1.0;
-  const achievements = submitResult?.achievements ?? [];
+  const achievements = submitResult?.achievements;
 
   useEffect(() => {
     if (eloChange != null && eloChange > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- show celebration on positive elo change
       setShowCelebration(true);
     }
   }, [eloChange]);
 
   useEffect(() => {
-    if (achievements.length > 0) {
+    if ((achievements ?? []).length > 0) {
       const timer = setTimeout(() => setShowAchievements(true), 1500);
       return () => clearTimeout(timer);
     }
@@ -127,7 +134,7 @@ function ResultView({
         onComplete={() => setShowCelebration(false)}
       />
 
-      {achievements.length > 0 && showAchievements && (
+      {achievements && achievements.length > 0 && showAchievements && (
         <AchievementPopup
           achievements={achievements}
           onComplete={() => setShowAchievements(false)}
@@ -322,6 +329,7 @@ export default function FreePlaySessionPage() {
 
   useEffect(() => {
     if (startedAt) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- compute initial seconds from startedAt
       setInitialSeconds(Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)));
     } else {
       setInitialSeconds(0);
@@ -337,6 +345,7 @@ export default function FreePlaySessionPage() {
   const startTimeRef = useRef<Date>(new Date());
 
   // Load session on mount
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!sessionId) {
       setError("No session ID");
@@ -377,6 +386,7 @@ export default function FreePlaySessionPage() {
       });
     }
   }, [sessionId, navigate, location.state]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Auto-tracking polling
   useEffect(() => {
@@ -549,6 +559,7 @@ export default function FreePlaySessionPage() {
         </div>
 
         {/* Solving Timeline */}
+        {/* eslint-disable react-hooks/refs */}
         {problem && problem.rating != null && user?.elo != null && (
           <SolvingTimeline
             problemId={`${problem.contest_id}${problem.index}`}
@@ -557,6 +568,7 @@ export default function FreePlaySessionPage() {
             startTime={startTimeRef.current}
           />
         )}
+        {/* eslint-enable react-hooks/refs */}
 
         {/* Error */}
         {error && (

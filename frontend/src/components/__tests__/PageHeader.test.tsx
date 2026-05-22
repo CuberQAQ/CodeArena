@@ -25,7 +25,7 @@ describe("PageHeader", () => {
   });
 
   it("does not render actions wrapper when not provided", () => {
-    const { container } = render(<PageHeader title="Test" />);
+    render(<PageHeader title="Test" />);
     // The actions div should not exist
     const h1 = screen.getByText("Test");
     const parent = h1.closest("div");

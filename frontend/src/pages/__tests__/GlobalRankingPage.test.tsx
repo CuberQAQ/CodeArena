@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { http, HttpResponse } from "msw";
@@ -251,7 +251,7 @@ describe("GlobalRankingPage", () => {
         });
       }),
     );
-    const user = userEvent.setup();
+    const _user = userEvent.setup();
     renderPage();
 
     await waitFor(() => {
@@ -367,9 +367,9 @@ describe("GlobalRankingPage", () => {
     }, { timeout: 2000 });
 
     // Clear button should appear
-    const clearBtn = screen.getByRole("button", { name: "" });
+    const _clearBtn = screen.getByRole("button", { name: "" });
     // Find the X button inside the input wrapper
-    const xButtons = screen.getAllByRole("button").filter(b => b.querySelector("svg.lucide-x") || b.closest(".relative"));
+    const _xButtons = screen.getAllByRole("button").filter(b => b.querySelector("svg.lucide-x") || b.closest(".relative"));
     // Just clear the filter by clearing the input
     await user.clear(input);
 

@@ -33,6 +33,7 @@ export function Avatar({ userId, src, size = 40, className = "" }: AvatarProps) 
 
   // Reset error state when userId changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset image error on userId change
     setImgError(false);
   }, [userId]);
 
@@ -84,6 +85,7 @@ export function AvatarUpload({ userId, size = 80, onUploaded }: AvatarUploadProp
 
   // Try to load the current avatar on mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load avatar URL on userId change
     setAvatarUrl(`/api/v1/auth/avatar/${userId}`);
     setImgError(false);
   }, [userId]);

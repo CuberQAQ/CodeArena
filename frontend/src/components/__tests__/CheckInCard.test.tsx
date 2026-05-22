@@ -213,4 +213,113 @@ describe("CheckInCard", () => {
       expect(screen.getByText("checkin.checkedIn")).toBeInTheDocument();
     });
   });
+
+  // Covers handleCheckIn error path (lines 38-41)
+  it("shows error when check-in fails", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      http.get("*/api/v1/checkin/status", () =>
+        HttpResponse.json({
+          success: true,
+          data: makeNotCheckedInStatus(),
+          message: "ok",
+        }),
+      ),
+      http.post("*/api/v1/checkin", () =>
+        HttpResponse.json(
+          { success: false, message: "Already checked in today" },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    render(<CheckInCard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("checkin.checkin")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("checkin.checkin"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Already checked in today")).toBeInTheDocument();
+    });
+  });
+
+  // Covers handleMakeup path (lines 47-59)
+  it("performs makeup check-in and refreshes status", async () => {
+    const user = userEvent.setup();
+    let makeupCalled = false;
+
+    server.use(
+      http.get("*/api/v1/checkin/status", () => {
+        if (makeupCalled) {
+          return HttpResponse.json({
+            success: true,
+            data: makeCheckedInStatus({ can_makeup: false }),
+            message: "ok",
+          });
+        }
+        return HttpResponse.json({
+          success: true,
+          data: makeNotCheckedInStatus({ can_makeup: true }),
+          message: "ok",
+        });
+      }),
+      http.post("*/api/v1/checkin/makeup", () => {
+        makeupCalled = true;
+        return HttpResponse.json({
+          success: true,
+          data: { tokens_earned: 3 },
+          message: "ok",
+        });
+      }),
+    );
+
+    render(<CheckInCard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("checkin.makeup")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("checkin.makeup"));
+
+    await waitFor(() => {
+      expect(screen.getByText("checkin.checkedIn")).toBeInTheDocument();
+    });
+  });
+
+  // Covers handleMakeup error path (lines 54-57)
+  it("shows error when makeup fails", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      http.get("*/api/v1/checkin/status", () =>
+        HttpResponse.json({
+          success: true,
+          data: makeNotCheckedInStatus({ can_makeup: true }),
+          message: "ok",
+        }),
+      ),
+      http.post("*/api/v1/checkin/makeup", () =>
+        HttpResponse.json(
+          { success: false, message: "Makeup limit reached" },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    render(<CheckInCard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("checkin.makeup")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("checkin.makeup"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Makeup limit reached")).toBeInTheDocument();
+    });
+  });
 });
