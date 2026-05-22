@@ -1796,7 +1796,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ---
 
 ### Task 43.6: contest_ws WebSocket 集成测试
-**状态**: ⬜ 待开发
+**状态**: 🔄 进行中
 **优先级**: P1
 **依赖**: Task 43.1
 
