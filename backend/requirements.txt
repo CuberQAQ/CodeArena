@@ -42,3 +42,6 @@ pillow>=10.0.0
 bandit>=1.8
 pip-audit
 mypy>=1.11
+
+# Property-based testing
+hypothesis>=6.100
