@@ -42,7 +42,7 @@ const RADAR_DIMENSIONS = [
 function buildRadarDataFromMElo(
   melos: { tag: string; elo: number; shield_active: boolean }[],
   globalElo: number,
-  t: (key: string, fallback?: string) => string,
+  t: ReturnType<typeof useTranslation>["t"],
 ): RadarDataPoint[] {
   if (melos.length === 0) return [];
 

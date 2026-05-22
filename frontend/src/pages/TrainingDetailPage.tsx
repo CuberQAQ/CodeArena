@@ -34,7 +34,6 @@ import type {
   ApiResponse,
   AchievementEvent,
   CuratedProblemInfo,
-  CuratedProblemsResponse,
   RecommendedProblem,
   TopicDetail,
   TrainingSessionInfo,

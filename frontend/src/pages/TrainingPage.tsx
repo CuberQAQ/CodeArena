@@ -7,7 +7,7 @@ import { ErrorMessage } from "@/components/ErrorMessage";
 import { PageHeader } from "@/components/PageHeader";
 import api from "@/services/api";
 import { getRecommendedTopics } from "@/services/trainingApi";
-import type { ApiResponse, TopicInfo, UserSettingsData, RecommendedTopic } from "@/types";
+import type { ApiResponse, TopicInfo, RecommendedTopic } from "@/types";
 
 function ProgressRing({ percent }: { percent: number }) {
   const radius = 16;
