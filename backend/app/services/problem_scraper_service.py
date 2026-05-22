@@ -118,8 +118,8 @@ def _fetch_page_html(url: str, retries: int = _DEFAULT_RETRIES) -> str:
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=30_000)
                 page.wait_for_selector(".problem-statement", timeout=20_000)
-                # Wait for MathJax rendering to settle
-                page.wait_for_timeout(1500)
+                # Do NOT wait for MathJax — capture raw <script type="math/tex"> tags
+                # so KaTeX can render them on the frontend
                 html = page.content()
                 if "problem-statement" not in html:
                     raise RuntimeError("Page does not contain .problem-statement")
@@ -167,11 +167,17 @@ def _parse_problem_html(html: str) -> dict[str, Any]:
     title_el = ps.select_one(".header .title")
     result["title"] = title_el.get_text(strip=True) if title_el else "Unknown"
 
-    # Time / memory limits
-    tl = ps.select_one(".header .time-limit")
-    result["time_limit"] = tl.get_text(strip=True) if tl else None
-    ml = ps.select_one(".header .memory-limit")
-    result["memory_limit"] = ml.get_text(strip=True) if ml else None
+    # Time / memory limits — extract only the value, not the .property-title label
+    def _extract_limit(el: Tag | None) -> str | None:
+        if el is None:
+            return None
+        label = el.select_one(".property-title")
+        if label:
+            label.decompose()
+        return el.get_text(strip=True) or None
+
+    result["time_limit"] = _extract_limit(ps.select_one(".header .time-limit"))
+    result["memory_limit"] = _extract_limit(ps.select_one(".header .memory-limit"))
 
     # Body HTML (everything after header except input/output specs, samples, notes)
     header = ps.select_one(".header")

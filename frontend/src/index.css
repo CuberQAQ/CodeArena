@@ -128,3 +128,39 @@
     @apply font-sans;
     }
 }
+
+/* Codeforces problem statement HTML styling */
+.cf-prose {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--foreground);
+}
+.cf-prose p {
+  margin-bottom: 0.75em;
+}
+.cf-prose .section-title {
+  font-weight: 600;
+  font-size: 1.05em;
+  margin-bottom: 0.5em;
+  color: var(--foreground);
+}
+.cf-prose .tex-span {
+  font-style: italic;
+}
+.cf-prose .tex-span i {
+  font-style: italic;
+}
+/* CF sometimes wraps math in .MathJax elements */
+.cf-prose .MathJax {
+  display: inline;
+}
+.cf-prose .MathJax_Display {
+  display: block;
+  margin: 0.75em 0;
+  overflow-x: auto;
+}
+.cf-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+}
