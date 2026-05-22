@@ -11,11 +11,12 @@ Tests cover:
 - Empty data handling
 - PP=0 users excluded
 - is_active=False users excluded
+- Calibrated vs uncalibrated response
 """
 
 import uuid
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, event
@@ -121,7 +122,7 @@ def _make_user(
         id=uuid.uuid4(),
         username=username,
         email=f"{username}@test.com",
-        password_hash="hash",
+        password_hash="hashed_value",  # pragma: allowlist secret
         pp=pp,
         elo=elo,
         cf_handle=cf_handle,
@@ -170,6 +171,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -213,6 +215,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -243,6 +246,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -268,6 +272,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -289,6 +294,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -314,6 +320,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -339,6 +346,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -365,6 +373,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -396,6 +405,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -422,6 +432,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -448,6 +459,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -490,6 +502,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -523,6 +536,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -548,6 +562,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -574,6 +589,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -599,6 +615,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -628,6 +645,7 @@ class TestGlobalRankingLogic:
         with (
             patch.object(ranking_mod, "User", _TestUser),
             patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
         ):
             from app.api.v1.ranking import get_global_ranking
 
@@ -845,3 +863,124 @@ class TestPaginationHelper:
         result = _paginate([], page=1, page_size=50)
         assert result["total"] == 0
         assert result["items"] == []
+
+
+class TestCalibratedRanking:
+    """Test CDF-based calibrated ranking estimation."""
+
+    @pytest.mark.asyncio
+    async def test_calibrated_false_when_no_metadata(self, db_session: AsyncSession):
+        """When no pipeline metadata exists, calibrated=false in response."""
+        ca_user = _make_user("alice", pp=200.0)
+        db_session.add(ca_user)
+        await db_session.commit()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=None)),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        assert result["data"]["calibrated"] is False
+        # Items should not have estimated_percentile when uncalibrated
+        item = result["data"]["items"][0]
+        assert item.get("estimated_percentile") is None
+
+    @pytest.mark.asyncio
+    async def test_calibrated_true_with_metadata(self, db_session: AsyncSession):
+        """When pipeline metadata exists, calibrated=true and percentiles are computed."""
+        ca_user = _make_user("alice", pp=200.0)
+        cf_user = _make_cf_user("tourist", cf_rating=3000, estimated_pp=300.0, batch=1)
+        db_session.add_all([ca_user, cf_user])
+        await db_session.commit()
+
+        # Mock metadata with a simple histogram
+        mock_metadata = type(
+            "MockMetadata",
+            (),
+            {
+                "total_rated_users": 100000,
+                "rating_histogram": {
+                    "850": 10000,
+                    "950": 15000,
+                    "1050": 20000,
+                    "1150": 20000,
+                    "1250": 15000,
+                    "1350": 10000,
+                    "1450": 5000,
+                    "1550": 3000,
+                    "1650": 2000,
+                },
+                "regression_coefficients": [-100.0, 0.1, 0.0001],
+            },
+        )()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=mock_metadata)),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        assert result["data"]["calibrated"] is True
+
+        # CF user should have estimated_percentile (direct rating -> CDF)
+        cf_item = next(i for i in result["data"]["items"] if i["name"] == "tourist")
+        assert cf_item.get("estimated_percentile") is not None
+        assert cf_item["estimated_percentile"] > 0
+
+        # CA user should have estimated_percentile (PP -> rating -> CDF)
+        ca_item = next(i for i in result["data"]["items"] if i["name"] == "alice")
+        assert ca_item.get("estimated_percentile") is not None
+
+    @pytest.mark.asyncio
+    async def test_calibrated_cf_user_percentile(self, db_session: AsyncSession):
+        """CF user with rating 1200 should get appropriate percentile from histogram."""
+        cf_user = _make_cf_user("mid_user", cf_rating=1200, estimated_pp=100.0, batch=1)
+        db_session.add(cf_user)
+        await db_session.commit()
+
+        # Histogram where most users are below 1200
+        mock_metadata = type(
+            "MockMetadata",
+            (),
+            {
+                "total_rated_users": 1000,
+                "rating_histogram": {"850": 500, "950": 300, "1050": 150, "1150": 50},
+                "regression_coefficients": [0.0, 0.01],
+            },
+        )()
+
+        import app.api.v1.ranking as ranking_mod
+
+        with (
+            patch.object(ranking_mod, "User", _TestUser),
+            patch.object(ranking_mod, "CFSampleUser", _TestCFSampleUser),
+            patch.object(ranking_mod, "get_latest_pipeline_metadata", AsyncMock(return_value=mock_metadata)),
+        ):
+            from app.api.v1.ranking import get_global_ranking
+
+            response = await get_global_ranking(country=None, page=1, page_size=50, db=db_session)
+
+        import json
+
+        result = json.loads(response.body)
+        item = result["data"]["items"][0]
+        # Rating 1200 is above all buckets (max boundary is 1150+50=1200)
+        # So it should be at 100%
+        assert item["estimated_percentile"] == 100.0

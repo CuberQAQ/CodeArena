@@ -28,5 +28,6 @@
   "totalUsers": "共 {{count}} 名用户",
   "topPercent": "前 {{percent}}%",
   "arenaTitle": "竞技场排名",
-  "arenaDescription": "仅 CodeArena 用户，按真实 PP 或 Elo 排名。"
+  "arenaDescription": "仅 CodeArena 用户，按真实 PP 或 Elo 排名。",
+  "uncalibratedWarning": "排名数据尚未校准。百分位仅基于采样用户，可能不准确。请运行 CF 管线以校准。"
 }

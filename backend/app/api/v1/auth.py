@@ -38,6 +38,11 @@ from app.schemas.auth import (
 )
 from app.schemas.medal import UpdateSettingsRequest, UserSettingsResponse
 from app.services import auth_service, avatar_service
+from app.services.cf_ranking_service import (
+    build_cdf,
+    get_latest_pipeline_metadata,
+    pp_to_rating,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -279,26 +284,40 @@ async def get_pp_rank(
 ):
     """Return the authenticated user's PP global ranking and percentile.
 
-    Calculates rank by counting users with higher PP, then derives percentile.
-    Users with PP == 0 are considered unranked.
+    When pipeline metadata is available, the global rank and percentile are
+    estimated using the full CF user base via CDF interpolation.  The
+    ``calibrated`` flag indicates whether this estimation is active.
+
+    Fallback: when no metadata exists (pipeline never run), rank is computed
+    from Arena users only and ``calibrated`` is ``false``.
     """
     user_pp = current_user.pp or 0
 
-    # Count total active users
-    total_result = await db.execute(select(func.count(User.id)).where(User.is_active.is_(True)))
-    total_users = total_result.scalar() or 0
+    # Count Arena active users
+    total_arena_result = await db.execute(select(func.count(User.id)).where(User.is_active.is_(True)))
+    total_arena = total_arena_result.scalar() or 0
 
-    if total_users == 0 or user_pp <= 0:
+    # Fetch pipeline metadata for global estimation
+    metadata = await get_latest_pipeline_metadata(db)
+    calibrated = (
+        metadata is not None and metadata.rating_histogram is not None and metadata.regression_coefficients is not None
+    )
+
+    if total_arena == 0 or user_pp <= 0:
+        total_global = total_arena
+        if calibrated and metadata is not None:
+            total_global = metadata.total_rated_users + total_arena
         return success_response(
             data={
                 "rank": None,
-                "total_users": total_users,
+                "total_users": total_global,
                 "top_percent": None,
+                "calibrated": calibrated,
             },
             message="PP rank retrieved",
         )
 
-    # Count users with strictly higher PP (same PP broken by earlier creation)
+    # Arena-local rank (always computed)
     higher_result = await db.execute(
         select(func.count(User.id)).where(
             User.is_active.is_(True),
@@ -306,16 +325,43 @@ async def get_pp_rank(
         )
     )
     higher_count = higher_result.scalar() or 0
-    rank = higher_count + 1
+    arena_rank = higher_count + 1
 
-    # Top percent: what percentage of the leaderboard the user occupies from the top
-    top_percent = round(rank / total_users * 100, 1)
+    if calibrated and metadata is not None:
+        # Global estimation via CDF
+        total_global = metadata.total_rated_users + total_arena
 
+        # Estimate user's equivalent rating via PP -> rating reverse mapping
+        equiv_rating = pp_to_rating(user_pp, metadata.regression_coefficients)
+        if equiv_rating is not None:
+            cdf_fn = build_cdf(metadata.rating_histogram, metadata.total_rated_users)
+            percentile = cdf_fn(equiv_rating)  # fraction with rating <= equiv_rating
+            # Global rank = total * (1 - percentile) + 1 (approximately)
+            global_rank = max(1, round(total_global * (1 - percentile)))
+            top_percent = round(percentile * 100, 1)
+        else:
+            # PP too low to map to a rating; use arena rank as fallback
+            global_rank = arena_rank + metadata.total_rated_users
+            top_percent = round(global_rank / total_global * 100, 1)
+
+        return success_response(
+            data={
+                "rank": global_rank,
+                "total_users": total_global,
+                "top_percent": top_percent,
+                "calibrated": True,
+            },
+            message="PP rank retrieved",
+        )
+
+    # Fallback: Arena-only ranking
+    top_percent = round(arena_rank / total_arena * 100, 1)
     return success_response(
         data={
-            "rank": rank,
-            "total_users": total_users,
+            "rank": arena_rank,
+            "total_users": total_arena,
             "top_percent": top_percent,
+            "calibrated": False,
         },
         message="PP rank retrieved",
     )

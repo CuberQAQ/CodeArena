@@ -28,5 +28,6 @@
   "totalUsers": "{{count}} users total",
   "topPercent": "Top {{percent}}%",
   "arenaTitle": "Arena Ranking",
-  "arenaDescription": "CodeArena users only, ranked by verified PP or Elo."
+  "arenaDescription": "CodeArena users only, ranked by verified PP or Elo.",
+  "uncalibratedWarning": "Ranking data is not yet calibrated. Percentiles are based on sampled users only and may be inaccurate. Run the CF pipeline to calibrate."
 }

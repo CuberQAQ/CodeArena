@@ -14,13 +14,16 @@ can poll for status.
 
 import json
 import logging
+import math
 import random
 from collections import defaultdict
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.cf_pipeline_metadata import CFPipelineMetadata
 from app.models.cf_sample_user import CFSampleUser
 from app.services.cf_api_service import CFApiService, CFNetworkError, CFNotFoundError
 from app.services.pp_service import PPService
@@ -235,6 +238,95 @@ def _country_to_iso(name: str | None) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Histogram / CDF helpers for global ranking estimation
+# ---------------------------------------------------------------------------
+
+
+def _build_rating_histogram(rated_list: list[dict]) -> dict[str, int]:
+    """Build a rating histogram from the full rated user list.
+
+    Uses HISTOGRAM_BUCKET_SIZE-wide buckets.  Keys are the bucket midpoint
+    (as a string so the JSON is deterministic).  The histogram captures the
+    full distribution of CF rated users and is stored in cf_pipeline_metadata
+    for later CDF construction.
+    """
+    histogram: dict[str, int] = defaultdict(int)
+    for user in rated_list:
+        rating = user.get("rating", 0)
+        if rating is None or rating <= 0:
+            continue
+        # Bucket: floor(rating / HISTOGRAM_BUCKET_SIZE) * HISTOGRAM_BUCKET_SIZE
+        bucket_start = (rating // HISTOGRAM_BUCKET_SIZE) * HISTOGRAM_BUCKET_SIZE
+        midpoint = bucket_start + HISTOGRAM_BUCKET_SIZE // 2
+        histogram[str(midpoint)] += 1
+    return dict(histogram)
+
+
+def pp_to_rating(pp: float, coeffs: list[float]) -> int | None:
+    """Reverse the rating -> PP polynomial mapping.
+
+    Given coefficients [a0, a1, a2] where p(x) = a0 + a1*x + a2*x^2,
+    solve a2*x^2 + a1*x + (a0 - pp) = 0 and return the positive root
+    rounded to the nearest integer.
+    """
+    if not coeffs or len(coeffs) < 2:
+        return None
+
+    a0, a1 = coeffs[0], coeffs[1]
+    a2 = coeffs[2] if len(coeffs) > 2 else 0.0
+
+    if abs(a2) < 1e-12:
+        # Linear case: a1*x + (a0 - pp) = 0
+        if abs(a1) < 1e-12:
+            return None
+        x = (pp - a0) / a1
+        return max(0, round(x))
+
+    discriminant = a1**2 - 4 * a2 * (a0 - pp)
+    if discriminant < 0:
+        return None
+    x = (-a1 + math.sqrt(discriminant)) / (2 * a2)
+    return max(0, round(x))
+
+
+def build_cdf(rating_histogram: dict, total_users: int) -> Callable[[int], float]:
+    """Build a CDF function from a rating histogram.
+
+    Returns a callable that maps a rating to a percentile (0-1).
+    The CDF is the fraction of users with rating <= the given rating.
+    """
+    if not rating_histogram or total_users <= 0:
+        # Degenerate CDF: everyone is at 100%
+        return lambda _r: 1.0
+
+    # Parse and sort bucket midpoints
+    buckets: list[tuple[int, int]] = []
+    for midpoint_str, count in rating_histogram.items():
+        midpoint = int(midpoint_str)
+        buckets.append((midpoint, count))
+    buckets.sort(key=lambda b: b[0])
+
+    # Build cumulative count at each bucket boundary
+    # boundary = midpoint + HISTOGRAM_BUCKET_SIZE // 2
+    cumulative: list[tuple[int, int]] = []  # (boundary_rating, cumulative_count)
+    running = 0
+    for midpoint, count in buckets:
+        running += count
+        boundary = midpoint + HISTOGRAM_BUCKET_SIZE // 2
+        cumulative.append((boundary, running))
+
+    def cdf(rating: int) -> float:
+        """Return the fraction of users with rating <= *rating*."""
+        for boundary, cum_count in cumulative:
+            if rating <= boundary:
+                return cum_count / total_users
+        # Above all buckets
+        return 1.0
+
+    return cdf
+
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
@@ -244,6 +336,7 @@ DEFAULT_DEGREE = 2  # polynomial regression degree
 NOISE_MAG_MIN = 0.005  # 0.5 % minimum noise magnitude
 NOISE_MAG_MAX = 0.02  # 2 % maximum noise magnitude
 DEFAULT_TIME_MINUTES = 30.0  # default time approximation for CF submissions
+HISTOGRAM_BUCKET_SIZE = 100  # rating bucket width for histogram (finer than sampling)
 
 
 # ---------------------------------------------------------------------------
@@ -543,6 +636,11 @@ async def run_sampling_pipeline(
             state.error = "No rated users returned from CF API"
             return {"error": state.error, "state": state.to_dict()}
 
+        # Record total rated users and build histogram for CDF estimation
+        total_rated_users = len(rated_list)
+        rating_histogram = _build_rating_histogram(rated_list)
+        logger.info("Total CF rated users: %d", total_rated_users)
+
         # --- Step 2: Determine batch number (resume incomplete batch or start new) ---
         max_batch_result = await db.execute(select(func.coalesce(func.max(CFSampleUser.sample_batch), 0)))
         max_batch = max_batch_result.scalar_one()
@@ -649,14 +747,26 @@ async def run_sampling_pipeline(
         await db.flush()
         await db.commit()
 
+        # --- Step 8: Store pipeline metadata for CDF-based ranking ---
+        metadata_record = CFPipelineMetadata(
+            sample_batch=current_batch,
+            total_rated_users=total_rated_users,
+            rating_histogram=rating_histogram,
+            regression_coefficients=coefficients,
+        )
+        db.add(metadata_record)
+        await db.flush()
+        await db.commit()
+
         # --- Done ---
         state.phase = "completed"
         state.running = False
         logger.info(
-            "Pipeline completed. Batch %d, %d samples, coefficients=%s",
+            "Pipeline completed. Batch %d, %d samples, coefficients=%s, total_rated_users=%d",
             current_batch,
             len(all_samples),
             coefficients,
+            total_rated_users,
         )
 
         return {
@@ -664,6 +774,7 @@ async def run_sampling_pipeline(
             "total_samples": len(all_samples),
             "data_points_used": len(data_points),
             "coefficients": coefficients,
+            "total_rated_users": total_rated_users,
             "state": state.to_dict(),
         }
 
@@ -726,3 +837,12 @@ async def estimate_pp_for_rating(db: AsyncSession, cf_rating: int) -> float | No
         return None
     coefficients = model["coefficients"]
     return _estimate_pp(float(cf_rating), coefficients)
+
+
+async def get_latest_pipeline_metadata(db: AsyncSession) -> CFPipelineMetadata | None:
+    """Return the most recent pipeline metadata record.
+
+    Returns None if the pipeline has never completed successfully.
+    """
+    result = await db.execute(select(CFPipelineMetadata).order_by(CFPipelineMetadata.id.desc()).limit(1))
+    return result.scalar_one_or_none()

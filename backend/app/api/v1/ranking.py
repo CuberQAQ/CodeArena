@@ -13,6 +13,11 @@ from app.core.database import get_db
 from app.core.response import success_response
 from app.models.cf_sample_user import CFSampleUser
 from app.models.user import User
+from app.services.cf_ranking_service import (
+    build_cdf,
+    get_latest_pipeline_metadata,
+    pp_to_rating,
+)
 
 router = APIRouter(prefix="/ranking", tags=["Ranking"])
 
@@ -54,7 +59,19 @@ async def get_global_ranking(
 
     CA users are marked ``verified: true`` and take priority on equal PP.
     CF sample users are marked ``verified: false``.
+
+    When pipeline metadata is available, each item includes an
+    ``estimated_percentile`` (0-100) calibrated against the full CF user base
+    via the rating histogram CDF.  The ``calibrated`` flag indicates whether
+    this estimation is available.
     """
+    # --- Fetch pipeline metadata for CDF estimation ---
+    metadata = await get_latest_pipeline_metadata(db)
+    calibrated = metadata is not None and metadata.rating_histogram is not None
+    cdf_fn = None
+    if calibrated and metadata is not None:
+        cdf_fn = build_cdf(metadata.rating_histogram, metadata.total_rated_users)
+
     # --- Fetch CodeArena active users with PP > 0 ---
     ca_result = await db.execute(
         select(User.username, User.pp, User.elo, User.cf_handle, User.cf_handle_verified).where(
@@ -110,12 +127,20 @@ async def get_global_ranking(
             ca_country = cf_country_lookup.get(cf_handle)
             ca_cf_handle_set.add(cf_handle)
 
+        # Estimate percentile via PP -> rating -> CDF when metadata available
+        estimated_percentile = None
+        if cdf_fn is not None and metadata is not None and metadata.regression_coefficients and pp > 0:
+            rating = pp_to_rating(pp, metadata.regression_coefficients)
+            if rating is not None:
+                estimated_percentile = round(cdf_fn(rating) * 100, 1)
+
         combined.append(
             {
                 "name": username,
                 "pp": round(pp, 2),
                 "country": ca_country,
                 "verified": True,
+                "estimated_percentile": estimated_percentile,
             }
         )
 
@@ -124,6 +149,11 @@ async def get_global_ranking(
         if cf_handle in ca_cf_handle_set:
             continue
 
+        # CF users have a direct rating, so CDF is straightforward
+        estimated_percentile = None
+        if cdf_fn is not None and cf_rating > 0:
+            estimated_percentile = round(cdf_fn(cf_rating) * 100, 1)
+
         combined.append(
             {
                 "name": cf_handle,
@@ -131,6 +161,7 @@ async def get_global_ranking(
                 "country": cf_country,
                 "verified": False,
                 "cf_rating": cf_rating,
+                "estimated_percentile": estimated_percentile,
             }
         )
 
@@ -143,6 +174,7 @@ async def get_global_ranking(
         combined = [item for item in combined if item.get("country") == country]
 
     result = _paginate(combined, page, page_size)
+    result["calibrated"] = calibrated
     return success_response(data=result, message="Global ranking retrieved")
 
 

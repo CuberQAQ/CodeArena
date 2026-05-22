@@ -57,6 +57,7 @@ export default function GlobalRankingPage() {
   const [globalItems, setGlobalItems] = useState<GlobalRankingItem[]>([]);
   const [arenaItems, setArenaItems] = useState<ArenaRankingItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [calibrated, setCalibrated] = useState(false);
 
   // Debounce timer ref for country input
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -72,6 +73,7 @@ export default function GlobalRankingPage() {
       setGlobalItems(data.items);
       setTotal(data.total);
       setTotalPages(Math.max(1, Math.ceil(data.total / PAGE_SIZE)));
+      setCalibrated(data.calibrated ?? false);
     } catch {
       setGlobalItems([]);
       setTotal(0);
@@ -237,6 +239,13 @@ export default function GlobalRankingPage() {
         {activeTab === "global" ? t("globalDesc") : t("arenaDesc")}
       </p>
 
+      {/* Uncalibrated warning */}
+      {activeTab === "global" && !calibrated && !loading && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-2.5 text-xs text-yellow-500">
+          {t("uncalibratedWarning")}
+        </div>
+      )}
+
       {/* Ranking table */}
       {loading ? (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
@@ -330,19 +339,30 @@ export default function GlobalRankingPage() {
                   <span className="hidden sm:flex items-center justify-end gap-1.5">
                     {item.verified ? (
                       <>
-                        {total > 0 && (
+                        {isGlobal && globalItem.estimated_percentile != null ? (
+                          <span className="text-[10px] font-medium text-emerald-400">
+                            {t("topPercent", { percent: globalItem.estimated_percentile })}
+                          </span>
+                        ) : total > 0 ? (
                           <span className="text-[10px] font-medium text-emerald-400">
                             {t("topPercent", { percent: ((computedRank / total) * 100).toFixed(1) })}
                           </span>
-                        )}
+                        ) : null}
                         <span title={t("verifiedTooltip")}>
                           <ShieldCheck className="size-4 text-primary" />
                         </span>
                       </>
                     ) : (
-                      <span title={t("cfUserTooltip")}>
-                        <Globe className="size-4 text-muted-foreground/40" />
-                      </span>
+                      <>
+                        {isGlobal && globalItem.estimated_percentile != null && (
+                          <span className="text-[10px] font-medium text-muted-foreground">
+                            {t("topPercent", { percent: globalItem.estimated_percentile })}
+                          </span>
+                        )}
+                        <span title={t("cfUserTooltip")}>
+                          <Globe className="size-4 text-muted-foreground/40" />
+                        </span>
+                      </>
                     )}
                   </span>
                 </div>

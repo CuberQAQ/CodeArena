@@ -1,10 +1,12 @@
 """Tests for the CF ranking service: stratified sampling, equivalent PP calculation,
-polynomial regression, noise injection, and pipeline orchestration.
+polynomial regression, noise injection, pipeline orchestration, CDF estimation,
+and global ranking calibration.
 
 The tests use lightweight SQLite-compatible models and mock out the CF API
 to avoid external network calls.
 """
 
+import json
 import math
 import uuid
 from datetime import datetime
@@ -14,23 +16,44 @@ import pytest
 from sqlalchemy import Float, Integer, String, Text, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TEXT, TypeDecorator
 
 from app.services.cf_ranking_service import (
     DEFAULT_DEGREE,
     PipelineState,
     _bucket_for_rating,
+    _build_rating_histogram,
     _calculate_equivalent_pp,
     _estimate_pp,
     _evaluate_polynomial,
     _fit_polynomial,
     _stratified_sample,
+    build_cdf,
     get_pipeline_state,
+    pp_to_rating,
 )
 from app.services.pp_service import PPService
 
 # ---------------------------------------------------------------------------
 # Lightweight SQLite-compatible test models
 # ---------------------------------------------------------------------------
+
+
+class _JSONText(TypeDecorator):
+    """SQLite-compatible JSON type that stores data as TEXT."""
+
+    impl = TEXT
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return json.dumps(value)
+        return None
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(value)
+        return None
 
 
 class _TestBase(DeclarativeBase):
@@ -50,6 +73,17 @@ class _TestCFSampleUser(_TestBase):
     regression_coefficients: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.now)
+
+
+class _TestCFPipelineMetadata(_TestBase):
+    __tablename__ = "cf_pipeline_metadata"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sample_batch: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_rated_users: Mapped[int] = mapped_column(Integer, nullable=False)
+    rating_histogram: Mapped[dict] = mapped_column(_JSONText, nullable=False)
+    regression_coefficients: Mapped[list | None] = mapped_column(_JSONText, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.now)
 
 
 # ---------------------------------------------------------------------------
@@ -501,11 +535,12 @@ class TestPipelineState:
 class TestPipelineIntegration:
     @pytest.mark.asyncio
     async def test_pipeline_full_run(self, db):
-        """Full pipeline: sample -> calculate PP -> fit regression -> estimate."""
+        """Full pipeline: sample -> calculate PP -> fit regression -> estimate + store metadata."""
         from app.services import cf_ranking_service as svc_module
 
         with (
             patch.object(svc_module, "CFSampleUser", _TestCFSampleUser),
+            patch.object(svc_module, "CFPipelineMetadata", _TestCFPipelineMetadata),
         ):
             # Mock CF API
             mock_cf_api = AsyncMock()
@@ -575,7 +610,10 @@ class TestPipelineIntegration:
         """Already-processed handles in the current batch should be skipped."""
         from app.services import cf_ranking_service as svc_module
 
-        with patch.object(svc_module, "CFSampleUser", _TestCFSampleUser):
+        with (
+            patch.object(svc_module, "CFSampleUser", _TestCFSampleUser),
+            patch.object(svc_module, "CFPipelineMetadata", _TestCFPipelineMetadata),
+        ):
             mock_cf_api = AsyncMock()
 
             # Need at least 3 users with different ratings for regression
@@ -607,7 +645,10 @@ class TestPipelineIntegration:
         """Pipeline should resume an incomplete batch instead of creating a new one."""
         from app.services import cf_ranking_service as svc_module
 
-        with patch.object(svc_module, "CFSampleUser", _TestCFSampleUser):
+        with (
+            patch.object(svc_module, "CFSampleUser", _TestCFSampleUser),
+            patch.object(svc_module, "CFPipelineMetadata", _TestCFPipelineMetadata),
+        ):
             users = [{"handle": f"user_{i}", "rating": 800 + i * 200, "country": "US"} for i in range(5)]
 
             # Pre-insert 2 records for batch 1 WITHOUT regression_coefficients
@@ -685,3 +726,233 @@ class TestPPFormulaConsistency:
         expected = 20.0 + 15.0 * 0.95 + 10.0 * 0.95**2 + 5.0 * 0.95**3
         actual = PPService.aggregate_total_pp(values)
         assert abs(actual - expected) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# Test: Rating histogram
+# ---------------------------------------------------------------------------
+
+
+class TestBuildRatingHistogram:
+    def test_basic_histogram(self):
+        """Users at different ratings should be bucketed correctly."""
+        users = [
+            {"handle": "u1", "rating": 850},
+            {"handle": "u2", "rating": 899},
+            {"handle": "u3", "rating": 900},
+            {"handle": "u4", "rating": 1200},
+        ]
+        hist = _build_rating_histogram(users)
+        # Bucket size = 100
+        # 850 -> bucket 800 -> midpoint 850
+        # 899 -> bucket 800 -> midpoint 850
+        # 900 -> bucket 900 -> midpoint 950
+        # 1200 -> bucket 1200 -> midpoint 1250
+        assert hist["850"] == 2
+        assert hist["950"] == 1
+        assert hist["1250"] == 1
+
+    def test_empty_list(self):
+        hist = _build_rating_histogram([])
+        assert hist == {}
+
+    def test_skips_zero_and_none_ratings(self):
+        users = [
+            {"handle": "u1", "rating": 0},
+            {"handle": "u2", "rating": None},
+            {"handle": "u3", "rating": -100},
+            {"handle": "u4", "rating": 1200},
+        ]
+        hist = _build_rating_histogram(users)
+        assert len(hist) == 1
+        assert hist["1250"] == 1
+
+    def test_high_ratings(self):
+        users = [{"handle": f"u{i}", "rating": 3000 + i} for i in range(10)]
+        hist = _build_rating_histogram(users)
+        # All should be in bucket 3000 -> midpoint 3050
+        assert hist["3050"] == 10
+
+    def test_histogram_keys_are_string_midpoints(self):
+        users = [{"handle": "u1", "rating": 800}]
+        hist = _build_rating_histogram(users)
+        # 800 -> bucket 800 -> midpoint 850
+        assert "850" in hist
+
+
+# ---------------------------------------------------------------------------
+# Test: PP -> rating reverse mapping
+# ---------------------------------------------------------------------------
+
+
+class TestPPToRating:
+    def test_linear_reverse(self):
+        """For a linear model a0 + a1*x, reverse should work exactly."""
+        # PP = 0 + 0.01*x -> x = PP / 0.01 = PP * 100
+        coeffs = [0.0, 0.01]
+        result = pp_to_rating(12.0, coeffs)
+        assert result == 1200
+
+    def test_quadratic_reverse(self):
+        """For a quadratic model, use the quadratic formula."""
+        # PP = x^2 where coeffs = [0, 0, 1]
+        # pp_to_rating(100, [0, 0, 1]) -> sqrt(100) = 10... but 10 is very low
+        # Let's use a realistic-ish example:
+        # coeffs = [-100, 0.1, 0.0001]
+        # a2*x^2 + a1*x + (a0 - pp) = 0
+        # 0.0001*x^2 + 0.1*x + (-100 - 100) = 0
+        # For pp = 100: 0.0001*x^2 + 0.1*x - 200 = 0
+        coeffs = [-100.0, 0.1, 0.0001]
+        result = pp_to_rating(100.0, coeffs)
+        assert result is not None
+        assert result >= 0
+
+    def test_negative_discriminant_returns_none(self):
+        """When the quadratic has no real root, return None."""
+        # x^2 + 0*x + 100 = pp -> discriminant = 0 - 4*1*(100-pp) < 0 for pp < 100
+        coeffs = [100.0, 0.0, 1.0]
+        result = pp_to_rating(50.0, coeffs)
+        assert result is None
+
+    def test_empty_coeffs_returns_none(self):
+        result = pp_to_rating(10.0, [])
+        assert result is None
+
+    def test_single_coeff_returns_none(self):
+        result = pp_to_rating(10.0, [5.0])
+        assert result is None
+
+    def test_zero_a1_linear_returns_none(self):
+        """a1 = 0 in linear case -> no solution."""
+        coeffs = [5.0, 0.0]
+        result = pp_to_rating(10.0, coeffs)
+        assert result is None
+
+    def test_result_non_negative(self):
+        """Result should never be negative."""
+        # Even if the math gives a negative root
+        coeffs = [100.0, -1.0]
+        result = pp_to_rating(50.0, coeffs)
+        # -1 * x + 100 = 50 -> x = 50
+        assert result is not None
+        assert result >= 0
+
+
+# ---------------------------------------------------------------------------
+# Test: CDF construction and evaluation
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCDF:
+    def test_basic_cdf(self):
+        """CDF should return fraction of users at or below given rating."""
+        hist = {"850": 50, "950": 30, "1050": 20}
+        total = 100
+        cdf = build_cdf(hist, total)
+
+        # Below 850+50=900 boundary: only the 850 bucket (50 users)
+        assert abs(cdf(800) - 0.5) < 0.01
+        # Below 950+50=1000 boundary: 850 + 950 buckets (80 users)
+        assert abs(cdf(950) - 0.8) < 0.01
+        # Above all buckets: 1.0
+        assert abs(cdf(1100) - 1.0) < 0.01
+
+    def test_cdf_monotonically_increasing(self):
+        """CDF should never decrease."""
+        hist = {"850": 100, "950": 200, "1050": 150, "1150": 50}
+        total = 500
+        cdf = build_cdf(hist, total)
+
+        prev = 0.0
+        for rating in range(700, 1300, 10):
+            val = cdf(rating)
+            assert val >= prev, f"CDF decreased at rating {rating}: {val} < {prev}"
+            prev = val
+
+    def test_cdf_empty_histogram(self):
+        """Empty histogram should return 1.0 for all ratings."""
+        cdf = build_cdf({}, 0)
+        assert cdf(1000) == 1.0
+        assert cdf(0) == 1.0
+
+    def test_cdf_single_bucket(self):
+        """Single bucket: everything below boundary = fraction, above = 1.0."""
+        hist = {"950": 100}
+        total = 100
+        cdf = build_cdf(hist, total)
+
+        # Below 950+50=1000: 100%
+        assert abs(cdf(999) - 1.0) < 0.01
+        # Above boundary: still 1.0
+        assert abs(cdf(1100) - 1.0) < 0.01
+
+    def test_cdf_at_exact_boundary(self):
+        """Rating exactly at a bucket boundary should include that bucket."""
+        hist = {"850": 30, "950": 70}
+        total = 100
+        cdf = build_cdf(hist, total)
+
+        # At boundary 900 (850+50): includes 850 bucket
+        assert abs(cdf(900) - 0.3) < 0.01
+        # At boundary 1000 (950+50): includes both
+        assert abs(cdf(1000) - 1.0) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# Test: Pipeline stores metadata
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineMetadata:
+    @pytest.mark.asyncio
+    async def test_pipeline_stores_metadata(self, db):
+        """Full pipeline run should store metadata in cf_pipeline_metadata."""
+        from app.services import cf_ranking_service as svc_module
+
+        with (
+            patch.object(svc_module, "CFSampleUser", _TestCFSampleUser),
+            patch.object(svc_module, "CFPipelineMetadata", _TestCFPipelineMetadata),
+        ):
+            mock_cf_api = AsyncMock()
+            mock_cf_api._request = AsyncMock(
+                return_value=[
+                    {"handle": f"user_{i}", "rating": 800 + (i % 5) * 200, "country": "US"} for i in range(30)
+                ]
+            )
+            mock_cf_api.get_user_status = AsyncMock(
+                return_value=[
+                    {
+                        "verdict": "OK",
+                        "creationTimeSeconds": 1000,
+                        "problem": {"contestId": 100, "index": "A", "rating": 1200},
+                    }
+                ]
+            )
+
+            result = await svc_module.run_sampling_pipeline(db, cf_api=mock_cf_api)
+
+            assert "error" not in result or result.get("error") is None
+            assert result.get("total_rated_users") == 30
+
+            # Verify metadata was stored
+            from sqlalchemy import select as sa_select
+
+            stmt = sa_select(_TestCFPipelineMetadata)
+            db_result = await db.execute(stmt)
+            meta_records = db_result.scalars().all()
+            assert len(meta_records) == 1
+
+            meta = meta_records[0]
+            assert meta.total_rated_users == 30
+            assert meta.sample_batch == result["batch"]
+
+            # Verify histogram (already deserialized by _JSONText type)
+            hist = meta.rating_histogram
+            assert isinstance(hist, dict)
+            assert len(hist) > 0
+
+            # Verify regression coefficients (already deserialized by _JSONText type)
+            assert meta.regression_coefficients is not None
+            coeffs = meta.regression_coefficients
+            assert isinstance(coeffs, list)
+            assert len(coeffs) == DEFAULT_DEGREE + 1

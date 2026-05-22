@@ -34,5 +34,6 @@
   "ppGlobalRanking": "PP Global Ranking",
   "ppGlobalRank": "Global Rank",
   "ppPercentile": "Percentile",
-  "ppTotalPlayers": "Total Players"
+  "ppTotalPlayers": "Total Players",
+  "ppUncalibratedWarning": "Ranking data is not yet calibrated against the global CF user base. Percentiles may be inaccurate."
 }

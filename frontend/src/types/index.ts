@@ -728,6 +728,7 @@ export interface PPRankData {
   rank: number | null;
   total_users: number;
   top_percent: number | null;
+  calibrated: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -741,6 +742,7 @@ export interface GlobalRankingItem {
   country: string | null;
   verified: boolean;
   cf_rating?: number;
+  estimated_percentile?: number | null;
 }
 
 export interface ArenaRankingItem {
@@ -757,4 +759,5 @@ export interface RankingPageData<T> {
   total: number;
   page: number;
   page_size: number;
+  calibrated?: boolean;
 }

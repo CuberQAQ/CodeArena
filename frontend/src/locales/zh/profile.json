@@ -34,5 +34,6 @@
   "ppGlobalRanking": "PP 全球排名",
   "ppGlobalRank": "全球排名",
   "ppPercentile": "百分位",
-  "ppTotalPlayers": "总用户数"
+  "ppTotalPlayers": "总用户数",
+  "ppUncalibratedWarning": "排名数据尚未基于 CF 全量用户校准，百分位可能不准确。"
 }

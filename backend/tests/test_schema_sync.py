@@ -17,6 +17,7 @@ import importlib
 
 import pytest
 
+from app.models.cf_pipeline_metadata import CFPipelineMetadata
 from app.models.cf_sample_user import CFSampleUser
 from app.models.challenge_session import ChallengeSession
 from app.models.check_in import CheckIn
@@ -174,6 +175,8 @@ MODEL_REGISTRY: list[tuple[str, str, type]] = [
     # --- _TestCFSampleUser ---
     ("tests.test_cf_ranking_service", "_TestCFSampleUser", CFSampleUser),
     ("tests.test_ranking_api", "_TestCFSampleUser", CFSampleUser),
+    # --- _TestCFPipelineMetadata ---
+    ("tests.test_cf_ranking_service", "_TestCFPipelineMetadata", CFPipelineMetadata),
 ]
 
 

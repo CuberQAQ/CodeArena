@@ -441,6 +441,11 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
+        {ppRankData && !ppRankData.calibrated && ppRankData.rank != null && (
+          <div className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-2.5 text-xs text-yellow-500">
+            {t("profile:ppUncalibratedWarning")}
+          </div>
+        )}
         <div className="mt-3">
           <Button
             variant="outline"
