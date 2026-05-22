@@ -518,6 +518,30 @@ describe("ContestDetailPage", () => {
       expect(screen.getByText(/Five Sum/)).toBeInTheDocument();
     });
 
+    // 15b. Unsolved problems must NOT show a spinning Loader2 icon
+    it("does not show spinning loader icon on unsolved problems", async () => {
+      server.use(
+        http.get("*/api/v1/contest/c1", () =>
+          HttpResponse.json({ success: true, data: activeContest, message: "ok" }),
+        ),
+      );
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText(/Three Sum/)).toBeInTheDocument();
+      });
+
+      // The page has a legitimate spinning Loader2 in the auto-tracking info
+      // section (waitingForCFResult), but no spinning Loader2 should appear
+      // next to individual problem rows.
+      const problemRows = screen.getAllByText(/Sum/).map((el) => el.closest("[class*='flex']"));
+      for (const row of problemRows) {
+        if (!row) continue;
+        const spinners = row.querySelectorAll(".animate-spin");
+        expect(spinners.length).toBe(0);
+      }
+    });
+
     // 16. Elapsed time displays from store values
     it("displays elapsed time from live store", async () => {
       server.use(
