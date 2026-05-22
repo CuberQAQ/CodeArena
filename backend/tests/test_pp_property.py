@@ -5,10 +5,13 @@ Uses hypothesis to verify mathematical properties of PP formulas.
 
 import math
 
-from hypothesis import assume, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from app.services.pp_service import PPService
+settings.register_profile("ci", suppress_health_check=[HealthCheck.differing_executors])
+settings.load_profile("ci")
+
+from app.services.pp_service import PPService  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Strategies

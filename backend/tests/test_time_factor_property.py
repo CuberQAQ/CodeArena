@@ -3,10 +3,13 @@
 Uses hypothesis to verify mathematical properties of time factor formulas.
 """
 
-from hypothesis import assume, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from app.services.time_factor_service import (
+settings.register_profile("ci", suppress_health_check=[HealthCheck.differing_executors])
+settings.load_profile("ci")
+
+from app.services.time_factor_service import (  # noqa: E402
     BUCKET_SIZE,
     TIME_FACTOR_MAX,
     TIME_FACTOR_MIN,

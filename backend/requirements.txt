@@ -45,3 +45,6 @@ mypy>=1.11
 
 # Property-based testing
 hypothesis>=6.100
+
+# Mutation testing
+mutmut>=3.5

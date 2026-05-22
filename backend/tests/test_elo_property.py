@@ -3,10 +3,14 @@
 Uses hypothesis to verify mathematical properties hold for all possible inputs.
 """
 
-from hypothesis import assume, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from app.services.elo_service import EloService
+# ruff: noqa: E402
+settings.register_profile("ci", suppress_health_check=[HealthCheck.differing_executors])
+settings.load_profile("ci")
+
+from app.services.elo_service import EloService  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Strategies

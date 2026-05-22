@@ -173,3 +173,101 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --project=chromium --reporter=list
+
+  frontend-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend deps
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Run database migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/code_arena  # pragma: allowlist secret
+        run: |
+          pip install alembic
+          alembic -x url=$DATABASE_URL upgrade head
+      - name: Start backend server
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/code_arena  # pragma: allowlist secret
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: ci-test-secret-key-for-integration-testing-only  # pragma: allowlist secret
+          ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+          REFRESH_TOKEN_EXPIRE_DAYS: "7"
+        run: |  # pragma: allowlist secret
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+          curl -sf http://localhost:8000/api/v1/health || (echo "Backend not ready" && exit 1)
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright frontend dev server
+        working-directory: frontend
+        run: npx vite --host 0.0.0.0 --port 5173 &  # pragma: allowlist secret
+      - name: Wait for frontend
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173 && break
+            sleep 1
+          done
+      - name: Run integration E2E tests
+        working-directory: frontend
+        env:
+          INTEGRATION_BASE_URL: http://localhost:5173
+        run: npx playwright test --project=integration --reporter=list
+
+  backend-mutation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt mutmut
+      - name: Run mutation testing on core algorithms
+        run: mutmut run --max-children 2
+        continue-on-error: true
+      - name: Print mutation results
+        run: mutmut results
+        if: always()
+      - name: Export mutation stats for CI
+        run: mutmut export-cicd-stats
+        if: always()

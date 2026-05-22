@@ -32,3 +32,14 @@ omit = ["migrations/*", "app/core/config.py"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
+
+[tool.mutmut]
+paths_to_mutate = [
+    "app/services/elo_service.py",
+    "app/services/pp_service.py",
+    "app/services/time_factor_service.py",
+]
+runner = "python -m pytest tests/test_elo_property.py tests/test_pp_property.py tests/test_time_factor_property.py tests/test_elo_service.py tests/test_pp_service.py tests/test_time_factor_service.py tests/test_s_value.py tests/test_k_factor.py tests/test_overkill_bonus.py tests/test_time_factor_prediction.py --no-cov --ignore=tests/integration -x -q -p no:hypothesispytestplugin"
+pytest_add_cli_args = ["--ignore=tests/integration", "--no-cov", "-p", "no:hypothesispytestplugin"]
+pytest_add_cli_args_test_selection = ["tests/test_elo_property.py", "tests/test_pp_property.py", "tests/test_time_factor_property.py", "tests/test_elo_service.py", "tests/test_pp_service.py", "tests/test_time_factor_service.py", "tests/test_s_value.py", "tests/test_k_factor.py", "tests/test_overkill_bonus.py", "tests/test_time_factor_prediction.py"]
+also_copy = ["app/"]
