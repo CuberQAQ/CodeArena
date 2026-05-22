@@ -712,4 +712,147 @@ describe("RankingPage", () => {
     expect(screen.getByText("description")).toBeInTheDocument();
     expect(screen.queryByText("arenaDescription")).not.toBeInTheDocument();
   });
+
+  // --- Responsive layout tests ---
+
+  // 33. Table container has overflow-x-auto
+  it("applies overflow-x-auto to the ranking table container", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    const cardContainers = document.querySelectorAll(".overflow-x-auto.rounded-xl");
+    expect(cardContainers.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // 34. Responsive grid classes are present on header row
+  it("uses responsive grid-cols on header row (mobile 3-col, desktop 5-col)", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    const headerRow = screen.getByText("rank").closest("div")!;
+    expect(headerRow.className).toContain("grid-cols-[2.5rem_1fr_4rem]");
+    expect(headerRow.className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]");
+  });
+
+  // 35. Responsive grid classes are present on data rows
+  it("uses responsive grid-cols on data rows (mobile 3-col, desktop 5-col)", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    const dataRows = document.querySelectorAll(".divide-y > div");
+    expect(dataRows.length).toBeGreaterThan(0);
+    const firstRow = dataRows[0];
+    expect(firstRow.className).toContain("grid-cols-[2.5rem_1fr_4rem]");
+    expect(firstRow.className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]");
+  });
+
+  // 36. Country column has hidden sm:flex in data rows
+  it("hides country column on mobile with hidden sm:flex", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    const countryEl = screen.getByText("US");
+    const countrySpan = countryEl.closest("span")!;
+    expect(countrySpan.className).toContain("hidden");
+    expect(countrySpan.className).toContain("sm:flex");
+  });
+
+  // 37. Verified badge column has hidden sm:flex in data rows
+  it("hides verified badge column on mobile with hidden sm:flex", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    const verifiedTooltips = screen.getAllByTitle("verifiedTooltip");
+    const badgeContainer = verifiedTooltips[0].parentElement!;
+    expect(badgeContainer.className).toContain("hidden");
+    expect(badgeContainer.className).toContain("sm:flex");
+  });
+
+  // 38. Arena tab uses 6-col responsive grid
+  it("uses 6-col responsive grid on arena tab", async () => {
+    mockGlobalEndpoint();
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("tabArena"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Dave")).toBeInTheDocument();
+    });
+
+    const headerRow = screen.getByText("rank").closest("div")!;
+    expect(headerRow.className).toContain("grid-cols-[2.5rem_1fr_4rem]");
+    expect(headerRow.className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5rem_5.5rem]");
+
+    const dataRows = document.querySelectorAll(".divide-y > div");
+    expect(dataRows.length).toBeGreaterThan(0);
+    expect(dataRows[0].className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5rem_5.5rem]");
+  });
+
+  // 39. Arena Elo column has hidden sm:flex/block
+  it("hides Elo column on mobile in arena tab", async () => {
+    mockGlobalEndpoint();
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("tabArena"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Dave")).toBeInTheDocument();
+    });
+
+    const eloHeader = screen.getByText("elo");
+    const eloHeaderSpan = eloHeader.closest("span")!;
+    expect(eloHeaderSpan.className).toContain("hidden");
+    expect(eloHeaderSpan.className).toContain("sm:block");
+  });
+
+  // 40. Country header column has hidden sm:block
+  it("hides country header on mobile with hidden sm:block", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    const countryHeader = screen.getByText("country");
+    const countryHeaderSpan = countryHeader.closest("span")!;
+    expect(countryHeaderSpan.className).toContain("hidden");
+    expect(countryHeaderSpan.className).toContain("sm:block");
+  });
+
+  // 41. Loading skeleton also uses responsive grid
+  it("uses responsive grid in loading skeleton header", () => {
+    server.use(
+      http.get("*/api/v1/ranking/global", async () => {
+        await new Promise(() => {});
+      }),
+    );
+    renderPage();
+
+    const headerRow = screen.getByText("rank").closest("div")!;
+    expect(headerRow.className).toContain("grid-cols-[2.5rem_1fr_4rem]");
+    expect(headerRow.className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]");
+  });
 });

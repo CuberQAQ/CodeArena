@@ -646,4 +646,156 @@ describe("GlobalRankingPage", () => {
     // Country should be displayed in uppercase
     expect(screen.getByText("CN")).toBeInTheDocument();
   });
+
+  // --- Responsive layout tests ---
+
+  // 29. Table container has overflow-x-auto
+  it("applies overflow-x-auto to the ranking table container", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    // Find the card container that wraps the table
+    const cardContainers = document.querySelectorAll(".overflow-x-auto.rounded-xl");
+    expect(cardContainers.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // 30. Responsive grid classes are present on header row
+  it("uses responsive grid-cols on header row (mobile 3-col, desktop 5-col)", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    // Find header row (contains "rank", "name", "pp" labels)
+    const headerRow = screen.getByText("rank").closest("div")!;
+    expect(headerRow.className).toContain("grid-cols-[2.5rem_1fr_4rem]");
+    expect(headerRow.className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]");
+  });
+
+  // 31. Responsive grid classes are present on data rows
+  it("uses responsive grid-cols on data rows (mobile 3-col, desktop 5-col)", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    // Find a data row - it should have the responsive grid classes
+    const dataRows = document.querySelectorAll(".divide-y > div");
+    expect(dataRows.length).toBeGreaterThan(0);
+    const firstRow = dataRows[0];
+    expect(firstRow.className).toContain("grid-cols-[2.5rem_1fr_4rem]");
+    expect(firstRow.className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]");
+  });
+
+  // 32. Country column has hidden sm:flex in data rows
+  it("hides country column on mobile with hidden sm:flex", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    // "US" is a country value - find its parent span
+    const countryEl = screen.getByText("US");
+    const countrySpan = countryEl.closest("span")!;
+    expect(countrySpan.className).toContain("hidden");
+    expect(countrySpan.className).toContain("sm:flex");
+  });
+
+  // 33. Verified badge column has hidden sm:flex in data rows
+  it("hides verified badge column on mobile with hidden sm:flex", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    // Find the verified tooltip span - its parent should have hidden sm:flex
+    const verifiedTooltips = screen.getAllByTitle("verifiedTooltip");
+    const badgeContainer = verifiedTooltips[0].parentElement!;
+    expect(badgeContainer.className).toContain("hidden");
+    expect(badgeContainer.className).toContain("sm:flex");
+  });
+
+  // 34. Arena tab uses 6-col responsive grid
+  it("uses 6-col responsive grid on arena tab", async () => {
+    mockGlobalEndpoint();
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("tabArena"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Dave")).toBeInTheDocument();
+    });
+
+    // Header row should have 6-col responsive grid
+    const headerRow = screen.getByText("rank").closest("div")!;
+    expect(headerRow.className).toContain("grid-cols-[2.5rem_1fr_4rem]");
+    expect(headerRow.className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5rem_5.5rem]");
+
+    // Data rows should have 6-col responsive grid
+    const dataRows = document.querySelectorAll(".divide-y > div");
+    expect(dataRows.length).toBeGreaterThan(0);
+    expect(dataRows[0].className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5rem_5.5rem]");
+  });
+
+  // 35. Arena Elo column has hidden sm:flex/block in header and data
+  it("hides Elo column on mobile in arena tab", async () => {
+    mockGlobalEndpoint();
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText("tabArena"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Dave")).toBeInTheDocument();
+    });
+
+    // Elo header should be hidden on mobile
+    const eloHeader = screen.getByText("elo");
+    const eloHeaderSpan = eloHeader.closest("span")!;
+    expect(eloHeaderSpan.className).toContain("hidden");
+    expect(eloHeaderSpan.className).toContain("sm:block");
+  });
+
+  // 36. Country header column has hidden sm:block
+  it("hides country header on mobile with hidden sm:block", async () => {
+    mockGlobalEndpoint();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    const countryHeader = screen.getByText("country");
+    const countryHeaderSpan = countryHeader.closest("span")!;
+    expect(countryHeaderSpan.className).toContain("hidden");
+    expect(countryHeaderSpan.className).toContain("sm:block");
+  });
+
+  // 37. Loading skeleton also uses responsive grid
+  it("uses responsive grid in loading skeleton header", () => {
+    server.use(
+      http.get("*/api/v1/ranking/global", async () => {
+        await new Promise(() => {});
+      }),
+    );
+    renderPage();
+
+    // The skeleton header should also have responsive grid
+    const headerRow = screen.getByText("rank").closest("div")!;
+    expect(headerRow.className).toContain("grid-cols-[2.5rem_1fr_4rem]");
+    expect(headerRow.className).toContain("sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]");
+  });
 });

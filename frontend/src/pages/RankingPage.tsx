@@ -240,17 +240,18 @@ export default function RankingPage() {
 
       {/* Ranking table */}
       {loading ? (
-        <div className="rounded-xl border border-border bg-card">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <div className={`items-center border-b border-border px-5 py-2.5 text-xs font-medium text-muted-foreground ${
               activeTab === "arena"
-                ? "grid grid-cols-[3.5rem_1fr_5rem_5rem_5rem_3rem]"
-                : "grid grid-cols-[3.5rem_1fr_5rem_5rem_3rem]"
+                ? "grid grid-cols-[2.5rem_1fr_4rem] sm:grid-cols-[3.5rem_1fr_5rem_5rem_5rem_5.5rem]"
+                : "grid grid-cols-[2.5rem_1fr_4rem] sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]"
             }`}>
             <span>{t("rank")}</span>
             <span>{t("name")}</span>
             <span className="text-right">{t("pp")}</span>
-            {activeTab === "arena" && <span className="text-right">{t("elo")}</span>}
-            <span className="text-right">{t("country")}</span>
+            {activeTab === "arena" && <span className="hidden sm:block text-right">{t("elo")}</span>}
+            <span className="hidden sm:block text-right">{t("country")}</span>
+            <span className="hidden sm:block" />
           </div>
           <SkeletonRows count={8} cols={activeTab === "arena" ? 5 : 4} />
         </div>
@@ -265,16 +266,16 @@ export default function RankingPage() {
           <div
             className={`items-center border-b border-border px-5 py-2.5 text-xs font-medium text-muted-foreground ${
               activeTab === "arena"
-                ? "grid grid-cols-[3.5rem_1fr_5rem_5rem_5rem_3rem]"
-                : "grid grid-cols-[3.5rem_1fr_5rem_5rem_3rem]"
+                ? "grid grid-cols-[2.5rem_1fr_4rem] sm:grid-cols-[3.5rem_1fr_5rem_5rem_5rem_5.5rem]"
+                : "grid grid-cols-[2.5rem_1fr_4rem] sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]"
             }`}
           >
             <span>{t("rank")}</span>
             <span>{t("name")}</span>
             <span className="text-right">{t("pp")}</span>
-            {activeTab === "arena" && <span className="text-right">{t("elo")}</span>}
-            <span className="text-right">{t("country")}</span>
-            <span /> {/* verified icon column */}
+            {activeTab === "arena" && <span className="hidden sm:block text-right">{t("elo")}</span>}
+            <span className="hidden sm:block text-right">{t("country")}</span>
+            <span className="hidden sm:block" /> {/* verified icon column */}
           </div>
 
           {/* Data rows */}
@@ -290,8 +291,8 @@ export default function RankingPage() {
                   key={`${computedRank}-${item.name}`}
                   className={`items-center px-5 py-3 transition-colors hover:bg-muted/50 ${
                     activeTab === "arena"
-                      ? "grid grid-cols-[3.5rem_1fr_5rem_5rem_5rem_3rem]"
-                      : "grid grid-cols-[3.5rem_1fr_5rem_5rem_3rem]"
+                      ? "grid grid-cols-[2.5rem_1fr_4rem] sm:grid-cols-[3.5rem_1fr_5rem_5rem_5rem_5.5rem]"
+                      : "grid grid-cols-[2.5rem_1fr_4rem] sm:grid-cols-[3.5rem_1fr_5rem_5rem_5.5rem]"
                   }`}
                 >
                   {/* Rank */}
@@ -316,18 +317,18 @@ export default function RankingPage() {
 
                   {/* Elo (arena only) */}
                   {activeTab === "arena" && (
-                    <span className="text-right text-sm font-semibold text-foreground">
+                    <span className="hidden sm:flex text-right text-sm font-semibold text-foreground">
                       {arenaItem.elo}
                     </span>
                   )}
 
                   {/* Country */}
-                  <span className="text-right text-sm text-muted-foreground uppercase">
+                  <span className="hidden sm:flex text-right text-sm text-muted-foreground uppercase">
                     {item.country ?? "-"}
                   </span>
 
                   {/* Verified badge + top % */}
-                  <span className="flex items-center justify-end gap-1.5">
+                  <span className="hidden sm:flex items-center justify-end gap-1.5">
                     {item.verified ? (
                       <>
                         {total > 0 && (
