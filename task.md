@@ -1570,3 +1570,326 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 - [ ] **错误提示**: 错误信息用户友好，不显示技术栈
 - [ ] **移动端**: 关键页面在 375px 宽度下可用
 - [ ] **深色模式**: 所有新改动在深色模式下样式正确
+
+---
+
+## 阶段 42: 运维 — CF 排行榜数据爬取
+
+### Task 42.1: CF 排行榜管线执行与调试
+**状态**: ⬜ 进行中
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+执行 `POST /admin/cf-ranking/pipeline` 管线，爬取 CF 全球排行榜用户数据并存入 `cf_sample_users` 表。调试管线运行过程中的所有错误，直到爬取成功。
+
+#### 关键文件
+- `backend/app/api/v1/admin.py` — 触发端点
+- `backend/app/services/cf_ranking_service.py` — 爬取逻辑
+- `backend/app/services/cf_api_service.py` — CF API 调用
+- `backend/app/services/pp_service.py` — 等效 PP 计算
+- `backend/app/models/cf_sample_user.py` — 数据模型
+
+#### 管线流程
+1. `POST /admin/cf-ranking/pipeline` 触发
+2. 获取 CF 所有 rated 用户 (`/user.ratedList`)
+3. 按 200 分 rating 桶分层采样（每桶 100 人）
+4. 对每个采样用户回放提交历史计算等效 PP
+5. 多项式回归拟合 (rating → PP)
+6. 存入 `cf_sample_users` 表
+
+#### 约束
+- 禁止 workaround 和降级方案
+- 遇到错误必须找到根因并修复
+- CF API 有 2s/请求 限制，管线运行时间较长（预计 1-2 小时）
+
+---
+
+## 阶段 43: 质量工程体系 — 工业顶级基础设施建设
+
+> 目标：构建工业顶级的质量保障体系。五重 CI 门禁 + property-based testing + 真实环境集成测试 + 变异测试 + 自动化横切矩阵。让任何 agent 审计都无法给出 A 以下评价。
+
+### Task 43.1: 统一测试 Fixture 体系 — 自动同步测试模型
+**状态**: ⬜ 待开发
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+当前后端测试存在双轨制：`tests/` 用 SQLite 内存库 + 手动定义的 `_Test*` model（31个文件），`tests/integration/` 用 testcontainers PostgreSQL。每次生产 model 变更都需要手动同步 `_Test*` model，已多次失败（`started_at`、`overkill_multiplier`）。
+
+需要建立自动化的测试模型同步机制，彻底消除手动同步。
+
+#### 需要修改的文件
+- `backend/tests/conftest.py` — 新增统一 fixture 体系：
+  - `generate_test_model(production_model)` — 从生产 SQLAlchemy model 自动生成 SQLite 兼容的测试 model（剔除 PostgreSQL 特有类型如 JSONB、UUID server_default，替换为 SQLite 兼容类型）
+  - `schema_consistency_check()` — CI 中断言：测试 model 的字段集合是生产 model 字段集合的子集
+- 所有使用 `_Test*` model 的测试文件 — 迁移到自动生成的 model
+- `backend/pyproject.toml` — 添加 `@pytest.mark.integration` 标记配置
+
+#### 关键实现细节
+1. **自动生成策略**：遍历生产 model 的 `__table__.columns`，对每个 Column：
+   - UUID → String(36)（SQLite 不支持原生 UUID）
+   - JSONB / JSON → JSON（SQLAlchemy 的 JSON 在 SQLite 中用 TEXT 实现，够用）
+   - ARRAY → String（存 JSON 字符串）
+   - DateTime(timezone=True) → DateTime
+   - ForeignKey → 仅保留列定义，去掉约束
+   - server_default → 去掉（SQLite 不支持）
+2. **一致性断言**：CI 中新增一个测试文件 `tests/test_schema_sync.py`，遍历所有 `_Test*` model 和对应的生产 model，断言字段名集合完全一致
+3. **迁移策略**：先写好 `generate_test_model`，然后逐文件替换 `_Test*` 类定义为 `generate_test_model(ProductionModel)` 调用
+
+#### 测试要点
+- [ ] **自动生成正确**: 生成的测试 model 字段集合与生产 model 一致
+- [ ] **SQLite 兼容**: 自动生成的 model 能在 SQLite 内存库中 create_all 不报错
+- [ ] **现有测试不破坏**: 替换后 2171 个现有测试全部通过
+- [ ] **schema 一致性断言**: 新增字段后 CI 自动失败提示同步
+- [ ] **integration 标记**: integration 测试用 `@pytest.mark.integration` 标记
+
+---
+
+### Task 43.2: CI 五重质量门禁 — 安全扫描 + 类型检查
+**状态**: ⬜ 待开发
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+当前 CI 只有 lint + test，缺少安全扫描和类型检查。添加五重质量门禁。
+
+#### 需要修改的文件
+- `.github/workflows/ci.yml` — 新增和修改 CI jobs：
+  - `backend-test`: 确认覆盖率门禁生效（`--cov-fail-under` 已在 pyproject.toml addopts 中）
+  - `backend-security`: 新增 job — `bandit -r app/ -ll` + `pip-audit`
+  - `backend-typecheck`: 新增 job — `mypy app/ --ignore-missing-imports --no-error-summary`（首次运行允许有 error，但 job 不 fail；后续逐步收紧）
+  - `frontend-test`: 确认覆盖率门禁 `--cov-fail-under=80` 生效
+  - `frontend-security`: 新增 step — `npm audit --audit-level=high`
+- `.pre-commit-config.yaml` — 新增 `detect-secrets` hook 阻止密钥提交
+- `backend/requirements.txt` — 添加 `bandit>=1.8`、`pip-audit`、`mypy>=1.11`
+- `backend/mypy.ini` 或 `backend/pyproject.toml` — mypy 配置
+
+#### 测试要点
+- [ ] **bandit 扫描通过**: 无高危安全问题
+- [ ] **pip-audit 通过**: 依赖无已知漏洞
+- [ ] **npm audit 通过**: 前端依赖无高危漏洞
+- [ ] **mypy 运行不 crash**: 类型检查可以运行（允许有 error 但不 fail CI）
+- [ ] **detect-secrets**: 测试提交密钥时被 pre-commit 阻止
+
+---
+
+### Task 43.3: 前端覆盖率排除清零 + 覆盖率提升至 90%
+**状态**: ⬜ 待开发
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+当前前端覆盖率排除列表有 14 项，其中包含核心页面（TrainingDetailPage）和核心图表组件（EloChart、PPChart、RadarChart、StatsPanel）。排除这些组件让覆盖率数字失去意义。
+
+需要为所有被排除的组件编写测试，然后清空排除列表，并将覆盖率门禁提升到 90%。
+
+#### 需要修改的文件
+- `frontend/vitest.config.ts` — 清空 exclude 列表，提升 thresholds 到 90%
+- `frontend/src/components/charts/__tests__/EloChart.test.tsx` — EloChart 渲染 smoke test
+- `frontend/src/components/charts/__tests__/PPChart.test.tsx` — PPChart 渲染 smoke test
+- `frontend/src/components/charts/__tests__/RadarChart.test.tsx` — RadarChart 渲染 smoke test
+- `frontend/src/components/charts/__tests__/StatsPanel.test.tsx` — StatsPanel 渲染 smoke test
+- 其他被排除的组件测试
+
+#### 关键实现细节
+1. **图表组件测试策略**：图表依赖 canvas/SVG 渲染，在 jsdom 中无法完全渲染。测试重点：
+   - 组件能 mount 不 crash
+   - props 变化时组件正确更新（rerender）
+   - 空数据/undefined props 不 crash
+   - 关键 DOM 元素存在性检查（标题、容器 div）
+2. **TrainingDetailPage**：已有测试文件，直接从 exclude 移除
+3. **覆盖率提升路径**：先写测试确认覆盖率 ≥ 90%，再修改 thresholds
+
+#### 测试要点
+- [ ] **所有排除项清零**: vitest.config.ts 的 exclude 列表为空或只含必要的纯配置文件
+- [ ] **覆盖率 ≥ 90%**: lines/functions/branches/statements 全部 ≥ 90%
+- [ ] **图表 smoke test**: 4 个图表组件 mount 不 crash
+- [ ] **TrainingDetailPage 测试**: 现有 12 个测试通过
+
+---
+
+### Task 43.4: 核心算法 Property-Based Testing + 变异测试
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+当前核心算法（Elo、PP、TimeFactor）的测试用例是手写边界值，无法穷举。用 hypothesis 做 property-based testing 自动生成海量测试输入验证数学不变量。用 mutmut 做变异测试验证测试的有效性。
+
+#### 需要修改的文件
+- `backend/requirements.txt` — 添加 `hypothesis>=6.100`、`mutmut>=2.5`
+- `backend/tests/test_elo_property.py` — Elo 公式 property-based testing：
+  - 任意 rating 变化后，rating 始终在 [0, 5000] 范围
+  - S=1 时 Elo 必增，S=0 时 Elo 必减（给定 P(AC) < 1）
+  - K 因子分段函数连续
+  - hint_attenuation 始终 ≤ 1.0
+  - time_factor 始终在 [0.5, 1.5]
+- `backend/tests/test_pp_property.py` — PP 公式 property-based testing：
+  - PP 值始终 ≥ 0
+  - 相同 rating 的题，WA 越多 PP 越低
+  - 相同 WA 数，rating 越高 PP 越高
+  - f(wa, t) 单调递减（wa 增加）
+- `backend/tests/test_time_factor_property.py` — TimeFactor property-based testing：
+  - time_factor ∈ [0.5, 1.5]
+  - effective_time < expected_time → time_factor > 1
+  - effective_time > expected_time → time_factor < 1
+  - S=0 → time_factor = 1.0
+  - 罚时线性增加
+
+#### 关键实现细节
+1. **hypothesis 策略**：
+   - `st.floats(min_value=0, max_value=5000)` — rating
+   - `st.floats(min_value=0.0, max_value=1.0)` — S-value / P(AC)
+   - `st.integers(min_value=0, max_value=100)` — WA count
+   - `st.floats(min_value=0, max_value=1000)` — time in minutes
+2. **不变量示例**：
+   ```python
+   @given(rating=st.floats(0, 5000), k=st.floats(1, 40), s=st.floats(0, 1), expected=st.floats(0.01, 0.99))
+   def test_elo_change_bounded(rating, k, s, expected):
+       change = k * (s - expected)
+       assert abs(change) <= k  # Elo 变化不超过 K
+   ```
+3. **变异测试**：仅对 elo_service.py、pp_service.py、time_factor_service.py 运行，目标变异分数 > 85%
+
+#### 测试要点
+- [ ] **Elo 不变量**: 10000+ 随机输入全部满足不变量
+- [ ] **PP 不变量**: 单调性、非负性在随机输入下成立
+- [ ] **TimeFactor 不变量**: 值域、方向性在随机输入下成立
+- [ ] **变异分数**: 核心算法变异分数 > 85%
+
+---
+
+### Task 43.5: 真实环境集成测试 — 用户生命周期 + 并发安全
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: Task 43.1（统一 fixture 体系）
+
+#### 任务描述
+当前所有后端测试基于 SQLite mock，从未验证过 PostgreSQL 环境下的真实行为。添加关键路径的真实集成测试。
+
+#### 需要修改的文件
+- `backend/tests/integration/test_full_lifecycle.py` — 完整用户生命周期：
+  - 注册 → 登录 → 开始 PvE 挑战 → 提交 AC → 验证 Elo/PP/Token 更新
+  - 注册 → 开始训练 session → 解题 → 结束 → 验证 M-Elo 更新
+  - 注册 → 查看排行榜 → 验证排名正确
+- `backend/tests/integration/test_concurrent_safety.py` — 并发安全：
+  - 双扣款防护：并发 10 次 token 扣减，验证余额只减一次
+  - 匹配队列竞态：两个用户同时匹配，验证不会匹配到同一个人两次
+  - Elo 并发结算：同一用户同时在两个 session 结算，验证最终 Elo 一致
+
+#### 关键实现细节
+1. **testcontainers PostgreSQL**：已有 `tests/integration/conftest.py` 中的 session-scoped PostgreSQL container
+2. **并发测试**：使用 `asyncio.gather()` 并发执行多个 service 调用
+3. **断言策略**：
+   - Token 扣减：`initial_tokens - expected_cost == final_tokens`
+   - Elo 一致性：最终 Elo 只被更新一次，不是两次
+   - 匹配唯一性：每个匹配对只出现一次
+
+#### 测试要点
+- [ ] **完整生命周期**: 注册→做题→结算→排行榜，所有数据一致
+- [ ] **并发 token**: 10 次并发扣减后余额正确
+- [ ] **并发 Elo**: 并发结算后 Elo 只更新一次
+- [ ] **匹配唯一性**: 并发匹配不产生重复对
+- [ ] **在 CI 中运行**: backend-integration job 使用 PostgreSQL service container
+
+---
+
+### Task 43.6: contest_ws WebSocket 集成测试
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: Task 43.1
+
+#### 任务描述
+`contest_ws.py` (124行) 当前覆盖率 23%，是比赛模式核心的实时通信端点。需要用真实 Redis pub/sub 测试。
+
+#### 需要修改的文件
+- `backend/tests/integration/test_contest_ws.py` — WebSocket 集成测试：
+  - 连接建立和断开
+  - 比赛开始广播
+  - 解题实时推送
+  - 比赛结束广播
+  - 多客户端同时连接
+
+#### 关键实现细节
+1. **测试工具**：使用 FastAPI TestClient 的 `websocket_connect` 上下文管理器
+2. **Redis 替代**：使用 `fakeredis.aioredis.FakeRedis` 或 testcontainers Redis
+3. **消息验证**：验证消息格式包含 `type`、`data`、`timestamp` 字段
+
+#### 测试要点
+- [ ] **连接建立**: WebSocket 握手成功
+- [ ] **消息格式**: 服务端推送消息格式正确
+- [ ] **广播**: 一个用户解题，所有连接的客户端收到更新
+- [ ] **断开清理**: 客户端断开后不再收到消息
+- [ ] **覆盖率**: contest_ws.py 覆盖率从 23% 提升到 > 80%
+
+---
+
+### Task 43.7: 全栈 E2E CI Pipeline + 横切特性矩阵
+**状态**: ⬜ 待开发
+**优先级**: P1
+**依赖**: Task 43.5
+
+#### 任务描述
+建立完整的全栈 E2E CI pipeline，并实现自动化的横切特性矩阵验证。
+
+#### 需要修改的文件
+- `.github/workflows/ci.yml` — 新增 `frontend-integration` job：
+  - 使用 Docker Compose 启动后端（FastAPI + PostgreSQL + Redis）
+  - 等待所有服务就绪（health check）
+  - Playwright 指向 `http://localhost:8000`
+  - 运行 `e2e/integration/` 下的 5 个 spec 文件
+- `backend/tests/test_crosscut_matrix.py` — 横切特性矩阵自动验证：
+  - 遍历所有游戏模式的结算代码
+  - 验证每个模式都调用了 Elo/PP/Token/Achievement 相关函数
+  - 生成矩阵报告
+
+#### 关键实现细节
+1. **Docker Compose CI**：
+   ```yaml
+   frontend-integration:
+     runs-on: ubuntu-latest
+     services:
+       postgres: ...
+       redis: ...
+     steps:
+       - run: docker compose up -d backend
+       - run: npx playwright test --project=integration
+   ```
+2. **横切矩阵检查**：AST 遍历每个模式的结算函数，查找特定的函数调用模式（如 `elo_service.update_elo`、`pp_service.calculate_pp`、`economy_service.award_tokens`），生成矩阵并断言所有格子都有值
+
+#### 测试要点
+- [ ] **全栈 E2E 在 CI 中运行**: 5 个 integration spec 全部通过
+- [ ] **横切矩阵完整**: 每个横切特性 × 每个模式 = 都有对应调用
+- [ ] **矩阵报告可读**: CI 输出清晰的矩阵表格
+
+---
+
+### Task 43.8: 质量度量体系 — Codecov + 变异分数 + 执行时间
+**状态**: ⬜ 待开发
+**优先级**: P2
+**依赖**: Task 43.2, 43.4
+
+#### 任务描述
+建立完整的质量度量可观测体系。
+
+#### 需要修改的文件
+- `.github/workflows/ci.yml` — 添加 Codecov 上传步骤、变异测试报告步骤
+- `codecov.yml` — Codecov 配置（覆盖率目标、PR 评论）
+- `backend/tests/test_quality_metrics.py` — CI 中生成质量度量报告
+
+#### 关键实现细节
+1. **Codecov 集成**：
+   ```yaml
+   - uses: codecov/codecov-action@v4
+     with:
+       files: backend/coverage.json,frontend/coverage/coverage-final.json
+       fail_ci_if_error: false
+   ```
+2. **变异测试**：仅核心算法文件，CI 中标记为允许失败（不阻塞 PR），但结果上传为 artifact
+3. **执行时间追踪**：CI 输出中记录每个测试文件的执行时间，超阈值发出警告
+
+#### 测试要点
+- [ ] **Codecov PR 评论**: 每个 PR 自动评论覆盖率变化
+- [ ] **变异报告**: 变异测试结果可作为 CI artifact 下载
+- [ ] **执行时间**: 测试超时自动警告
