@@ -11,6 +11,13 @@ repos:
         name: ruff format (backend)
         files: ^backend/
 
+  # Security: detect secrets
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+
   # Frontend: eslint (run via local script for correct working directory)
   - repo: local
     hooks:
