@@ -77,11 +77,13 @@ DEFAULT_CONFIG: dict = {
         "simulation": {
             "tick_interval_seconds": 30,
             "difficulty_ticks": {
-                "easy": [2, 4],  # rating < 1200
-                "medium": [6, 16],  # 1200 <= rating < 1800
-                "hard": [16, 30],  # rating >= 1800
+                "easy": [2, 4],  # rating < 1200 (legacy, used by _get_tick_range_for_rating)
+                "medium": [6, 16],  # 1200 <= rating < 1800 (legacy)
+                "hard": [16, 30],  # rating >= 1800 (legacy)
             },
             "jitter": 0.3,  # +/-30% random jitter
+            "give_up_threshold": 800,  # bot skips problems rated > bot_elo + this
+            "retry_base_prob": 0.3,  # base probability of retrying a failed problem
         },
     },
     "cf_api": {

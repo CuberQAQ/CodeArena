@@ -3,7 +3,9 @@
 Handles:
 - Generating N bots with Elo normally distributed around the user's Elo
 - Tick-by-tick simulation of bot problem-solving using P(AC) formula
-- Each bot works on one problem at a time, with difficulty-based delays
+- Each bot works on one problem at a time, with Elo-aware delays
+- Retry mechanism on failed attempts
+- Give-up mechanism for problems far above bot's Elo
 - Starting/stopping background simulation tasks
 - Building combined human+bot leaderboards
 """
@@ -130,6 +132,85 @@ def _get_simulation_config() -> dict[str, Any]:
     return DEFAULT_CONFIG.get("contest", {}).get("simulation", {})
 
 
+# ---------------------------------------------------------------------------
+# Elo-aware tick calculation
+# ---------------------------------------------------------------------------
+
+
+def _get_ticks_for_bot_problem(
+    bot_elo: int,
+    problem_rating: int,
+    total_minutes: int,
+    n_problems: int,
+    tick_interval: int = 30,
+    jitter: float = 0.3,
+) -> int:
+    """Calculate ticks needed for a bot to attempt a problem.
+
+    The model uses an Elo-gap scaling formula that determines how long a bot
+    spends on a problem based on the relationship between the bot's Elo and
+    the problem's rating.
+
+    Key behaviors:
+    - Higher Elo bots solve lower-rated problems faster
+    - Lower Elo bots spend much more time on hard problems
+    - Tick count scales with contest duration and problem count
+    - Random jitter (+/-30%) adds natural variation
+
+    Parameters
+    ----------
+    bot_elo:
+        The bot's Elo rating.
+    problem_rating:
+        The problem's difficulty rating.
+    total_minutes:
+        Total contest duration in minutes.
+    n_problems:
+        Number of problems in the contest.
+    tick_interval:
+        Seconds per simulation tick.
+    jitter:
+        Fractional jitter to apply (0.3 = +/-30%).
+
+    Returns
+    -------
+    int
+        Number of ticks (always >= 1).
+    """
+    # Effective Elo: ensure minimum of 800 for calculations
+    effective_elo = max(bot_elo, 800)
+    effective_rating = max(problem_rating, 800)
+
+    # Elo ratio: how hard is this problem for this bot?
+    # ratio > 1.0 means problem is harder than bot's level
+    # ratio < 1.0 means problem is easier than bot's level
+    elo_ratio = effective_rating / effective_elo
+
+    # Base ticks per problem: proportional to contest duration and problem count.
+    # A bot that solves all problems would spend total_ticks / n_problems ticks
+    # on average per problem. Scale by elo_ratio so harder problems take more.
+    total_ticks = total_minutes * 60 / tick_interval
+    base_ticks_per_problem = total_ticks / n_problems
+
+    # Scale by elo_ratio: problems above the bot's level take proportionally
+    # longer, problems below take proportionally less time.
+    # Use a power function to create steeper differentiation:
+    #   ratio < 1.0 -> fewer ticks (easy for this bot)
+    #   ratio = 1.0 -> average ticks
+    #   ratio > 1.0 -> more ticks (hard for this bot)
+    scaled_ticks = base_ticks_per_problem * (elo_ratio**1.5)
+
+    # Ensure minimum of 1 tick
+    ticks = max(1, int(scaled_ticks))
+
+    # Apply +/- jitter
+    if jitter > 0:
+        jitter_amount = ticks * jitter
+        ticks = max(1, int(ticks + random.uniform(-jitter_amount, jitter_amount)))
+
+    return max(1, ticks)
+
+
 def _get_tick_range_for_rating(
     rating: int,
     difficulty_ticks: dict[str, list[int]] | None = None,
@@ -137,8 +218,10 @@ def _get_tick_range_for_rating(
 ) -> int:
     """Return the number of ticks a bot needs to work on a problem.
 
-    The tick count is sampled from the difficulty-appropriate range with
-    +/- jitter applied.
+    .. deprecated::
+        This function uses only problem difficulty, ignoring bot Elo.
+        It is retained for backward compatibility when the new config
+        keys are not present.  New code should use ``_get_ticks_for_bot_problem``.
 
     Parameters
     ----------
@@ -269,8 +352,10 @@ class ContestSimulationService:
         """Run one simulation tick for all bots in a contest.
 
         Each bot works on one unsolved problem at a time with a tick-based
-        delay determined by problem difficulty.  When the delay expires,
-        the bot rolls P(AC) to determine if it solved the problem.
+        delay determined by the relationship between the bot's Elo and the
+        problem's difficulty rating.  When the delay expires, the bot rolls
+        P(AC) to determine if it solved the problem.  Bots may retry failed
+        problems or skip problems far above their skill level.
 
         Parameters
         ----------
@@ -304,15 +389,10 @@ class ContestSimulationService:
 
         # Read simulation config
         sim_config = _get_simulation_config()
-        difficulty_ticks = sim_config.get(
-            "difficulty_ticks",
-            {
-                "easy": [2, 4],
-                "medium": [6, 16],
-                "hard": [16, 30],
-            },
-        )
+        tick_interval = sim_config.get("tick_interval_seconds", 30)
         jitter = sim_config.get("jitter", 0.3)
+        give_up_threshold = sim_config.get("give_up_threshold", 800)
+        retry_base_prob = sim_config.get("retry_base_prob", 0.3)
 
         # Get or create bot states for this contest
         contest_states = _bot_states.setdefault(contest_id, {})
@@ -331,6 +411,8 @@ class ContestSimulationService:
                 {
                     "current_problem": None,
                     "ticks_remaining": 0,
+                    "attempted_and_failed": [],  # track failed problem_ids for retry
+                    "skipped_problems": [],  # problems this bot gave up on
                 },
             )
 
@@ -339,8 +421,12 @@ class ContestSimulationService:
                 problems,
                 time_factor,
                 bot_state,
-                difficulty_ticks=difficulty_ticks,
+                total_minutes=total_minutes,
+                n_problems=len(problems),
+                tick_interval=tick_interval,
                 jitter=jitter,
+                give_up_threshold=give_up_threshold,
+                retry_base_prob=retry_base_prob,
             )
             all_newly_solved.extend(newly_solved)
 
@@ -745,15 +831,22 @@ class ContestSimulationService:
         problems: list[dict],
         time_factor: float,
         bot_state: dict[str, Any],
-        difficulty_ticks: dict[str, list[int]] | None = None,
+        total_minutes: int = 120,
+        n_problems: int = 5,
+        tick_interval: int = 30,
         jitter: float = 0.3,
+        give_up_threshold: int = 800,
+        retry_base_prob: float = 0.3,
+        difficulty_ticks: dict[str, list[int]] | None = None,
     ) -> list[str]:
         """Simulate a single bot's problem-solving for one tick.
 
         Each bot works on one problem at a time.  It first selects the
-        lowest-rating unsolved problem, then spends a difficulty-appropriate
-        number of ticks working on it.  When the tick counter expires, it
-        rolls P(AC) to determine success, then moves to the next problem.
+        lowest-rating unsolved problem (that it hasn't given up on), then
+        spends an Elo-aware number of ticks working on it.  When the tick
+        counter expires, it rolls P(AC) to determine success.  On failure,
+        it may retry the problem.  Problems far above the bot's Elo are
+        skipped entirely.
 
         Parameters
         ----------
@@ -767,10 +860,22 @@ class ContestSimulationService:
             In-memory state dict for this bot with keys:
             - "current_problem": str | None -- problem_id being worked on
             - "ticks_remaining": int -- ticks left until P(AC) roll
-        difficulty_ticks:
-            Optional override for difficulty tick ranges.
+            - "attempted_and_failed": list[str] -- problem_ids that failed
+            - "skipped_problems": list[str] -- problem_ids the bot gave up on
+        total_minutes:
+            Total contest duration in minutes.
+        n_problems:
+            Number of problems in the contest.
+        tick_interval:
+            Seconds per simulation tick.
         jitter:
-            Optional override for jitter fraction.
+            Fractional jitter for tick calculation.
+        give_up_threshold:
+            Problems rated more than this above bot Elo are skipped.
+        retry_base_prob:
+            Base probability of retrying a failed problem.
+        difficulty_ticks:
+            Optional override for legacy difficulty tick ranges.
 
         Returns
         -------
@@ -780,13 +885,22 @@ class ContestSimulationService:
         solved_set = set(bot.solved_problem_ids or [])
         newly_solved: list[str] = []
 
-        # Find unsolved problems, sorted by rating ascending (easiest first)
+        # Get skipped and failed lists from state
+        skipped = set(bot_state.get("skipped_problems", []))
+        failed = set(bot_state.get("attempted_and_failed", []))
+
+        # Find unsolved problems, sorted by rating ascending (easiest first),
+        # excluding problems the bot has given up on
         unsolved = sorted(
-            [p for p in problems if p.get("problem_id", "") not in solved_set],
+            [
+                p
+                for p in problems
+                if p.get("problem_id", "") not in solved_set and p.get("problem_id", "") not in skipped
+            ],
             key=lambda p: p.get("rating", 1000),
         )
 
-        # If all problems are solved or no problems exist, nothing to do
+        # If all problems are solved, skipped, or none exist, nothing to do
         if not unsolved:
             bot.total_attempts += 1
             return newly_solved
@@ -794,12 +908,47 @@ class ContestSimulationService:
         current_problem = bot_state.get("current_problem")
         ticks_remaining = bot_state.get("ticks_remaining", 0)
 
-        # If bot is idle or its current problem is already solved, pick next
-        if current_problem is None or current_problem in solved_set:
-            next_problem = unsolved[0]
+        # If bot is idle or its current problem is already solved/skipped, pick next
+        if current_problem is None or current_problem in solved_set or current_problem in skipped:
+            next_problem = None
+            for p in unsolved:
+                pid = p.get("problem_id", "")
+                rating = p.get("rating", 1000)
+
+                # Give-up mechanism: skip problems far above bot's Elo
+                if rating > bot.bot_elo + give_up_threshold:
+                    skipped.add(pid)
+                    bot_state.setdefault("skipped_problems", []).append(pid)
+                    logger.debug(
+                        "Bot %s (elo=%d) skips problem %s (rating=%d, threshold=%d)",
+                        bot.bot_name,
+                        bot.bot_elo,
+                        pid,
+                        rating,
+                        bot.bot_elo + give_up_threshold,
+                    )
+                    continue
+
+                next_problem = p
+                break
+
+            if next_problem is None:
+                # No solvable problems left for this bot
+                bot.total_attempts += 1
+                return newly_solved
+
             current_problem = next_problem.get("problem_id", "")
             rating = next_problem.get("rating", 1000)
-            ticks_remaining = _get_tick_range_for_rating(rating, difficulty_ticks, jitter)
+
+            # Use Elo-aware tick calculation
+            ticks_remaining = _get_ticks_for_bot_problem(
+                bot_elo=bot.bot_elo,
+                problem_rating=rating,
+                total_minutes=total_minutes,
+                n_problems=n_problems,
+                tick_interval=tick_interval,
+                jitter=jitter,
+            )
             bot_state["current_problem"] = current_problem
             bot_state["ticks_remaining"] = ticks_remaining
 
@@ -825,10 +974,34 @@ class ContestSimulationService:
             if random.random() < p_ac * time_factor:
                 solved_set.add(current_problem)
                 newly_solved.append(current_problem)
+                # Remove from failed set if it was there
+                failed.discard(current_problem)
+            else:
+                # Failed attempt: record and decide on retry
+                failed.add(current_problem)
+
+                # Retry mechanism: probability based on Elo ratio
+                effective_elo = max(bot.bot_elo, 800)
+                effective_rating = max(rating, 800)
+                retry_prob = retry_base_prob * min(1.0, effective_elo / effective_rating)
+
+                if random.random() < retry_prob:
+                    # Bot will retry: re-queue the current problem
+                    # The problem stays in the unsolved list, and the bot will
+                    # pick it up again on the next tick (since it's the easiest unsolved)
+                    bot_state["current_problem"] = None
+                    bot_state["ticks_remaining"] = 0
+                    # Update failed tracking
+                    bot_state["attempted_and_failed"] = list(failed)
+                    bot.total_attempts += 1
+                    # Note: solved_set is NOT updated -- problem remains unsolved
+                    return newly_solved
+                # else: move on to next problem (fall through)
 
         # Move to next problem for next tick
         bot_state["current_problem"] = None
         bot_state["ticks_remaining"] = 0
+        bot_state["attempted_and_failed"] = list(failed)
 
         # Update bot state on the ORM object
         if bot.solved_problem_ids is None:
