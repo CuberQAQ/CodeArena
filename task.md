@@ -1710,7 +1710,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ---
 
 ### Task 43.4: 核心算法 Property-Based Testing + 变异测试
-**状态**: ⬜ 待开发
+**状态**: 🟢 已完成
 **优先级**: P1
 **依赖**: 无
 
@@ -1761,7 +1761,7 @@ ProblemStatementViewer.test.tsx 有 9 个测试失败（超时），涉及：
 ---
 
 ### Task 43.5: 真实环境集成测试 — 用户生命周期 + 并发安全
-**状态**: ⬜ 待开发
+**状态**: 🔄 进行中
 **优先级**: P1
 **依赖**: Task 43.1（统一 fixture 体系）
 
