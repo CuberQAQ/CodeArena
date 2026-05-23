@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS base
 
-# Install curl for health check + Playwright Chromium deps, then clean up
+# Install system deps: curl (healthcheck) + Playwright Chromium deps
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
@@ -11,17 +11,16 @@ RUN groupadd --gid 1000 appuser && \
 
 WORKDIR /app
 
-# Install dependencies first (layer caching)
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir gunicorn>=22.0.0
+# 1) Install Python production dependencies (layer cached unless requirements-prod.txt changes)
+COPY backend/requirements-prod.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright Chromium to /app/.cache so chown covers it
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
-RUN playwright install chromium --with-deps && \
+# 2) Install Playwright + Chromium (layer cached unless Playwright version changes)
+RUN pip install --no-cache-dir playwright>=1.50.0 && \
+    playwright install chromium --with-deps && \
     playwright install-deps chromium
 
-# Copy application code
+# 3) Copy application code (changes most often — last layer)
 COPY backend/ .
 
 # Change ownership to non-root user
@@ -38,7 +37,7 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
 CMD gunicorn app.main:app \
      --workers ${GUNICORN_WORKERS:-4} \
      --worker-class uvicorn.workers.UvicornWorker \
-     --bind 0.0.0.0:8000 \
+     --bind 0.0.0.0:8000 \  # pragma: allowlist secret
      --timeout 120 \
      --graceful-timeout 30 \
      --access-logfile - \
