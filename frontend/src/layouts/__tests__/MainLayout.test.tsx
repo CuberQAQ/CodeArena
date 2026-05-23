@@ -133,4 +133,60 @@ describe("MainLayout", () => {
       screen.getByText(/nav:eloTokens/),
     ).toBeInTheDocument();
   });
+
+  // Covers lines 139-143: hamburger menu button opens sidebar
+  it("opens sidebar when hamburger menu is clicked", async () => {
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    // Find the hamburger button in the header (it's the first button with lg:hidden class)
+    const hamburgerBtn = document.querySelector("header button");
+    expect(hamburgerBtn).toBeTruthy();
+    await user.click(hamburgerBtn!);
+
+    // After clicking, the mobile overlay should be visible
+    // The overlay div contains "bg-black/50" in its className
+    const overlay = document.querySelector('[class*="bg-black/50"]');
+    expect(overlay).toBeInTheDocument();
+  });
+
+  // Covers lines 57-62: mobile overlay click closes sidebar
+  it("closes sidebar when overlay is clicked", async () => {
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    // First open the sidebar
+    const hamburgerBtn = document.querySelector("header button");
+    expect(hamburgerBtn).toBeTruthy();
+    await user.click(hamburgerBtn!);
+
+    // Now click the overlay to close
+    const overlay = document.querySelector('[class*="bg-black/50"]');
+    expect(overlay).toBeInTheDocument();
+    await user.click(overlay as HTMLElement);
+
+    // Overlay should be gone after closing
+    expect(document.querySelector('[class*="bg-black/50"]')).not.toBeInTheDocument();
+  });
+
+  // Covers lines 74-79: X button in sidebar closes it on mobile
+  it("closes sidebar when X button is clicked", async () => {
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    // First open the sidebar
+    const hamburgerBtn = document.querySelector("header button");
+    expect(hamburgerBtn).toBeTruthy();
+    await user.click(hamburgerBtn!);
+
+    // Find the X close button inside the sidebar
+    const aside = document.querySelector("aside");
+    expect(aside).toBeTruthy();
+    const closeBtn = aside!.querySelector("button");
+    expect(closeBtn).toBeTruthy();
+    await user.click(closeBtn!);
+
+    // Overlay should be gone after closing
+    expect(document.querySelector('[class*="bg-black/50"]')).not.toBeInTheDocument();
+  });
 });
