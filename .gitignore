@@ -59,9 +59,20 @@ coverage.xml
 .pytest_cache/
 test-results/
 playwright-report/
+backend/coverage.json
+backend/mutants/
+frontend/coverage/
 
 # ---- E2E screenshots ----
+frontend/e2e/screenshots/
 frontend/e2e/integration/screenshots/
+
+# ---- Mutation testing ----
+.mutmut-cache/
+
+# ---- Temp ----
+.tmp/
+.secrets.baseline.new
 
 # ---- Misc ----
 image.png
@@ -71,3 +82,6 @@ image.png
 *.zip
 
 .claude/worktrees/
+.claude/scheduled_tasks.json
+.claude/scheduled_tasks.lock
+frontend/.claude/
