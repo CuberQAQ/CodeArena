@@ -17,13 +17,26 @@ import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { DashboardCharts } from "@/components/charts/DashboardCharts";
-import { getRatingColor, getDifficultyLabelKey } from "@/utils";
+import { getRatingColor, getDifficultyLabelKey, RATING_TIERS } from "@/utils";
 import { MedalBadge } from "@/components/medal";
 import { Avatar } from "@/components/Avatar";
 import { CheckInCard } from "@/components/CheckInCard";
 import api from "@/services/api";
 import { freePlayGetActive } from "@/services/freePlayApi";
-import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo, UserSettingsData, MedalInfo, FreePlayStartResponse } from "@/types";
+import type { ApiResponse, TransactionItem, ContestSessionInfo, ActiveChallengeInfo, UserSettingsData, MedalInfo, FreePlayStartResponse, PPRankData } from "@/types";
+
+/** Medal thresholds (low→high), mirrors backend MedalService. */
+const FLAT_MEDAL_MAP_ASC: [number, string, string][] = [
+  [1200, "provincial", "bronze"],
+  [1400, "provincial", "silver"],
+  [1600, "provincial", "gold"],
+  [1800, "regional", "bronze"],
+  [2000, "regional", "silver"],
+  [2200, "regional", "gold"],
+  [2400, "world_finals", "bronze"],
+  [2600, "world_finals", "silver"],
+  [2800, "world_finals", "gold"],
+];
 
 interface QuickAction {
   to: string;
@@ -75,6 +88,7 @@ export default function DashboardPage() {
   const [activeFreePlay, setActiveFreePlay] = useState<FreePlayStartResponse | null>(null);
   const [displayMode, setDisplayMode] = useState<"medal" | "cf_tier">("medal");
   const [overallMedal, setOverallMedal] = useState<MedalInfo | null>(null);
+  const [ppRankData, setPpRankData] = useState<PPRankData | null>(null);
 
   useEffect(() => {
     // Fetch all transactions once (limit=100) — DashboardCharts reuses this data
@@ -102,6 +116,10 @@ export default function DashboardPage() {
       .catch(() => {});
     freePlayGetActive()
       .then((data) => setActiveFreePlay(data))
+      .catch(() => {});
+    api
+      .get<ApiResponse<PPRankData>>("/auth/pp-rank")
+      .then((res) => setPpRankData(res.data.data))
       .catch(() => {});
   }, []);
 
@@ -152,6 +170,68 @@ export default function DashboardPage() {
                   {user.elo} <span className="text-sm font-medium">/ {t(getDifficultyLabelKey(user.elo))}</span>
                 </p>
               )}
+              {/* Elo Progress Bar */}
+              {(() => {
+                const elo = user.elo;
+                let currentThreshold = 0;
+                let nextThreshold: number | null = null;
+                let nextNameKey = "";
+
+                if (displayMode === "medal") {
+                  // Find current and next medal thresholds (ascending order)
+                  for (let i = 0; i < FLAT_MEDAL_MAP_ASC.length; i++) {
+                    if (elo < FLAT_MEDAL_MAP_ASC[i][0]) {
+                      currentThreshold = i > 0 ? FLAT_MEDAL_MAP_ASC[i - 1][0] : 0;
+                      nextThreshold = FLAT_MEDAL_MAP_ASC[i][0];
+                      const level = FLAT_MEDAL_MAP_ASC[i][1].replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+                      const medalType = FLAT_MEDAL_MAP_ASC[i][2];
+                      nextNameKey = `${t(`medal:levels.${level}`)} ${t(`medal:types.${medalType}`)}`;
+                      break;
+                    }
+                  }
+                  if (nextThreshold === null) {
+                    // Already at highest medal (world_finals gold), no progress bar
+                    return null;
+                  }
+                } else {
+                  // CF tier mode
+                  for (let i = 0; i < RATING_TIERS.length; i++) {
+                    if (elo < RATING_TIERS[i].min) {
+                      currentThreshold = i > 0 ? Math.max(0, RATING_TIERS[i - 1].min) : 0;
+                      nextThreshold = RATING_TIERS[i].min;
+                      nextNameKey = getDifficultyLabelKey(RATING_TIERS[i].min);
+                      break;
+                    }
+                  }
+                  if (nextThreshold === null) {
+                    // Already at Legendary Grandmaster, no progress bar
+                    return null;
+                  }
+                }
+
+                const range = nextThreshold! - currentThreshold;
+                const progress = range > 0
+                  ? Math.max(0, Math.min(1, (elo - currentThreshold) / range))
+                  : 0;
+                const eloNeeded = nextThreshold! - elo;
+
+                return (
+                  <div className="mt-3">
+                    <div className="h-1.5 w-full rounded-full bg-muted">
+                      <div
+                        className="h-1.5 rounded-full bg-primary transition-all"
+                        style={{ width: `${progress * 100}%` }}
+                      />
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      {t("dashboard:eloProgress", {
+                        name: displayMode === "medal" ? nextNameKey : t(nextNameKey),
+                        needed: eloNeeded,
+                      })}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -165,6 +245,11 @@ export default function DashboardPage() {
             <div>
               <p className="text-xs font-medium text-muted-foreground">{t("dashboard:performancePoints")}</p>
               <p className="text-2xl font-bold text-yellow-400">{user.pp}</p>
+              {ppRankData && ppRankData.rank != null && (
+                <p className="text-sm font-medium text-white">
+                  #{ppRankData.rank}
+                </p>
+              )}
             </div>
           </div>
         </div>

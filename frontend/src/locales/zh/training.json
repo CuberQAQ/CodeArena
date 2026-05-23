@@ -25,6 +25,7 @@
   "waitingForCFResult": "等待 Codeforces 结果...",
   "waitingForCFResultDesc": "请在 Codeforces 上提交你的解答，系统将自动检测你的结果。",
   "trackingTimedOut": "提交追踪已超时，请尝试退出当前会话。",
+  "selectProblemHint": "请从右侧选择一道题目",
   "topic": {
     "dp": "动态规划",
     "greedy": "贪心",

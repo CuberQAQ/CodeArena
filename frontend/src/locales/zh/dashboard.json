@@ -27,6 +27,7 @@
   "leaderboard": "排行榜",
   "seeTopPlayers": "查看顶尖选手",
   "analytics": "数据分析",
+  "eloProgress": "距离 {{name}} 还差 {{needed}} Elo",
   "checkin": {
     "title": "每日签到",
     "checkedIn": "今日已签到",

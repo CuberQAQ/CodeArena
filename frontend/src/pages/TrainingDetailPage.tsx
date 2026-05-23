@@ -581,8 +581,12 @@ export default function TrainingDetailPage() {
 
   // -- SESSION IN PROGRESS --
   if (phase === "session" && session && topic) {
+    const selectedProblem = topic.problems?.find(
+      (p) => p.problem_id === selectedProblemId,
+    );
+
     return (
-      <div className="mx-auto max-w-4xl space-y-5">
+      <div className="space-y-4">
         {achievements.length > 0 && showAchievements && (
           <AchievementPopup
             achievements={achievements}
@@ -590,6 +594,7 @@ export default function TrainingDetailPage() {
           />
         )}
 
+        {/* Top navigation bar */}
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate("/training")}
@@ -603,127 +608,123 @@ export default function TrainingDetailPage() {
               <Clock className="size-4" />
               <span className="font-mono">{formatTime(elapsed)}</span>
             </div>
-            <Button variant="destructive" size="sm" onClick={abandonSession} disabled={loading}>
+          </div>
+        </div>
+
+        {/* Main dual-column layout */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+          {/* Left side: ProblemViewer */}
+          <div className="flex-1 min-w-0">
+            {error && (
+              <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            {selectedProblem && selectedProblem.contest_id && selectedProblem.index ? (
+              <ProblemViewer
+                contestId={selectedProblem.contest_id}
+                index={selectedProblem.index}
+                blindBox={false}
+              />
+            ) : (
+              <div className="rounded-xl border border-border bg-card px-4 py-12 text-center">
+                <List className="mx-auto size-8 text-muted-foreground/50" />
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {t("training:selectProblemHint")}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Right side panel */}
+          <div className="w-full shrink-0 space-y-4 lg:w-72">
+            {/* Compact stats */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-border bg-card p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">{t("training:solvedLabel")}</p>
+                <p className="mt-0.5 text-lg font-bold text-green-400">{session.problems_solved}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">{t("common:total")}</p>
+                <p className="mt-0.5 text-lg font-bold text-foreground">{session.total_problems}</p>
+              </div>
+              <div className="relative rounded-xl border border-border bg-card p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">{t("training:streak")}</p>
+                <div className="mt-0.5 flex items-center justify-center">
+                  <StreakEffect streak={session.streak_count} />
+                </div>
+                <div className="absolute -top-2 right-2">
+                  <CoinAnimation amount={lastTokensEarned} triggerKey={tokenTriggerKey} />
+                </div>
+              </div>
+            </div>
+
+            {/* Problem selector */}
+            <div className="rounded-xl border border-border bg-card">
+              <div className="border-b border-border px-4 py-2.5">
+                <h2 className="text-sm font-semibold text-foreground">
+                  {t("training:problems", { count: topic.problems?.length ?? 0 })}
+                </h2>
+              </div>
+              <div className="divide-y divide-border max-h-[50vh] overflow-y-auto">
+                {topic.problems?.map((problem) => {
+                  const isSelected = selectedProblemId === problem.problem_id;
+                  return (
+                    <div
+                      key={problem.problem_id}
+                      className={`cursor-pointer transition-colors ${
+                        isSelected ? "bg-primary/5" : "hover:bg-muted/30"
+                      }`}
+                      onClick={() => {
+                        if (problem.contest_id && problem.index) {
+                          setSelectedProblemId(problem.problem_id);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center gap-2.5 px-4 py-2.5">
+                        {problem.solved ? (
+                          <CheckCircle2 className="size-3.5 shrink-0 text-green-400" />
+                        ) : (
+                          <Circle className="size-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {problem.contest_id}
+                            {problem.index} - {stripIndexPrefix(problem.name)}
+                          </p>
+                        </div>
+                        {problem.rating && (
+                          <span
+                            className="shrink-0 text-xs font-bold"
+                            style={{ color: getRatingColor(problem.rating) }}
+                          >
+                            {problem.rating}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Solving timeline */}
+            {selectedProblem && selectedProblem.rating && (
+              <SolvingTimeline
+                problemId={selectedProblem.problem_id}
+                problemRating={selectedProblem.rating}
+                userElo={selectedProblem.rating}
+                startTime={new Date()}
+              />
+            )}
+
+            {/* Abandon training button */}
+            <Button variant="destructive" className="w-full" onClick={abandonSession} disabled={loading}>
               <StopCircle className="mr-1.5 size-3.5" />
               {t("training:endSession")}
             </Button>
           </div>
         </div>
-
-        {/* Session info */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">{t("training:solvedLabel")}</p>
-            <p className="mt-1 text-xl font-bold text-green-400">{session.problems_solved}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">{t("common:total")}</p>
-            <p className="mt-1 text-xl font-bold text-foreground">{session.total_problems}</p>
-          </div>
-          <div className="relative rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground">{t("training:streak")}</p>
-            <div className="mt-1 flex items-center justify-center">
-              <StreakEffect streak={session.streak_count} />
-            </div>
-            <div className="absolute -top-2 right-2">
-              <CoinAnimation amount={lastTokensEarned} triggerKey={tokenTriggerKey} />
-            </div>
-          </div>
-        </div>
-
-        {error && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
-        {/* Problem list with inline report panel */}
-        <div className="rounded-xl border border-border bg-card">
-          <div className="border-b border-border px-5 py-3">
-            <h2 className="text-sm font-semibold text-foreground">
-              {t("training:problems", { count: topic.problems?.length ?? 0 })}
-            </h2>
-          </div>
-          <div className="divide-y divide-border">
-            {topic.problems?.map((problem) => {
-              const isSelected = selectedProblemId === problem.problem_id;
-              return (
-                <div
-                  key={problem.problem_id}
-                  className={`cursor-pointer transition-colors ${
-                    isSelected ? "bg-primary/5" : "hover:bg-muted/30"
-                  }`}
-                  onClick={() => {
-                    if (problem.contest_id && problem.index) {
-                      setSelectedProblemId(problem.problem_id);
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-4 px-5 py-3">
-                    {problem.solved ? (
-                      <CheckCircle2 className="size-4 shrink-0 text-green-400" />
-                    ) : (
-                      <Circle className="size-4 shrink-0 text-muted-foreground" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground">
-                        {problem.contest_id}
-                        {problem.index} - {stripIndexPrefix(problem.name)}
-                      </p>
-                      {problem.solved && problem.time_spent != null && (
-                        <p className="text-xs text-muted-foreground">
-                          {t("training:solvedIn", {
-                            time: formatTime(problem.time_spent),
-                            attempts: problem.attempts,
-                          })}
-                        </p>
-                      )}
-                    </div>
-                    {problem.rating && (
-                      <span
-                        className="shrink-0 text-sm font-bold"
-                        style={{ color: getRatingColor(problem.rating) }}
-                      >
-                        {problem.rating}
-                      </span>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={problem.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ExternalLink className="size-4" />
-                      </a>
-                      {!problem.solved && (
-                        <Loader2 className="size-4 animate-spin text-primary" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ProblemViewer for selected problem */}
-        {(() => {
-          const selectedProblem = topic.problems?.find(
-            (p) => p.problem_id === selectedProblemId,
-          );
-          if (!selectedProblem || !selectedProblem.contest_id || !selectedProblem.index) {
-            return null;
-          }
-          return (
-            <ProblemViewer
-              contestId={selectedProblem.contest_id}
-              index={selectedProblem.index}
-              blindBox={false}
-            />
-          );
-        })()}
       </div>
     );
   }

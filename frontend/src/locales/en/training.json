@@ -25,6 +25,7 @@
   "waitingForCFResult": "Waiting for Codeforces result...",
   "waitingForCFResultDesc": "Submit your solution on Codeforces. We will automatically detect your result.",
   "trackingTimedOut": "Submission tracking timed out. Please try quitting the current session.",
+  "selectProblemHint": "Select a problem from the sidebar",
   "topic": {
     "dp": "Dynamic Programming",
     "greedy": "Greedy",

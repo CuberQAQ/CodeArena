@@ -27,6 +27,7 @@
   "leaderboard": "Leaderboard",
   "seeTopPlayers": "See top players",
   "analytics": "Analytics",
+  "eloProgress": "{{needed}} Elo to {{name}}",
   "checkin": {
     "title": "Daily Check-in",
     "checkedIn": "Checked in today",

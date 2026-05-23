@@ -2371,3 +2371,118 @@ ContestDetailPage.tsx:570-572 对每个 `solved === false` 的题目**无条件�
 - [ ] 手机端布局合理（左右组改为上下）
 - [ ] 奖牌和成就信息正常显示
 - [ ] 0 提交惩罚情况也正确显示
+
+---
+
+## 阶段 46: Bug 修复 — 仪表盘增强 + 训练布局统一
+
+### Task 46.1: 仪表盘增加 Elo 进度条 + PP 排名显示
+**状态**: 🟢 已完成
+**优先级**: P1
+**依赖**: 无
+
+#### Bug 描述
+仪表盘的统计卡片区域缺少两个关键信息：
+1. 用户无法直观看到距离下一个等级/奖牌还需要多少 Elo
+2. 用户无法在仪表盘看到自己的 PP 全球排名
+
+#### 根因分析
+**功能缺失（非回归）**：后端和前端都已有所有必需数据，但仪表盘未集成。
+- Elo 进度条：`utils/index.ts` 中已有 `FLAT_MEDAL_MAP`（奖牌阈值）和 `RATING_TIERS`（CF 段位阈值），仪表盘无需新 API，只需计算并渲染进度
+- PP 排名：后端 `GET /auth/pp-rank` API 已存在且在个人资料页（`ProfilePage.tsx:258-261`）中已使用，仪表盘只需调用
+
+#### 需要修改的文件
+- `frontend/src/pages/DashboardPage.tsx` — Elo 卡片增加进度条、PP 卡片增加排名
+
+#### 关键实现细节
+1. **Elo 进度条**：
+   - 在现有 Elo 卡片（第 130-157 行）内，奖牌/Elo 显示下方增加进度条
+   - 根据 `displayMode` 选择阈值来源：
+     - `"medal"` 模式：使用 `FLAT_MEDAL_MAP`（从高到低遍历，找到第一个 `elo < threshold` 的条目作为 nextThreshold，前一个条目作为 currentThreshold）
+     - `"cf_tier"` 模式：使用 `RATING_TIERS`（同理）
+   - 进度计算：`progress = (elo - currentThreshold) / (nextThreshold - currentThreshold)`，clamp 0-1
+   - UI：窄进度条 + 文字"距离 xxx 还差 N Elo"
+   - 已达最高等级时不显示进度条，显示"已达最高等级"或隐藏
+
+2. **PP 排名显示**：
+   - 导入 `PPRankData` 类型（`@/types`）
+   - 添加 `ppRankData` state
+   - 在现有 `useEffect`（第 79-106 行）中调用 `GET /auth/pp-rank`
+   - PP 卡片（第 159-169 行）中，在 `{user.pp}` 下方添加 `<span className="text-sm font-medium text-white">#{ppRankData.rank}</span>`
+   - 未校准时（`calibrated === false`）不显示排名或显示降级提示
+
+#### 调用方清单
+- `GET /auth/pp-rank`（auth.py）— 仪表盘新增调用（已在 ProfilePage 使用）
+- `GET /medal/overall`（medal.py）— 已在仪表盘使用，无需改动
+
+#### 反向集成清单
+- 无横切特性影响：纯展示层增强
+
+#### 测试要点
+- [ ] Elo 卡片下方显示进度条，宽度反映当前 Elo 到下一等级的进度
+- [ ] 进度条旁显示"距离 xxx 还差 N Elo"文字
+- [ ] medal 模式和 cf_tier 模式都正确计算进度
+- [ ] 已达最高等级时不显示进度条
+- [ ] PP 卡片显示白色 `#xxx` 排名
+- [ ] 未校准时排名显示合理
+- [ ] API 请求失败时页面不崩溃
+
+---
+
+### Task 46.2: 专题训练 session 阶段布局改为左右双栏
+**状态**: 🟢 已完成
+**优先级**: P1
+**依赖**: 无
+
+#### Bug 描述
+专题训练中点击"开始训练"后，页面从推荐做题的左右双栏布局退化为单栏列表布局（题目列表 + ProblemViewer 堆叠在底部），与所有其他做题页面不一致。
+
+#### 根因分析
+`TrainingDetailPage.tsx:583-729` 的 `phase === "session"` 分支使用了完全独立的 `mx-auto max-w-4xl space-y-5` 单栏布局。对比：
+- `phase === "topic" + detailMode === "recommend"`：`grid gap-5 lg:grid-cols-[1fr_320px]` 左右双栏
+- `FreePlaySessionPage.tsx:488-596`：`flex flex-col gap-4 lg:flex-row lg:gap-6` 左右双栏
+- `ChallengePage.tsx:600-738`：`flex flex-col gap-4 lg:flex-row lg:gap-6` 左右双栏
+- `PvEChallengePage.tsx:196-278`：`flex flex-col gap-4 lg:flex-row lg:gap-6` 左右双栏
+
+#### 需要修改的文件
+- `frontend/src/pages/TrainingDetailPage.tsx` — session phase 渲染逻辑（第 583-729 行）
+
+#### 关键实现细节
+1. **布局结构改为左右双栏**（参考 FreePlaySessionPage）：
+   ```
+   flex flex-col gap-4 lg:flex-row lg:gap-6
+     左侧 flex-1 min-w-0：ProblemViewer（选中题目的题面）
+     右侧 w-full shrink-0 lg:w-72：信息面板
+   ```
+
+2. **左侧**：选中的题目 ProblemViewer（占主要区域）
+   - 默认选中第一道未解决的题目
+   - 无选中题目时显示提示
+
+3. **右侧信息面板** 包含（从上到下）：
+   - 计时器 + 控制按钮（放弃训练）
+   - 统计卡片（已解决/总数/连胜）— 当前 3 列 grid 改为紧凑纵向布局
+   - 题目选择器（精简版列表，显示题号+状态+rating，点击切换左侧 ProblemViewer）— 替代当前的全宽列表
+   - 错误提示
+
+4. **题目选择器**设计：
+   - 每行：状态图标 + 题号 + rating（小号）
+   - 选中行高亮
+   - 已解决显示绿色 CheckCircle2，未解决显示 Circle
+   - 与 recommend 模式的列表项样式保持一致
+
+#### 调用方清单
+- 无外部调用方变更，纯 UI 重构
+
+#### 反向集成清单
+- 无横切特性影响：纯布局变更
+
+#### 测试要点
+- [ ] 点击"开始训练"后页面为左右双栏布局（左题面右信息）
+- [ ] 右侧面板包含计时器、统计、题目选择器、放弃按钮
+- [ ] 点击题目选择器中的题目，左侧 ProblemViewer 切换显示
+- [ ] 已解决题目显示绿色图标，未解决显示灰色
+- [ ] 连胜效果和代币动画正常显示
+- [ ] 手机端自动切换为上下堆叠（响应式）
+- [ ] 放弃训练功能正常
+- [ ] 训练完成后正常显示结果页面
