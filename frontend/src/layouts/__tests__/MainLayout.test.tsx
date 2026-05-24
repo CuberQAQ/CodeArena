@@ -36,6 +36,10 @@ vi.mock("@/components/medal/MedalBadge", () => ({
   ),
 }));
 
+vi.mock("@/components/InstallBanner", () => ({
+  InstallBanner: () => null,
+}));
+
 vi.mock("@/utils", () => ({
   getRatingColor: (elo: number) => {
     if (elo >= 2400) return "#FF0000";

@@ -24,6 +24,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MedalBadge } from "@/components/medal/MedalBadge";
 import { AnalogClock } from "@/components/AnalogClock";
+import { InstallBanner } from "@/components/InstallBanner";
 import { getRatingColor, ratingToMedal } from "@/utils";
 
 // ---------------------------------------------------------------------------
@@ -312,6 +313,9 @@ export function MainLayout() {
       />
 
       <div className="flex flex-1 flex-col">
+        {/* PWA install banner */}
+        <InstallBanner />
+
         {/* Top bar */}
         <header className="flex h-14 items-center gap-4 border-b border-border bg-card px-4 lg:px-6">
           {/* Mobile: hamburger + brand */}

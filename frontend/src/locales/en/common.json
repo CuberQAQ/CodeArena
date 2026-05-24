@@ -70,5 +70,11 @@
     "light": "Light",
     "dark": "Dark",
     "system": "System"
+  },
+  "installBanner": {
+    "title": "Install Code Arena",
+    "description": "Install Code Arena to your desktop for a better experience",
+    "install": "Install",
+    "dismiss": "Not now"
   }
 }

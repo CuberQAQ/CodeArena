@@ -70,5 +70,11 @@
     "light": "浅色",
     "dark": "深色",
     "system": "跟随系统"
+  },
+  "installBanner": {
+    "title": "安装 Code Arena",
+    "description": "将 Code Arena 安装到桌面，获得更好的体验",
+    "install": "安装",
+    "dismiss": "暂不"
   }
 }
