@@ -75,15 +75,16 @@ async def login(
     body: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Authenticate with email and password, return JWT token pair."""
+    """Authenticate with email and password, return JWT token pair with login_time."""
     user = await auth_service.authenticate_user(
         db=db,
         email=body.email,
         password=body.password,
     )
     tokens = auth_service.generate_token_pair(user)
+    login_data = auth_service.build_login_response(user, tokens)
     return success_response(
-        data=TokenResponse(**tokens).model_dump(),
+        data=login_data,
         message="Login successful",
     )
 

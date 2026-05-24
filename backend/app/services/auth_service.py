@@ -82,6 +82,24 @@ async def authenticate_user(
     return user
 
 
+def build_login_response(user: User, tokens: dict) -> dict:
+    """Build the full login response dict including tokens and login_time.
+
+    Args:
+        user: The authenticated user.
+        tokens: Dict from generate_token_pair with access_token and refresh_token.
+
+    Returns:
+        Dict suitable for API response data.
+    """
+    return {
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "token_type": "bearer",
+        "login_time": datetime.now(UTC).isoformat(),
+    }
+
+
 def generate_token_pair(user: User) -> dict:
     """Return a dict with access_token and refresh_token for the given user."""
     return {

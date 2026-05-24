@@ -27,6 +27,7 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.training import (
     MEloListResponse,
+    SkipProblemRequest,
     StartTrainingRequest,
     SubmitTrainingProblemRequest,
     UserTagEloInfo,
@@ -257,6 +258,30 @@ async def abandon_training(
     return success_response(
         data=result.model_dump(mode="json"),
         message="Training session abandoned",
+    )
+
+
+@router.post("/session/{session_id}/skip-problem")
+async def skip_problem(
+    session_id: UUID,
+    body: SkipProblemRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Skip a problem in an active training session.
+
+    Within the protection period (first 300s): no penalty.
+    After protection period: deducts 5 M-Elo from the topic's tag.
+    """
+    result = await TrainingService.skip_problem(
+        db=db,
+        user=current_user,
+        session_id=session_id,
+        problem_id=body.problem_id,
+    )
+    return success_response(
+        data=result.model_dump(mode="json"),
+        message="Problem skipped",
     )
 
 
