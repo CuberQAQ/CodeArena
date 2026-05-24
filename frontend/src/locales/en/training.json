@@ -110,7 +110,7 @@
   },
   "eloProgress": {
     "meloLabel": "M-Elo",
-    "untilNext": "{{amount}} Elo to next medal",
+    "untilNext": "{{amount}} Elo to next rank",
     "maxTier": "Max tier reached"
   }
 }

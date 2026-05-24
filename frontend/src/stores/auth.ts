@@ -90,8 +90,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     try {
       const res = await api.get<ApiResponse<UserInfo>>("/auth/me");
-      // Restore loginTime from localStorage (survives page refresh)
-      const storedLoginTime = localStorage.getItem("login_time");
+      // Restore loginTime from localStorage (survives page refresh).
+      // Fallback to current time if missing (e.g. session created before timer feature).
+      const storedLoginTime = localStorage.getItem("login_time") || new Date().toISOString();
+      if (!localStorage.getItem("login_time")) {
+        localStorage.setItem("login_time", storedLoginTime);
+      }
       set({ user: res.data.data, isAuthenticated: true, isLoading: false, loginTime: storedLoginTime });
     } catch (err: unknown) {
       // Only clear tokens on 401 (auth failure). 429/5xx are transient —

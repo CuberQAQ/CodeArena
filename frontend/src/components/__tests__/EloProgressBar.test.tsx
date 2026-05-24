@@ -151,7 +151,7 @@ describe("EloProgressBar", () => {
     expect(screen.getByText("eloProgressMax")).toBeInTheDocument();
   });
 
-  it("shows medal labels when next threshold matches a medal", () => {
+  it("shows only numeric boundary labels (no medal name)", () => {
     server.use(
       http.get("*/api/v1/time-factor-prediction", async () => {
         await new Promise(() => {});
@@ -166,8 +166,10 @@ describe("EloProgressBar", () => {
       />,
     );
 
-    // 1400 maps to provincial silver
-    expect(screen.getByText("medal:types.silver medal:levels.provincial")).toBeInTheDocument();
+    // Should show numeric endpoints, not medal names
+    expect(screen.getByText("1200")).toBeInTheDocument();
+    expect(screen.getByText("1400")).toBeInTheDocument();
+    expect(screen.queryByText(/medal:/)).not.toBeInTheDocument();
   });
 
   // ---- Edge cases: no medal (below 1200) ----
@@ -652,9 +654,9 @@ describe("EloProgressBar", () => {
     expect(baseBar).toBeTruthy();
   });
 
-  // ---- Trending icons in prediction badge ----
+  // ---- Prediction text display ----
 
-  it("shows trending up icon for positive prediction", async () => {
+  it("shows positive prediction as green text", async () => {
     server.use(
       http.get("*/api/v1/time-factor-prediction", () =>
         HttpResponse.json({
@@ -679,13 +681,12 @@ describe("EloProgressBar", () => {
       expect(screen.getByText("+12")).toBeInTheDocument();
     });
 
-    // The badge should have green background class
-    const badge = screen.getByText("+12").closest("div");
-    expect(badge?.className).toContain("bg-green-500/10");
-    expect(badge?.className).toContain("text-green-400");
+    // The span should have green text class
+    const el = screen.getByText("+12");
+    expect(el.className).toContain("text-green-400");
   });
 
-  it("shows trending down icon for negative prediction", async () => {
+  it("shows negative prediction as red text", async () => {
     server.use(
       http.get("*/api/v1/time-factor-prediction", () =>
         HttpResponse.json({
@@ -710,9 +711,8 @@ describe("EloProgressBar", () => {
       expect(screen.getByText("-5")).toBeInTheDocument();
     });
 
-    // The badge should have red background class
-    const badge = screen.getByText("-5").closest("div");
-    expect(badge?.className).toContain("bg-red-500/10");
-    expect(badge?.className).toContain("text-red-400");
+    // The span should have red text class
+    const el = screen.getByText("-5");
+    expect(el.className).toContain("text-red-400");
   });
 });

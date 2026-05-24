@@ -61,7 +61,6 @@ function useOnlineTime(loginTime: string | null): string {
   const [elapsed, setElapsed] = useState(calcElapsed);
 
   useEffect(() => {
-    setElapsed(calcElapsed());
     const id = setInterval(() => setElapsed(calcElapsed()), 1000);
     return () => clearInterval(id);
   }, [calcElapsed]);
@@ -326,11 +325,8 @@ export function MainLayout() {
             {t("nav:brand")}
           </Link>
 
-          {/* Desktop: spacer to push player info center-right */}
-          <div className="hidden lg:block" />
-
           {/* Player info bar */}
-          <div className="ml-auto lg:ml-0">
+          <div className="ml-auto">
             <PlayerInfoBar />
           </div>
 
