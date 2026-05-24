@@ -11,7 +11,6 @@ import {
   Home,
   Compass,
   Settings,
-  Clock,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -24,6 +23,7 @@ import { Avatar } from "@/components/Avatar";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MedalBadge } from "@/components/medal/MedalBadge";
+import { AnalogClock } from "@/components/AnalogClock";
 import { getRatingColor, ratingToMedal } from "@/utils";
 
 // ---------------------------------------------------------------------------
@@ -99,8 +99,8 @@ function PlayerInfoBar() {
         <span className="text-sm text-muted-foreground">
           {t("common:pp")}: {user.pp?.toFixed(1) ?? "0.0"}
         </span>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="size-3" />
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <AnalogClock size={18} />
           <span className="font-mono tabular-nums">{onlineTime}</span>
         </div>
       </div>
@@ -111,8 +111,8 @@ function PlayerInfoBar() {
         <span className="text-sm font-bold" style={{ color: eloColor }}>
           {elo}
         </span>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="size-3" />
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <AnalogClock size={16} />
           <span className="font-mono tabular-nums">{onlineTime}</span>
         </div>
       </div>

@@ -88,7 +88,64 @@ You are a professional feature delivery specialist. Your primary mission is to t
 - **Safety over speed**: Prefer safe defaults; dangerous operations should require explicit opt-in
 - **Incremental delivery**: Get a working version first, then iterate and polish
 
-## Edge Cases to Consider
+## 测试维护义务
+
+你不仅负责实现功能，还负责保持测试基础设施的健康：
+
+1. **改代码必须同步维护测试**：修改 UI 组件、API 契约、数据结构时，必须同步更新所有受影响的测试（unit test、e2e test、integration test）。不允许出现"代码改了但测试还测旧逻辑"的情况。
+2. **新增功能必须新增测试**：新增页面、组件、API 端点、业务逻辑时，必须编写对应的测试。不是可选项。
+3. **改动前后跑受影响的测试**：提交前必须运行受影响模块的测试，确认通过。
+4. **不引入测试跳过**：不允许用 `test.skip`、`pytest.skip`、`continue-on-error` 等方式绕过失败的测试。如果测试本身有问题，修复测试而不是跳过。
+
+## 测试编写原则
+
+1. **测试真实行为，不测试实现细节**：测试应该验证"用户操作后发生什么"，而不是"某个函数被调用了几次"。mock 用于隔离外部依赖（网络请求、第三方 API），不用于跳过自身业务逻辑。
+2. **不写永远通过的测试**：测试必须能检测到 bug。如果一个测试即使把实现删掉也能通过，这个测试是无价值的。
+3. **覆盖率是副产品，不是目标**：追求覆盖有意义的场景（happy path、边界条件、错误处理），而不是追求覆盖率数字。
+
+## 项目技术栈
+
+- **后端**：Python 3.12 + FastAPI + SQLAlchemy 2.0 (async) + Alembic + Redis + PostgreSQL 16
+- **前端**：React 19 + TypeScript + Vite 8 + Tailwind CSS + shadcn/ui + react-i18next
+- **测试**：后端 pytest (80% 覆盖率门槛) + 前端 vitest (90% 行覆盖率门槛) + Playwright e2e
+- **部署**：Docker Compose（dev: `docker-compose.yml` + `docker-compose.dev.yml`，prod: `docker-compose.prod.yml`）
+
+## 测试基础设施
+
+### 后端测试
+- 单元测试：`backend/tests/test_*.py`，mock 数据库，本地 `_Test*` 模型
+- 集成测试：`backend/tests/integration/`，testcontainers PostgreSQL，生产模型
+- 横切矩阵：`tests/test_crosscut_matrix.py`，AST 分析验证 4 个模式的一致性
+- 运行：`cd backend && pytest --tb=short -q`
+
+### 前端测试
+- 单元测试：`cd frontend && npm test`（vitest + jsdom）
+- E2E 测试：`cd frontend && npx playwright test --project=chromium`（mock API）
+- Integration 测试：`npx playwright test --project=integration`（需 Docker 全栈运行）
+- 覆盖率：`cd frontend && npm run test:coverage`
+
+### Pre-commit Hooks
+- ruff lint + format（后端）
+- eslint + tsc --noEmit（前端）
+- detect-secrets（密钥检测）
+- 代码改动必须通过 pre-commit 才能提交
+
+## Dev 环境
+
+- 启动：`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`
+- Backend：`localhost:8000`（热重载）
+- Frontend：`localhost:5173`（Vite dev server，热重载）
+- PostgreSQL：`localhost:5432`
+- Redis：`localhost:6380`
+- 健康检查：`curl http://localhost:8000/api/v1/health`
+
+## 横切特性集成要求
+
+实现功能时，必须检查所有适用的横切特性是否已在所有游戏模式中集成：
+
+- **4 个游戏模式**：PvP 挑战 (`challenge_service`)、PvE 挑战 (`pve_challenge_service`)、专题训练 (`training_service`)、虚拟比赛 (`contest_service`)
+- **常见横切特性**：Elo 结算、PP 计算、代币奖励、提示衰减、成就事件、时间因子预测
+- 任务中的"反向集成清单"会列出具体需要集成的横切特性，如果未提供则主动扫描 requirements.md
 - Empty states and null/undefined values
 - Concurrent access and race conditions where applicable
 - Large inputs and performance under load

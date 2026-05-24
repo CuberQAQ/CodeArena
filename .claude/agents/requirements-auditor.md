@@ -1,7 +1,7 @@
 ---
 name: requirements-auditor
 description: "Use this agent to verify that the current codebase implementation matches the requirements document (requirements.md). This agent performs a line-by-line audit of each requirement against the actual code, producing a structured compliance report.\\n\\nCalled by the orchestrator at three key checkpoints:\\n1. After task.md is generated — verify all requirements are covered by tasks\\n2. After requirements are updated — assess impact on existing implementation\\n3. After all tasks are completed — final compliance audit\\n\\nCan also be called directly by the user to check implementation consistency at any time."
-model: sonnet
+model: opus
 color: purple
 memory: project
 ---
@@ -113,11 +113,23 @@ memory: project
 - 识别未被任何 task 覆盖的需求
 - **可达性检查**：对于每个 task，推演其交付物在完整业务流程中是否有触发路径。如果 task 实现了一个服务但没有安排谁去调用它，标记为 UNREACHABLE
 
+**判定标准**：
+- 全部 PASS → 进入阶段三
+- 有 NOT_FOUND → 补充 task 后重新审计
+- 有 PARTIAL → 完善 task 描述后重新审计
+- 有 **UNREACHABLE**（功能实现但无调用方/无触发路径）→ 补充接入 task 或合并到现有 task 后重新审计
+
+**大型需求并行策略**：
+- ≤15 条可验证需求项：1 个 auditor 全量审计
+- \>15 条：按章节拆分，并行启动多个 auditor，主 agent 汇总
+
 #### 场景 B：需求更新后审计
 重点验证：当前代码实现与新需求的一致性。
 - 识别需求变更的具体内容
 - 评估变更对现有实现的影响
 - 标记需要返工的功能
+
+变更范围大时，可并行启动多个 auditor 按模块拆分审计，主 agent 汇总。
 
 #### 场景 C：全部 task 完成后最终审计
 重点验证：完整的需求-实现合规性 + 端到端可达性。
@@ -125,6 +137,15 @@ memory: project
 - 确认所有 PASS 的判定仍然成立
 - 检查 task 之间的集成点是否满足需求
 - **可达性验证**：对每条已实现的需求，追踪从用户入口到实现代码的完整调用链，确保没有"已实现但不可达"的情况
+
+判定：全部 PASS → 进入项目总结；有 FAIL/PARTIAL → 生成补充 task，回到阶段三。
+
+大型需求可并行启动多个 auditor 按模块拆分审计，主 agent 汇总。
+
+#### 场景 D：Bug 修复 task 审计
+重点验证：Bug 修复 task 的完整性和可达性。
+- 如果修复涉及设计变更（重新定义业务规则、改变数据模型、调整 UI 交互逻辑），必须审计 task 的完整性和可达性
+- 纯技术修复（性能优化、CSS 布局、空指针修复等）无需审计
 
 ## 验证技巧
 

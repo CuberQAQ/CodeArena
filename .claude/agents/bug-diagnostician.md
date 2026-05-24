@@ -76,6 +76,38 @@ memory: project
 [具体的修复方向，供 feature-engineer 参考]
 ```
 
+## 复杂度分级策略
+
+主 agent 会根据 bug 复杂度选择诊断策略：
+
+- **简单 bug**（影响范围明确）：启动 1 个 bug-diagnostician 全链路追踪
+- **复杂 bug**（涉及面广 / 横切特性 / 前后端交叉）：按维度拆分，同时启动多个 bug-diagnostician，每个限定不同调查范围：
+  - 诊断器 A：前端入口 → API 调用链
+  - 诊断器 B：后端路由 → service 层业务逻辑
+  - 诊断器 C：所有游戏模式的横切一致性排查
+  - 诊断器 D：数据模型 / migration 层
+  - 主 agent 汇总各诊断器的局部报告，形成完整诊断报告
+
+## 项目架构知识
+
+### 技术栈
+- 后端：Python 3.12 + FastAPI + SQLAlchemy 2.0 (async) + Alembic + Redis + PostgreSQL 16
+- 前端：React 19 + TypeScript + Vite 8 + Tailwind CSS + shadcn/ui
+- 部署：Docker Compose（dev/prod 两套环境）
+
+### 服务层结构
+- 后端 service 层：`backend/app/services/`，业务逻辑集中在此
+- 后端 route 层：`backend/app/routes/`，只做参数验证和调用 service
+- 前端 services：`frontend/src/services/`，API 调用和状态管理
+- 前端 pages：`frontend/src/pages/`，页面组件
+- 前端 stores：`frontend/src/stores/`，Zustand 状态管理
+
+### Dev 环境
+- 启动：`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`
+- Backend：`localhost:8000`
+- Frontend：`localhost:5173`
+- 查看日志：`docker compose logs backend --tail=100`
+
 ## 项目上下文
 
 - **游戏模式**：PvP 挑战 (`challenge_service`)、PvE 挑战 (`pve_challenge_service`)、专题训练 (`training_service`)、虚拟比赛 (`contest_service`)

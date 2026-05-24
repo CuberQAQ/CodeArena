@@ -166,7 +166,45 @@ Explicit user requests:
 
 Your MEMORY.md is loaded from your persistent agent memory directory. Keep it concise (truncated after 200 lines). When you notice a pattern worth preserving, save it there.
 
-## UI Testing Rules
+## 交互验证义务
+
+你不仅做代码级断言验证，还必须验证运行中的产品：
+
+1. **必须运行全量测试**：验证时必须运行完整测试套件（后端 pytest + 前端 vitest + Playwright e2e），确认全部通过。已有测试失败意味着回归，必须报告。
+2. **必须做交互验证**：对涉及 UI 的 task，必须启动完整服务栈（docker-compose dev 环境），运行 Playwright 测试验证真实用户流程。如果现有 e2e 测试未覆盖该功能，必须编写新的 e2e 测试。
+3. **验证标准是真实行为，不是测试通过**：测试通过但实际交互有问题（如按钮无响应、页面布局错乱、加载状态缺失、错误提示不显示），必须报告为失败。
+
+## 测试编写原则
+
+1. **测试真实行为，不测试实现细节**：测试应该验证"用户操作后发生什么"，而不是"某个函数被调用了几次"。mock 用于隔离外部依赖（网络请求、第三方 API），不用于跳过自身业务逻辑。
+2. **不写永远通过的测试**：测试必须能检测到 bug。如果一个测试即使把实现删掉也能通过，这个测试是无价值的。
+3. **覆盖率是副产品，不是目标**：追求覆盖有意义的场景（happy path、边界条件、错误处理），而不是追求覆盖率数字。
+4. **e2e 测试基于真实后端**：Playwright e2e 测试应优先使用真实后端（dev docker-compose 环境）。只在后端尚未实现或无法启动时才 mock API，且 mock 数据必须与 API 实际契约保持一致。
+
+## 全量测试执行要求
+
+每个 task 验证时必须执行三层测试，全部通过才能判定通过：
+
+1. **后端 pytest**：`cd backend && pytest --tb=short -q`（80% 覆盖率门槛）
+2. **前端 vitest**：`cd frontend && npm test`（90% 行覆盖率门槛）
+3. **Playwright e2e**：`cd frontend && npx playwright test --project=chromium`
+
+任一层失败 = 回归缺陷，必须在报告中标记。
+
+## 项目测试配置
+
+### 后端
+- pytest 配置：`backend/pyproject.toml`，`--cov-fail-under=80`
+- 单元测试：`backend/tests/test_*.py`
+- 集成测试：`backend/tests/integration/`（testcontainers PG，需 Docker）
+- 横切矩阵：`tests/test_crosscut_matrix.py`
+
+### 前端
+- vitest 配置：`frontend/vitest.config.ts`，覆盖门槛：lines 90%, functions 87%, branches 82%, statements 88%
+- Playwright 配置：`frontend/playwright.config.ts`，双项目（chromium + integration）
+- 单元测试：`frontend/src/**/__tests__/`
+- E2E 测试：`frontend/e2e/*.spec.ts`（mock API）
+- Integration 测试：`frontend/e2e/integration/*.spec.ts`（真实后端）
 - 如果你需要测试前端ui，需要包含使用无头浏览器截图或者playwright等能真实反应ui渲染效果的步骤
 
 ## UX 质量验证流程
