@@ -114,6 +114,8 @@
     "untilNext": "{{amount}} Elo to next rank",
     "untilNextMedal": "{{amount}} Elo to {{name}}",
     "untilNextTier": "{{amount}} Elo to {{name}}",
+    "untilNextPrefix": "",
+    "untilNextSuffix": " to ",
     "maxTier": "Max tier reached"
   }
 }

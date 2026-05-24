@@ -37,7 +37,7 @@ export interface SolvingTimelineProps {
 
 const VB_WIDTH = 220;
 const VB_HEIGHT = 100;
-const PADDING_LEFT = 4;
+const PADDING_LEFT = 22;
 const PADDING_RIGHT = 4;
 const PADDING_TOP = 8;
 const PADDING_BOTTOM = 18;
@@ -409,10 +409,10 @@ export function SolvingTimeline({
           for (let i = 0; i < points.length; i += step) {
             labels.push({ x: mapX(points[i].minutes), text: `${points[i].minutes}m` });
           }
-          // Always include last point
-          const lastX = mapX(points[points.length - 1].minutes);
+          const lastPt = points[points.length - 1];
+          const lastX = mapX(lastPt.minutes);
           if (labels[labels.length - 1].x !== lastX) {
-            labels.push({ x: lastX, text: `${points[points.length - 1].minutes}m` });
+            labels.push({ x: lastX, text: `${lastPt.minutes}m` });
           }
           return labels.map((l, i) => (
             <text
@@ -429,6 +429,108 @@ export function SolvingTimeline({
             </text>
           ));
         })()}
+
+        {/* Y-axis Elo change labels */}
+        {(() => {
+          const yLabels: Array<{ y: number; text: string }> = [];
+          // Max label
+          if (maxElo > 0) {
+            yLabels.push({ y: mapY(maxElo), text: `+${Math.round(maxElo)}` });
+          }
+          // Zero label
+          yLabels.push({ y: zeroY, text: "0" });
+          // Min label
+          if (minElo < 0) {
+            yLabels.push({ y: mapY(minElo), text: `${Math.round(minElo)}` });
+          }
+          return yLabels.map((l, i) => (
+            <text
+              key={`ylabel-${i}`}
+              x={(PADDING_LEFT - 2).toFixed(1)}
+              y={(l.y + 2.5).toFixed(1)}
+              textAnchor="end"
+              fill="currentColor"
+              opacity="0.35"
+              fontSize="6"
+              fontFamily="monospace"
+            >
+              {l.text}
+            </text>
+          ));
+        })()}
+
+        {/* Badge: expected time Elo change */}
+        {(() => {
+          const eloAtExpected = expectedPoint.elo_change_estimate;
+          const badgeX = Math.min(expectedX + 6, VB_WIDTH - PADDING_RIGHT - 20);
+          const badgeY = Math.max(expectedY - 4, PADDING_TOP + 6);
+          return (
+            <g>
+              <rect
+                x={badgeX.toFixed(1)}
+                y={(badgeY - 5).toFixed(1)}
+                width="22"
+                height="10"
+                rx="2"
+                fill="var(--color-primary, currentColor)"
+                opacity="0.15"
+              />
+              <text
+                x={(badgeX + 11).toFixed(1)}
+                y={(badgeY + 1).toFixed(1)}
+                textAnchor="middle"
+                fill="var(--color-primary, currentColor)"
+                fontSize="6"
+                fontFamily="monospace"
+                fontWeight="600"
+              >
+                {eloAtExpected >= 0 ? "+" : ""}{Math.round(eloAtExpected)}
+              </text>
+            </g>
+          );
+        })()}
+
+        {/* Badge: current time Elo change */}
+        {currentX !== null && (() => {
+          // Interpolate Elo at currentMinutes
+          const eloAtCurrent = (() => {
+            for (let i = 0; i < points.length - 1; i++) {
+              if (currentMinutes >= points[i].minutes && currentMinutes <= points[i + 1].minutes) {
+                const t = (currentMinutes - points[i].minutes) / (points[i + 1].minutes - points[i].minutes);
+                return points[i].elo_change_estimate + t * (points[i + 1].elo_change_estimate - points[i].elo_change_estimate);
+              }
+            }
+            return null;
+          })();
+          if (eloAtCurrent === null) return null;
+          const currentY = mapY(eloAtCurrent);
+          const badgeX = Math.max(currentX - 28, PADDING_LEFT);
+          const badgeY = Math.max(currentY - 4, PADDING_TOP + 6);
+          return (
+            <g>
+              <rect
+                x={badgeX.toFixed(1)}
+                y={(badgeY - 5).toFixed(1)}
+                width="22"
+                height="10"
+                rx="2"
+                fill="currentColor"
+                opacity="0.1"
+              />
+              <text
+                x={(badgeX + 11).toFixed(1)}
+                y={(badgeY + 1).toFixed(1)}
+                textAnchor="middle"
+                fill="currentColor"
+                fontSize="6"
+                fontFamily="monospace"
+                fontWeight="600"
+              >
+                {eloAtCurrent >= 0 ? "+" : ""}{Math.round(eloAtCurrent)}
+              </text>
+            </g>
+          );
+        })()}
       </svg>
 
       {/* Legend */}
@@ -440,6 +542,7 @@ export function SolvingTimeline({
         {currentX !== null && (
           <span className="flex items-center gap-1">
             <svg width="8" height="8" viewBox="0 0 8 8"><line x1="4" y1="0" x2="4" y2="8" stroke="currentColor" strokeWidth="1.5" /></svg>
+            {t("timeline.now")}
           </span>
         )}
       </div>

@@ -114,6 +114,8 @@
     "untilNext": "距下一等级还差 {{amount}} Elo",
     "untilNextMedal": "距{{name}}还差 {{amount}} Elo",
     "untilNextTier": "距{{name}}还差 {{amount}} Elo",
+    "untilNextPrefix": "距",
+    "untilNextSuffix": "还差 ",
     "maxTier": "已达最高段位"
   }
 }

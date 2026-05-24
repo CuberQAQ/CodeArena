@@ -162,7 +162,7 @@ describe("EloProgressBar", () => {
       }),
     );
 
-    render(
+    const { container } = render(
       <EloProgressBar
         melo={1500}
         currentMedalThreshold={1200}
@@ -170,10 +170,14 @@ describe("EloProgressBar", () => {
       />,
     );
 
-    // Distance = 1600 - 1500 = 100, and should include the medal name
+    // Distance = 1600 - 1500 = 100, and should include the rank name
     expect(
-      screen.getByText(/eloProgress.untilNextMedal.*100/),
+      screen.getByText(/100 Elo/),
     ).toBeInTheDocument();
+    // Should include prefix text somewhere in the card
+    expect(
+      container.textContent,
+    ).toContain("eloProgress.untilNextPrefix");
   });
 
   it("shows distance with medal name for Bronze Provincial threshold", () => {
@@ -192,7 +196,7 @@ describe("EloProgressBar", () => {
     );
 
     expect(
-      screen.getByText(/eloProgress.untilNextMedal.*100/),
+      screen.getByText(/100 Elo/),
     ).toBeInTheDocument();
   });
 
@@ -889,14 +893,14 @@ describe("EloProgressBar", () => {
 
   // ---- Display mode and rank name ----
 
-  it("uses untilNextMedal key in medal mode (default)", () => {
+  it("uses medal rank name in medal mode (default)", () => {
     server.use(
       http.get("*/api/v1/time-factor-prediction", async () => {
         await new Promise(() => {});
       }),
     );
 
-    render(
+    const { container } = render(
       <EloProgressBar
         melo={1300}
         currentMedalThreshold={1200}
@@ -904,11 +908,11 @@ describe("EloProgressBar", () => {
       />,
     );
 
-    expect(screen.getByText(/eloProgress.untilNextMedal/)).toBeInTheDocument();
+    expect(screen.getByText(/100 Elo/)).toBeInTheDocument();
+    expect(container.textContent).toContain("eloProgress.untilNextPrefix");
   });
 
-  it("uses untilNextTier key in cf_tier mode", async () => {
-    // Override the api mock for this test to return cf_tier
+  it("uses cf_tier rank name in cf_tier mode", async () => {
     const { default: api } = await import("@/services/api");
     vi.mocked(api.get).mockResolvedValueOnce({
       data: { success: true, data: { display_mode: "cf_tier" } },
@@ -929,7 +933,7 @@ describe("EloProgressBar", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/eloProgress.untilNextTier/)).toBeInTheDocument();
+      expect(screen.getByText(/100 Elo/)).toBeInTheDocument();
     });
   });
 
@@ -943,7 +947,7 @@ describe("EloProgressBar", () => {
       }),
     );
 
-    render(
+    const { container } = render(
       <EloProgressBar
         melo={1300}
         currentMedalThreshold={1200}
@@ -953,7 +957,8 @@ describe("EloProgressBar", () => {
 
     // Should still render, falling back to medal mode
     await waitFor(() => {
-      expect(screen.getByText(/eloProgress.untilNextMedal/)).toBeInTheDocument();
+      expect(screen.getByText(/100 Elo/)).toBeInTheDocument();
+      expect(container.textContent).toContain("eloProgress.untilNextPrefix");
     });
   });
 

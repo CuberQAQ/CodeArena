@@ -194,30 +194,35 @@ export function EloProgressBar({
           )}
         </div>
 
-        {/* Labels below the bar -- only left and right numeric endpoints */}
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-          <span>{progressMin}</span>
+        {/* Labels below the bar -- left and right endpoints with rating color */}
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="font-mono font-semibold" style={{ color: getRatingColor(progressMin) }}>
+            {progressMin}
+          </span>
           {isMaxTier && (
             <span className="font-medium text-foreground">
               {t("eloProgressMax")}
             </span>
           )}
-          {progressMax !== null && <span>{progressMax}</span>}
+          {progressMax !== null && (
+            <span className="font-mono font-semibold" style={{ color: getRatingColor(progressMax) }}>
+              {progressMax}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Distance to next rank with specific name */}
       {!isMaxTier && distanceToNext !== null && (
-        <p className="text-[11px] text-muted-foreground">
-          {t(
-            displayMode === "medal"
-              ? "eloProgress.untilNextMedal"
-              : "eloProgress.untilNextTier",
-            {
-              name: getNextRankName(nextMedalThreshold!, t, displayMode),
-              amount: Math.ceil(distanceToNext),
-            },
-          )}
+        <p className="text-center text-[11px] text-muted-foreground">
+          {t("eloProgress.untilNextPrefix")}
+          <span className="font-semibold" style={{ color: getRatingColor(nextMedalThreshold!) }}>
+            {getNextRankName(nextMedalThreshold!, t, displayMode)}
+          </span>
+          {t("eloProgress.untilNextSuffix")}
+          <span className="font-bold text-foreground">
+            {Math.ceil(distanceToNext)} Elo
+          </span>
         </p>
       )}
     </div>

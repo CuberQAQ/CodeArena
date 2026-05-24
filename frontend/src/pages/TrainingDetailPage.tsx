@@ -200,9 +200,9 @@ export default function TrainingDetailPage() {
     const melo = topic.melo ?? 1200;
     const sliderMin = Math.max(800, melo - 200);
     const sliderMax = melo + 400;
-    // Snap to step of 50
-    const snappedMin = Math.round(sliderMin / 50) * 50;
-    const snappedMax = Math.round(sliderMax / 50) * 50;
+    // Snap to step of 100
+    const snappedMin = Math.round(sliderMin / 100) * 100;
+    const snappedMax = Math.round(sliderMax / 100) * 100;
     setSliderRange([snappedMin, snappedMax]);
     // Also initialize filter values to match full range
     setFilterMinRating(String(snappedMin));
@@ -806,7 +806,7 @@ export default function TrainingDetailPage() {
                       }}
                       min={Math.max(800, (topic?.melo ?? 1200) - 200)}
                       max={(topic?.melo ?? 1200) + 400}
-                      step={50}
+                      step={100}
                       aria-label={t("training:difficultyFilter")}
                     />
                   </div>
@@ -902,7 +902,7 @@ export default function TrainingDetailPage() {
                   }}
                   min={Math.max(800, (topic?.melo ?? 1200) - 200)}
                   max={(topic?.melo ?? 1200) + 400}
-                  step={50}
+                  step={100}
                   aria-label={t("training:difficultyFilter")}
                 />
               </div>
