@@ -63,6 +63,9 @@ export function SolvingTimeline({
 }: SolvingTimelineProps) {
   const { t } = useTranslation("common");
   const [currentMinutes, setCurrentMinutes] = useState(0);
+  const [hoveredPoint, setHoveredPoint] = useState<{
+    svgX: number; svgY: number; minutes: number; elo: number;
+  } | null>(null);
   const minuteRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Shared prediction hook (deduplicated with EloProgressBar)
@@ -268,6 +271,7 @@ export function SolvingTimeline({
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={t("timeline.title")}
+        textRendering="geometricPrecision"
       >
         {/* Zero line (horizontal) */}
         <line
@@ -423,7 +427,7 @@ export function SolvingTimeline({
               fill="currentColor"
               opacity="0.4"
               fontSize="7"
-              fontFamily="monospace"
+              fontFamily="system-ui, sans-serif"
             >
               {l.text}
             </text>
@@ -452,7 +456,7 @@ export function SolvingTimeline({
               fill="currentColor"
               opacity="0.35"
               fontSize="6"
-              fontFamily="monospace"
+              fontFamily="system-ui, sans-serif"
             >
               {l.text}
             </text>
@@ -481,7 +485,7 @@ export function SolvingTimeline({
                 textAnchor="middle"
                 fill="var(--color-primary, currentColor)"
                 fontSize="6"
-                fontFamily="monospace"
+                fontFamily="system-ui, sans-serif"
                 fontWeight="600"
               >
                 {eloAtExpected >= 0 ? "+" : ""}{Math.round(eloAtExpected)}
@@ -523,7 +527,7 @@ export function SolvingTimeline({
                 textAnchor="middle"
                 fill="currentColor"
                 fontSize="6"
-                fontFamily="monospace"
+                fontFamily="system-ui, sans-serif"
                 fontWeight="600"
               >
                 {eloAtCurrent >= 0 ? "+" : ""}{Math.round(eloAtCurrent)}
@@ -531,6 +535,110 @@ export function SolvingTimeline({
             </g>
           );
         })()}
+
+        {/* Hover hit area - must be on top of other elements for events */}
+        <rect
+          x={PADDING_LEFT}
+          y={PADDING_TOP}
+          width={CHART_WIDTH}
+          height={CHART_HEIGHT}
+          fill="transparent"
+          cursor="crosshair"
+          onMouseMove={(e: React.MouseEvent<SVGRectElement>) => {
+            const svg = (e.currentTarget as SVGElement).ownerSVGElement;
+            if (!svg) return;
+            const pt = svg.createSVGPoint();
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+            const svgPt = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+            const chartX = svgPt.x - PADDING_LEFT;
+            if (chartX < 0 || chartX > CHART_WIDTH) {
+              setHoveredPoint(null);
+              return;
+            }
+            const hoveredMinutes = minMinutes + (chartX / CHART_WIDTH) * minutesRange;
+            // Interpolate Elo
+            let elo: number | null = null;
+            for (let i = 0; i < points.length - 1; i++) {
+              if (hoveredMinutes >= points[i].minutes && hoveredMinutes <= points[i + 1].minutes) {
+                const t = (hoveredMinutes - points[i].minutes) / (points[i + 1].minutes - points[i].minutes);
+                elo = points[i].elo_change_estimate + t * (points[i + 1].elo_change_estimate - points[i].elo_change_estimate);
+                break;
+              }
+            }
+            if (elo === null) {
+              setHoveredPoint(null);
+              return;
+            }
+            setHoveredPoint({
+              svgX: mapX(hoveredMinutes),
+              svgY: mapY(elo),
+              minutes: hoveredMinutes,
+              elo,
+            });
+          }}
+          onMouseLeave={() => setHoveredPoint(null)}
+        />
+
+        {/* Hover tooltip */}
+        {hoveredPoint && (
+          <g>
+            {/* Vertical reference line */}
+            <line
+              x1={hoveredPoint.svgX.toFixed(1)}
+              y1={PADDING_TOP}
+              x2={hoveredPoint.svgX.toFixed(1)}
+              y2={VB_HEIGHT - PADDING_BOTTOM}
+              stroke="currentColor"
+              strokeWidth="0.5"
+              strokeOpacity="0.3"
+              strokeDasharray="2,2"
+            />
+            {/* Dot on the curve */}
+            <circle
+              cx={hoveredPoint.svgX.toFixed(1)}
+              cy={hoveredPoint.svgY.toFixed(1)}
+              r="3"
+              fill={hoveredPoint.elo >= 0 ? GREEN_LINE : RED_LINE}
+              stroke="var(--color-background, #1a1a2e)"
+              strokeWidth="1"
+            />
+            {/* Tooltip label */}
+            {(() => {
+              const text = `${Math.round(hoveredPoint.minutes)}m | ${hoveredPoint.elo >= 0 ? "+" : ""}${Math.round(hoveredPoint.elo)}`;
+              // Position tooltip above or below the dot, clamped to viewBox
+              const tooltipY = hoveredPoint.svgY > VB_HEIGHT / 2
+                ? Math.max(PADDING_TOP + 8, hoveredPoint.svgY - 10)
+                : Math.min(VB_HEIGHT - PADDING_BOTTOM - 4, hoveredPoint.svgY + 10);
+              const tooltipX = Math.max(PADDING_LEFT + 16, Math.min(hoveredPoint.svgX, VB_WIDTH - PADDING_RIGHT - 16));
+              return (
+                <g>
+                  <rect
+                    x={(tooltipX - 15).toFixed(1)}
+                    y={(tooltipY - 6).toFixed(1)}
+                    width="30"
+                    height="12"
+                    rx="2"
+                    fill="var(--color-popover, #2a2a3e)"
+                    stroke="var(--color-border, #3a3a4e)"
+                    strokeWidth="0.5"
+                  />
+                  <text
+                    x={tooltipX.toFixed(1)}
+                    y={(tooltipY + 2).toFixed(1)}
+                    textAnchor="middle"
+                    fill="var(--color-popover-foreground, #e0e0e0)"
+                    fontSize="5.5"
+                    fontFamily="system-ui, sans-serif"
+                    fontWeight="600"
+                  >
+                    {text}
+                  </text>
+                </g>
+              );
+            })()}
+          </g>
+        )}
       </svg>
 
       {/* Legend */}

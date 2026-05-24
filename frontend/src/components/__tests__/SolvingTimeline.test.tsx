@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { _resetPendingCache } from "@/hooks/useTimeFactorPrediction";
@@ -407,5 +407,210 @@ describe("SolvingTimeline", () => {
     const svg = container.querySelector('svg[data-testid="elo-chart"]')!;
     expect(svg.getAttribute("role")).toBe("img");
     expect(svg.getAttribute("aria-label")).toBe("timeline.title");
+  });
+
+  it("renders SVG with textRendering=geometricPrecision", async () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", () =>
+        HttpResponse.json({
+          success: true,
+          data: makePredictionData(),
+          message: "ok",
+        }),
+      ),
+    );
+
+    const { container } = render(<SolvingTimeline {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(container.querySelector('svg[data-testid="elo-chart"]')).toBeInTheDocument();
+    });
+
+    const svg = container.querySelector('svg[data-testid="elo-chart"]')!;
+    // React renders textRendering as "text-rendering" attribute in DOM
+    expect(svg.getAttribute("text-rendering")).toBe("geometricPrecision");
+  });
+
+  it("uses system-ui fontFamily on all text elements", async () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", () =>
+        HttpResponse.json({
+          success: true,
+          data: makePredictionData(),
+          message: "ok",
+        }),
+      ),
+    );
+
+    const { container } = render(<SolvingTimeline {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(container.querySelector('svg[data-testid="elo-chart"]')).toBeInTheDocument();
+    });
+
+    const chartSvg = container.querySelector('svg[data-testid="elo-chart"]')!;
+    const textElements = chartSvg.querySelectorAll("text");
+    expect(textElements.length).toBeGreaterThan(0);
+
+    for (const text of Array.from(textElements)) {
+      expect(text.getAttribute("font-family")).toBe("system-ui, sans-serif");
+    }
+  });
+
+  it("renders a transparent hover hit area with crosshair cursor", async () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", () =>
+        HttpResponse.json({
+          success: true,
+          data: makePredictionData(),
+          message: "ok",
+        }),
+      ),
+    );
+
+    const { container } = render(<SolvingTimeline {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(container.querySelector('svg[data-testid="elo-chart"]')).toBeInTheDocument();
+    });
+
+    const chartSvg = container.querySelector('svg[data-testid="elo-chart"]')!;
+
+    // Find the hover hit area rect: transparent fill with crosshair cursor
+    const rects = chartSvg.querySelectorAll("rect");
+    const hitArea = Array.from(rects).find(
+      (r) => r.getAttribute("fill") === "transparent" && r.getAttribute("cursor") === "crosshair",
+    );
+    expect(hitArea).toBeInTheDocument();
+
+    // Should cover the full chart area
+    expect(hitArea!.getAttribute("x")).toBe("22"); // PADDING_LEFT
+    expect(hitArea!.getAttribute("y")).toBe("8");  // PADDING_TOP
+    expect(hitArea!.getAttribute("width")).toBe("194"); // CHART_WIDTH = 220-22-4
+    expect(hitArea!.getAttribute("height")).toBe("74"); // CHART_HEIGHT = 100-8-18
+  });
+
+  it("shows tooltip on mouse move within chart area", async () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", () =>
+        HttpResponse.json({
+          success: true,
+          data: makePredictionData(),
+          message: "ok",
+        }),
+      ),
+    );
+
+    const { container } = render(<SolvingTimeline {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(container.querySelector('svg[data-testid="elo-chart"]')).toBeInTheDocument();
+    });
+
+    const chartSvg = container.querySelector('svg[data-testid="elo-chart"]')!;
+
+    // Find the hover hit area
+    const rects = chartSvg.querySelectorAll("rect");
+    const hitArea = Array.from(rects).find(
+      (r) => r.getAttribute("fill") === "transparent" && r.getAttribute("cursor") === "crosshair",
+    )!;
+    expect(hitArea).toBeTruthy();
+
+    // Mock SVG coordinate transform APIs for jsdom
+    // The handler uses createSVGPoint + getScreenCTM to convert client coords to SVG coords
+    const mockSvgPoint = {
+      x: 0,
+      y: 0,
+      matrixTransform: vi.fn().mockReturnValue({ x: 80, y: 50 }), // SVG coord within chart
+    };
+    const mockCtm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+
+    const svgElement = hitArea.closest("svg")!;
+    svgElement.createSVGPoint = vi.fn().mockReturnValue(mockSvgPoint);
+    svgElement.getScreenCTM = vi.fn().mockReturnValue({
+      ...mockCtm,
+      inverse: vi.fn().mockReturnValue(mockCtm),
+    });
+
+    // Fire mouse move event using fireEvent to trigger React's synthetic event system
+    fireEvent.mouseMove(hitArea, { clientX: 300, clientY: 200 });
+
+    // After mouse move, tooltip elements should appear
+    // The tooltip renders a vertical dashed line, a dot (circle r=3), and a text label
+    await waitFor(() => {
+      // Look for the hover dot (r=3, which is larger than data point dots at r=1.5 or r=2.5)
+      const circles = chartSvg.querySelectorAll("circle");
+      const hoverDot = Array.from(circles).find((c) => c.getAttribute("r") === "3");
+      expect(hoverDot).toBeInTheDocument();
+    });
+
+    // Should have tooltip text with format "{minutes}m | {elo}"
+    const tooltipTexts = Array.from(chartSvg.querySelectorAll("text")).filter(
+      (t) => t.textContent?.includes("m |"),
+    );
+    expect(tooltipTexts.length).toBeGreaterThan(0);
+
+    // Should have a popover-styled rect for the tooltip background
+    const tooltipRect = Array.from(chartSvg.querySelectorAll("rect")).find(
+      (r) => r.getAttribute("fill")?.includes("popover"),
+    );
+    expect(tooltipRect).toBeInTheDocument();
+  });
+
+  it("hides tooltip on mouse leave", async () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", () =>
+        HttpResponse.json({
+          success: true,
+          data: makePredictionData(),
+          message: "ok",
+        }),
+      ),
+    );
+
+    const { container } = render(<SolvingTimeline {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(container.querySelector('svg[data-testid="elo-chart"]')).toBeInTheDocument();
+    });
+
+    const chartSvg = container.querySelector('svg[data-testid="elo-chart"]')!;
+    const rects = chartSvg.querySelectorAll("rect");
+    const hitArea = Array.from(rects).find(
+      (r) => r.getAttribute("fill") === "transparent" && r.getAttribute("cursor") === "crosshair",
+    )!;
+
+    // Mock SVG coordinate transform APIs
+    const mockSvgPoint = {
+      x: 0,
+      y: 0,
+      matrixTransform: vi.fn().mockReturnValue({ x: 80, y: 50 }),
+    };
+    const mockCtm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    const svgElement = hitArea.closest("svg")!;
+    svgElement.createSVGPoint = vi.fn().mockReturnValue(mockSvgPoint);
+    svgElement.getScreenCTM = vi.fn().mockReturnValue({
+      ...mockCtm,
+      inverse: vi.fn().mockReturnValue(mockCtm),
+    });
+
+    // First show tooltip
+    fireEvent.mouseMove(hitArea, { clientX: 300, clientY: 200 });
+
+    await waitFor(() => {
+      const circles = chartSvg.querySelectorAll("circle");
+      const hoverDot = Array.from(circles).find((c) => c.getAttribute("r") === "3");
+      expect(hoverDot).toBeInTheDocument();
+    });
+
+    // Now mouse leave
+    fireEvent.mouseLeave(hitArea);
+
+    // Tooltip should be gone: no r=3 circle should exist
+    await waitFor(() => {
+      const circles = chartSvg.querySelectorAll("circle");
+      const hoverDots = Array.from(circles).filter((c) => c.getAttribute("r") === "3");
+      expect(hoverDots).toHaveLength(0);
+    });
   });
 });
