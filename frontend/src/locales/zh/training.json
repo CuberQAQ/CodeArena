@@ -103,5 +103,14 @@
     "confirm": "确认切换"
   },
   "autoStartFailed": "自动开始训练失败，请稍后重试",
-  "skipProblemFailed": "切换题目失败"
+  "skipProblemFailed": "切换题目失败",
+  "difficultySlider": {
+    "range": "{{min}} - {{max}}",
+    "hint": "拖动滑块筛选难度范围"
+  },
+  "eloProgress": {
+    "meloLabel": "M-Elo",
+    "untilNext": "距下一奖牌还差 {{amount}} Elo",
+    "maxTier": "已达最高段位"
+  }
 }

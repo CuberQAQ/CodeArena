@@ -103,5 +103,14 @@
     "confirm": "Switch"
   },
   "autoStartFailed": "Failed to auto-start training. Please try again later.",
-  "skipProblemFailed": "Failed to switch problem"
+  "skipProblemFailed": "Failed to switch problem",
+  "difficultySlider": {
+    "range": "{{min}} - {{max}}",
+    "hint": "Drag to filter difficulty range"
+  },
+  "eloProgress": {
+    "meloLabel": "M-Elo",
+    "untilNext": "{{amount}} Elo to next medal",
+    "maxTier": "Max tier reached"
+  }
 }

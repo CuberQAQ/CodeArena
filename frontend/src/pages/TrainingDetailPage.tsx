@@ -18,7 +18,9 @@ import {
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
+import { Slider } from "@/components/ui/slider";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { EloProgressBar } from "@/components/EloProgressBar";
 import { StreakEffect } from "@/components/animations/StreakEffect";
 import { CoinAnimation } from "@/components/animations/CoinAnimation";
 import { AchievementPopup } from "@/components/animations";
@@ -106,6 +108,8 @@ export default function TrainingDetailPage() {
   const [curatedHasMore, setCuratedHasMore] = useState(false);
   const [filterMinRating, setFilterMinRating] = useState<string>("");
   const [filterMaxRating, setFilterMaxRating] = useState<string>("");
+  // Slider state (derived from topic M-Elo, step 50)
+  const [sliderRange, setSliderRange] = useState<[number, number]>([800, 2400]);
 
   // Protection period remaining seconds
   const [protectionRemaining, setProtectionRemaining] = useState<number | null>(null);
@@ -187,6 +191,23 @@ export default function TrainingDetailPage() {
       cancelled = true;
     };
   }, [topicId, t]);
+
+  // -- Sync slider range when topic loads --
+  /* eslint-disable react-hooks/set-state-in-effect -- one-time sync from loaded topic data */
+  useEffect(() => {
+    if (!topic) return;
+    const melo = topic.melo ?? 1200;
+    const sliderMin = Math.max(800, melo - 200);
+    const sliderMax = melo + 400;
+    // Snap to step of 50
+    const snappedMin = Math.round(sliderMin / 50) * 50;
+    const snappedMax = Math.round(sliderMax / 50) * 50;
+    setSliderRange([snappedMin, snappedMax]);
+    // Also initialize filter values to match full range
+    setFilterMinRating(String(snappedMin));
+    setFilterMaxRating(String(snappedMax));
+  }, [topic]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // -- Start timer when entering active phase --
   useEffect(() => {
@@ -311,7 +332,7 @@ export default function TrainingDetailPage() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // -- Fetch curated problems --
-  const fetchCuratedProblems = useCallback(async (append = false) => {
+  const fetchCuratedProblems = useCallback(async (append = false, overrideFilters?: { min?: number; max?: number }) => {
     if (!topicId) return;
     setCuratedLoading(true);
     try {
@@ -323,8 +344,10 @@ export default function TrainingDetailPage() {
         params.offset = 0;
         params.limit = 20;
       }
-      if (filterMinRating) params.min_rating = parseInt(filterMinRating, 10);
-      if (filterMaxRating) params.max_rating = parseInt(filterMaxRating, 10);
+      const minRating = overrideFilters?.min ?? (filterMinRating ? parseInt(filterMinRating, 10) : undefined);
+      const maxRating = overrideFilters?.max ?? (filterMaxRating ? parseInt(filterMaxRating, 10) : undefined);
+      if (minRating !== undefined) params.min_rating = minRating;
+      if (maxRating !== undefined) params.max_rating = maxRating;
 
       const result = await getCuratedProblems(topicId, params);
       if (append) {
@@ -645,6 +668,25 @@ export default function TrainingDetailPage() {
             </div>
           )}
 
+          {/* Elo progress bar (only when topic has melo) */}
+          {topic && topic.melo != null && (
+            <EloProgressBar
+              melo={topic.melo}
+              currentMedalThreshold={topic.current_medal_threshold}
+              nextMedalThreshold={topic.next_medal_threshold}
+              problemId={
+                detailMode === "recommend"
+                  ? recommendedProblem?.problem_id
+                  : selectedProblem?.problem_id
+              }
+              problemRating={
+                detailMode === "recommend"
+                  ? recommendedProblem?.rating ?? null
+                  : selectedProblem?.rating ?? null
+              }
+            />
+          )}
+
           {/* Mode tabs (compact) */}
           <div className="flex gap-1 rounded-lg border border-border bg-muted/50 p-1">
             <button
@@ -758,35 +800,42 @@ export default function TrainingDetailPage() {
           {/* ---- LIST MODE content ---- */}
           {detailMode === "list" && (
             <>
-              {/* Difficulty filter */}
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-2.5">
-                <Filter className="size-3.5 text-muted-foreground shrink-0" />
-                <input
-                  type="number"
-                  placeholder={t("training:minRating")}
-                  value={filterMinRating}
-                  onChange={(e) => setFilterMinRating(e.target.value)}
-                  className="w-20 rounded-md border border-border bg-transparent px-1.5 py-1 text-xs text-foreground"
-                />
-                <span className="text-xs text-muted-foreground">-</span>
-                <input
-                  type="number"
-                  placeholder={t("training:maxRating")}
-                  value={filterMaxRating}
-                  onChange={(e) => setFilterMaxRating(e.target.value)}
-                  className="w-20 rounded-md border border-border bg-transparent px-1.5 py-1 text-xs text-foreground"
-                />
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
+              {/* Difficulty range slider */}
+              <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="size-3.5 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t("training:difficultyFilter")}
+                    </span>
+                  </div>
+                  <span className="text-xs font-semibold tabular-nums text-foreground">
+                    {t("training:difficultySlider.range", {
+                      min: sliderRange[0],
+                      max: sliderRange[1],
+                    })}
+                  </span>
+                </div>
+                <Slider
+                  value={sliderRange}
+                  onValueChange={(v) => {
+                    const range = v as [number, number];
+                    setSliderRange(range);
+                    setFilterMinRating(String(range[0]));
+                    setFilterMaxRating(String(range[1]));
+                  }}
+                  onValueCommitted={(v) => {
+                    const range = v as [number, number];
+                    // Trigger refresh on drag end with explicit filter values
                     setCuratedOffset(0);
                     setCuratedProblems([]);
-                    setTimeout(() => fetchCuratedProblems(false), 0);
+                    setTimeout(() => fetchCuratedProblems(false, { min: range[0], max: range[1] }), 0);
                   }}
-                >
-                  {t("training:apply")}
-                </Button>
+                  min={Math.max(800, (topic?.melo ?? 1200) - 200)}
+                  max={(topic?.melo ?? 1200) + 400}
+                  step={50}
+                  aria-label={t("training:difficultyFilter")}
+                />
               </div>
 
               {/* Problem list */}
