@@ -111,6 +111,8 @@
   "eloProgress": {
     "meloLabel": "M-Elo",
     "untilNext": "距下一等级还差 {{amount}} Elo",
+    "untilNextMedal": "距{{name}}还差 {{amount}} Elo",
+    "untilNextTier": "距{{name}}还差 {{amount}} Elo",
     "maxTier": "已达最高段位"
   }
 }

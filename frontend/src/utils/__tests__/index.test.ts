@@ -9,6 +9,7 @@ import {
   extractApiError,
   ratingToMedal,
   stripIndexPrefix,
+  getNextRankName,
   RATING_TIERS,
 } from "../index";
 
@@ -460,5 +461,131 @@ describe("stripIndexPrefix", () => {
 
   it("handles prefix with multiple digits 'F12. '", () => {
     expect(stripIndexPrefix("F12. Very Hard")).toBe("Very Hard");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getNextRankName
+// ---------------------------------------------------------------------------
+
+describe("getNextRankName", () => {
+  // Simple translation function that returns the key for testing
+  const t = (key: string) => key;
+
+  describe("medal mode", () => {
+    it("returns medal name for threshold 1200 (provincial bronze)", () => {
+      const result = getNextRankName(1200, t, "medal");
+      expect(result).toBe("medal:types.bronze medal:levels.provincial");
+    });
+
+    it("returns medal name for threshold 1400 (provincial silver)", () => {
+      const result = getNextRankName(1400, t, "medal");
+      expect(result).toBe("medal:types.silver medal:levels.provincial");
+    });
+
+    it("returns medal name for threshold 1600 (provincial gold)", () => {
+      const result = getNextRankName(1600, t, "medal");
+      expect(result).toBe("medal:types.gold medal:levels.provincial");
+    });
+
+    it("returns medal name for threshold 2200 (regional gold)", () => {
+      const result = getNextRankName(2200, t, "medal");
+      expect(result).toBe("medal:types.gold medal:levels.regional");
+    });
+
+    it("returns medal name for threshold 2600 (ec_final gold)", () => {
+      const result = getNextRankName(2600, t, "medal");
+      expect(result).toBe("medal:types.gold medal:levels.ecFinal");
+    });
+
+    it("returns medal name for threshold 2800 (world_finals gold)", () => {
+      const result = getNextRankName(2800, t, "medal");
+      expect(result).toBe("medal:types.gold medal:levels.worldFinals");
+    });
+
+    it("returns numeric threshold for unmapped value", () => {
+      const result = getNextRankName(999, t, "medal");
+      expect(result).toBe("999");
+    });
+
+    it("returns numeric threshold for 3000 (not in medal map)", () => {
+      const result = getNextRankName(3000, t, "medal");
+      expect(result).toBe("3000");
+    });
+  });
+
+  describe("cf_tier mode", () => {
+    it("returns CF tier name for threshold 1200 (Pupil)", () => {
+      const result = getNextRankName(1200, t, "cf_tier");
+      expect(result).toBe("rating:pupil");
+    });
+
+    it("returns CF tier name for threshold 1400 (Specialist)", () => {
+      const result = getNextRankName(1400, t, "cf_tier");
+      expect(result).toBe("rating:specialist");
+    });
+
+    it("returns CF tier name for threshold 1600 (Expert)", () => {
+      const result = getNextRankName(1600, t, "cf_tier");
+      expect(result).toBe("rating:expert");
+    });
+
+    it("returns CF tier name for threshold 1900 (Candidate Master)", () => {
+      const result = getNextRankName(1900, t, "cf_tier");
+      expect(result).toBe("rating:candidateMaster");
+    });
+
+    it("returns CF tier name for threshold 2100 (Master)", () => {
+      const result = getNextRankName(2100, t, "cf_tier");
+      expect(result).toBe("rating:master");
+    });
+
+    it("returns CF tier name for threshold 2300 (International Master)", () => {
+      const result = getNextRankName(2300, t, "cf_tier");
+      expect(result).toBe("rating:internationalMaster");
+    });
+
+    it("returns CF tier name for threshold 2400 (Grandmaster)", () => {
+      const result = getNextRankName(2400, t, "cf_tier");
+      expect(result).toBe("rating:grandmaster");
+    });
+
+    it("returns CF tier name for threshold 2600 (International Grandmaster)", () => {
+      const result = getNextRankName(2600, t, "cf_tier");
+      expect(result).toBe("rating:internationalGrandmaster");
+    });
+
+    it("returns CF tier name for threshold 3000 (Legendary Grandmaster)", () => {
+      const result = getNextRankName(3000, t, "cf_tier");
+      expect(result).toBe("rating:legendaryGrandmaster");
+    });
+
+    it("returns numeric threshold for unmapped value", () => {
+      const result = getNextRankName(999, t, "cf_tier");
+      expect(result).toBe("999");
+    });
+  });
+
+  describe("integration with t() function", () => {
+    it("passes medal keys through t() for localization", () => {
+      const calls: string[] = [];
+      const mockT = (key: string) => {
+        calls.push(key);
+        return key.replace("medal:", "").replace("rating:", "");
+      };
+      getNextRankName(1600, mockT, "medal");
+      expect(calls).toContain("medal:types.gold");
+      expect(calls).toContain("medal:levels.provincial");
+    });
+
+    it("passes CF tier key through t() for localization", () => {
+      const calls: string[] = [];
+      const mockT = (key: string) => {
+        calls.push(key);
+        return key.replace("rating:", "");
+      };
+      getNextRankName(2400, mockT, "cf_tier");
+      expect(calls).toContain("rating:grandmaster");
+    });
   });
 });

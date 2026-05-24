@@ -168,3 +168,59 @@ export function ratingToMedal(rating: number): { level: string; type?: string } 
 export function stripIndexPrefix(name: string): string {
   return name.replace(/^[A-Z]\d*\.\s*/, "");
 }
+
+// ---------------------------------------------------------------------------
+// Next rank name resolution (medal or CF tier, i18n-aware)
+// ---------------------------------------------------------------------------
+
+/**
+ * Medal thresholds mapped to their i18n keys.
+ * Each entry: [threshold, medal level key, medal type key]
+ */
+const NEXT_MEDAL_MAP: [number, string, string][] = [
+  [1200, "medal:levels.provincial", "medal:types.bronze"],
+  [1400, "medal:levels.provincial", "medal:types.silver"],
+  [1600, "medal:levels.provincial", "medal:types.gold"],
+  [2200, "medal:levels.regional", "medal:types.gold"],
+  [2600, "medal:levels.ecFinal", "medal:types.gold"],
+  [2800, "medal:levels.worldFinals", "medal:types.gold"],
+];
+
+/**
+ * CF tier thresholds mapped to their i18n keys.
+ */
+const NEXT_CF_TIER_MAP: [number, string][] = [
+  [1200, "rating:pupil"],
+  [1400, "rating:specialist"],
+  [1600, "rating:expert"],
+  [1900, "rating:candidateMaster"],
+  [2100, "rating:master"],
+  [2300, "rating:internationalMaster"],
+  [2400, "rating:grandmaster"],
+  [2600, "rating:internationalGrandmaster"],
+  [3000, "rating:legendaryGrandmaster"],
+];
+
+/**
+ * Return the localized name of the next rank for a given threshold.
+ * Uses medal or CF tier naming depending on displayMode.
+ * Falls back to the numeric threshold if no mapping found.
+ */
+export function getNextRankName(
+  threshold: number,
+  t: (key: string) => string,
+  displayMode: "medal" | "cf_tier",
+): string {
+  if (displayMode === "medal") {
+    const entry = NEXT_MEDAL_MAP.find(([t]) => t === threshold);
+    if (entry) {
+      return `${t(entry[2])} ${t(entry[1])}`;
+    }
+  } else {
+    const entry = NEXT_CF_TIER_MAP.find(([t]) => t === threshold);
+    if (entry) {
+      return t(entry[1]);
+    }
+  }
+  return String(threshold);
+}

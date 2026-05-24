@@ -7,10 +7,12 @@
  * Gracefully degrades when prediction API is unavailable.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getRatingColor } from "@/utils";
+import { getRatingColor, getNextRankName } from "@/utils";
 import { useTimeFactorPrediction } from "@/hooks/useTimeFactorPrediction";
+import api from "@/services/api";
+import type { ApiResponse, UserSettingsData } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +46,23 @@ export function EloProgressBar({
   topicName,
 }: EloProgressBarProps) {
   const { t } = useTranslation("training");
+  const [displayMode, setDisplayMode] = useState<"medal" | "cf_tier">("medal");
+
+  // Fetch display_mode setting once on mount
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<ApiResponse<UserSettingsData>>("/auth/settings")
+      .then((res) => {
+        if (!cancelled) setDisplayMode(res.data.data.display_mode);
+      })
+      .catch(() => {
+        // Fallback to medal mode on error
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Shared prediction hook (deduplicated with SolvingTimeline)
   const { prediction, refetch } = useTimeFactorPrediction(
@@ -105,6 +124,10 @@ export function EloProgressBar({
   // Distance to next rank
   const distanceToNext = progressMax !== null ? Math.max(0, progressMax - melo) : null;
 
+  // Whether prediction overlay is visible (used for separator logic)
+  const hasPredictionOverlay =
+    predictedPercent !== null && Math.abs(predictedPercent - progressPercent) > 0.5;
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -114,7 +137,7 @@ export function EloProgressBar({
       {/* Header: Topic name + M-Elo label, predicted change */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">
+          <span className="text-sm font-medium text-muted-foreground">
             {topicName ? `${topicName} ` : ""}
             {t("eloProgress.meloLabel")}
           </span>
@@ -140,21 +163,34 @@ export function EloProgressBar({
         <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
           {/* Base progress (current position) -- white/black adaptive */}
           <div
-            className="absolute left-0 top-0 h-full rounded-full bg-foreground transition-all duration-500"
+            className={`absolute left-0 top-0 h-full bg-foreground transition-all duration-500 ${
+              hasPredictionOverlay ? "rounded-l-full" : "rounded-full"
+            }`}
             style={{ width: `${progressPercent}%` }}
           />
 
           {/* Prediction overlay */}
-          {predictedPercent !== null && Math.abs(predictedPercent - progressPercent) > 0.5 && (
+          {hasPredictionOverlay && (
             <div
-              className="absolute top-0 h-full transition-all duration-500"
+              className="absolute top-0 h-full rounded-r-full transition-all duration-500"
               style={{
-                left: `${Math.min(progressPercent, predictedPercent)}%`,
-                width: `${Math.abs(predictedPercent - progressPercent)}%`,
+                left: `${Math.min(progressPercent, predictedPercent!)}%`,
+                width: `${Math.abs(predictedPercent! - progressPercent)}%`,
                 backgroundColor: eloChange !== null && eloChange >= 0 ? "#22c55e" : "#ef4444",
                 opacity: 0.4,
               }}
-            />
+            >
+              {/* Separator line at the boundary between base bar and overlay */}
+              <div
+                className="absolute top-0 bottom-0 w-px"
+                style={{
+                  left: eloChange !== null && eloChange >= 0 ? 0 : "auto",
+                  right: eloChange !== null && eloChange < 0 ? 0 : "auto",
+                  backgroundColor: "var(--foreground)",
+                  opacity: 0.6,
+                }}
+              />
+            </div>
           )}
         </div>
 
@@ -170,10 +206,18 @@ export function EloProgressBar({
         </div>
       </div>
 
-      {/* Distance to next rank */}
+      {/* Distance to next rank with specific name */}
       {!isMaxTier && distanceToNext !== null && (
         <p className="text-[11px] text-muted-foreground">
-          {t("eloProgress.untilNext", { amount: Math.ceil(distanceToNext) })}
+          {t(
+            displayMode === "medal"
+              ? "eloProgress.untilNextMedal"
+              : "eloProgress.untilNextTier",
+            {
+              name: getNextRankName(nextMedalThreshold!, t, displayMode),
+              amount: Math.ceil(distanceToNext),
+            },
+          )}
         </p>
       )}
     </div>

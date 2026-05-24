@@ -27,7 +27,50 @@ vi.mock("@/utils", () => ({
     if (rating >= 1200) return "#008000";
     return "#808080";
   },
+  getNextRankName: (threshold: number, _t: (k: string) => string, displayMode: string) => {
+    if (displayMode === "medal") {
+      const medalNames: Record<number, string> = {
+        1200: "Bronze Provincial",
+        1400: "Silver Provincial",
+        1600: "Gold Provincial",
+        2200: "Gold Regional",
+        2600: "Gold EC Final",
+        2800: "Gold World Finals",
+      };
+      return medalNames[threshold] ?? String(threshold);
+    }
+    const tierNames: Record<number, string> = {
+      1200: "Pupil",
+      1400: "Specialist",
+      1600: "Expert",
+      1900: "Candidate Master",
+      2100: "Master",
+      2300: "International Master",
+      2400: "Grandmaster",
+      2600: "International Grandmaster",
+      3000: "Legendary Grandmaster",
+    };
+    return tierNames[threshold] ?? String(threshold);
+  },
 }));
+
+vi.mock("@/services/api", async () => {
+  const actual = await vi.importActual<typeof import("@/services/api")>("@/services/api");
+  return {
+    default: {
+      ...actual.default,
+      get: vi.fn((url: string, ...args: unknown[]) => {
+        if (url === "/auth/settings") {
+          return Promise.resolve({
+            data: { success: true, data: { display_mode: "medal" } },
+          });
+        }
+        // Delegate all other requests to the real axios instance (MSW will intercept)
+        return actual.default.get(url, ...args);
+      }),
+    },
+  };
+});
 
 // ---------------------------------------------------------------------------
 // MSW server
@@ -112,7 +155,7 @@ describe("EloProgressBar", () => {
 
   // ---- Medal threshold display ----
 
-  it("shows distance to next medal threshold", () => {
+  it("shows distance to next medal threshold with medal name", () => {
     server.use(
       http.get("*/api/v1/time-factor-prediction", async () => {
         await new Promise(() => {});
@@ -127,9 +170,29 @@ describe("EloProgressBar", () => {
       />,
     );
 
-    // Distance = 1600 - 1500 = 100
+    // Distance = 1600 - 1500 = 100, and should include the medal name
     expect(
-      screen.getByText(/eloProgress.untilNext.*100/),
+      screen.getByText(/eloProgress.untilNextMedal.*100/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows distance with medal name for Bronze Provincial threshold", () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", async () => {
+        await new Promise(() => {});
+      }),
+    );
+
+    render(
+      <EloProgressBar
+        melo={1100}
+        currentMedalThreshold={null}
+        nextMedalThreshold={1200}
+      />,
+    );
+
+    expect(
+      screen.getByText(/eloProgress.untilNextMedal.*100/),
     ).toBeInTheDocument();
   });
 
@@ -714,5 +777,206 @@ describe("EloProgressBar", () => {
     // The span should have red text class
     const el = screen.getByText("-5");
     expect(el.className).toContain("text-red-400");
+  });
+
+  // ---- Separator line ----
+
+  it("shows separator line when prediction overlay is visible", async () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", () =>
+        HttpResponse.json({
+          success: true,
+          data: makePredictionData(20),
+          message: "ok",
+        }),
+      ),
+    );
+
+    const { container } = render(
+      <EloProgressBar
+        melo={1500}
+        currentMedalThreshold={1200}
+        nextMedalThreshold={1600}
+        problemId="1920A"
+        problemRating={1500}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("+20")).toBeInTheDocument();
+    });
+
+    // Separator line should exist (w-px class)
+    const separator = container.querySelector(".w-px");
+    expect(separator).toBeTruthy();
+  });
+
+  it("does not show separator line when no prediction overlay", () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", async () => {
+        await new Promise(() => {});
+      }),
+    );
+
+    const { container } = render(
+      <EloProgressBar
+        melo={1500}
+        currentMedalThreshold={1200}
+        nextMedalThreshold={1600}
+      />,
+    );
+
+    // Separator line should NOT exist without prediction
+    const separator = container.querySelector(".w-px");
+    expect(separator).toBeFalsy();
+  });
+
+  // ---- Base bar border-radius with/without prediction ----
+
+  it("uses rounded-full when no prediction overlay", () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", async () => {
+        await new Promise(() => {});
+      }),
+    );
+
+    const { container } = render(
+      <EloProgressBar
+        melo={1500}
+        currentMedalThreshold={1200}
+        nextMedalThreshold={1600}
+      />,
+    );
+
+    // Base bar should have rounded-full (both sides) when no overlay
+    const baseBar = container.querySelector('[style*="width: 75%"]');
+    expect(baseBar).toBeTruthy();
+    expect(baseBar!.className).toContain("rounded-full");
+    expect(baseBar!.className).not.toContain("rounded-l-full");
+  });
+
+  it("uses rounded-l-full for base bar when prediction overlay exists", async () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", () =>
+        HttpResponse.json({
+          success: true,
+          data: makePredictionData(20),
+          message: "ok",
+        }),
+      ),
+    );
+
+    const { container } = render(
+      <EloProgressBar
+        melo={1500}
+        currentMedalThreshold={1200}
+        nextMedalThreshold={1600}
+        problemId="1920A"
+        problemRating={1500}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("+20")).toBeInTheDocument();
+    });
+
+    // Base bar should have rounded-l-full (left only) when overlay present
+    const baseBar = container.querySelector('[style*="width: 75%"]');
+    expect(baseBar).toBeTruthy();
+    expect(baseBar!.className).toContain("rounded-l-full");
+    expect(baseBar!.className).not.toContain("rounded-full");
+  });
+
+  // ---- Display mode and rank name ----
+
+  it("uses untilNextMedal key in medal mode (default)", () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", async () => {
+        await new Promise(() => {});
+      }),
+    );
+
+    render(
+      <EloProgressBar
+        melo={1300}
+        currentMedalThreshold={1200}
+        nextMedalThreshold={1400}
+      />,
+    );
+
+    expect(screen.getByText(/eloProgress.untilNextMedal/)).toBeInTheDocument();
+  });
+
+  it("uses untilNextTier key in cf_tier mode", async () => {
+    // Override the api mock for this test to return cf_tier
+    const { default: api } = await import("@/services/api");
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: { success: true, data: { display_mode: "cf_tier" } },
+    });
+
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", async () => {
+        await new Promise(() => {});
+      }),
+    );
+
+    render(
+      <EloProgressBar
+        melo={1300}
+        currentMedalThreshold={1200}
+        nextMedalThreshold={1400}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/eloProgress.untilNextTier/)).toBeInTheDocument();
+    });
+  });
+
+  it("falls back to medal mode when settings API fails", async () => {
+    const { default: api } = await import("@/services/api");
+    vi.mocked(api.get).mockRejectedValueOnce(new Error("network error"));
+
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", async () => {
+        await new Promise(() => {});
+      }),
+    );
+
+    render(
+      <EloProgressBar
+        melo={1300}
+        currentMedalThreshold={1200}
+        nextMedalThreshold={1400}
+      />,
+    );
+
+    // Should still render, falling back to medal mode
+    await waitFor(() => {
+      expect(screen.getByText(/eloProgress.untilNextMedal/)).toBeInTheDocument();
+    });
+  });
+
+  // ---- Topic name font size ----
+
+  it("renders topic name with text-sm font size", () => {
+    server.use(
+      http.get("*/api/v1/time-factor-prediction", async () => {
+        await new Promise(() => {});
+      }),
+    );
+
+    render(
+      <EloProgressBar
+        melo={1500}
+        currentMedalThreshold={1200}
+        nextMedalThreshold={1600}
+        topicName="DP"
+      />,
+    );
+
+    const label = screen.getByText(/eloProgress.meloLabel/);
+    expect(label.className).toContain("text-sm");
+    expect(label.className).not.toContain("text-xs");
   });
 });

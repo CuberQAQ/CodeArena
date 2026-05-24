@@ -2711,3 +2711,167 @@ ContestDetailPage.tsx:570-572 对每个 `solved === false` 的题目**无条件�
 - [ ] 每分钟自动刷新 prediction 数据
 - [ ] Elo 进度条移动端适配（宽度自适应）
 - [ ] 深色/浅色模式下进度条颜色清晰可辨
+
+---
+
+## 阶段 48: 训练模块 UI/UX 优化（第二轮）
+
+> 来源：用户反馈的 7 项 UI 问题（2026-05-24）
+
+### Task 48.1: EloProgressBar 改进 — 字号 / 等级名称 / 分隔线
+
+**状态**: 🟢 已完成
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+
+1. **专题名称字号加大**：`EloProgressBar.tsx:117` 的 `text-xs` 改为 `text-sm`。
+2. **"距下一等级还差 X Elo"显示具体名称**：根据用户 display_mode 设置（`/auth/settings`），奖牌制显示"距省赛银牌还差 X Elo"，CF 段位制显示"距 Specialist 还差 X Elo"。需读取用户设置并映射 `nextMedalThreshold` 到对应名称。
+3. **进度条分隔线**：当前进度（白色）与预测叠加层之间画竖线分隔，两侧接合处 border-radius: 0，无间距，预测叠加层右侧保持圆角。
+
+#### 需要修改的文件
+
+- `frontend/src/components/EloProgressBar.tsx` — 字号、文案逻辑、进度条分隔线样式
+- `frontend/src/utils/index.ts` — 新增 `thresholdToMedalName(threshold, t, displayMode)` 工具函数
+- `frontend/src/locales/zh/training.json` + `frontend/src/locales/en/training.json` — 更新 `eloProgress.untilNext` 翻译
+
+#### 调用方清单
+- EloProgressBar 需从 `/auth/settings` 获取 display_mode
+- 需映射 medal threshold → medal name（奖牌制）或 CF tier name（段位制）
+
+#### 反向集成清单
+- 奖牌名称复用 `medal.json` 翻译
+- CF 段位名称复用 `rating.json` 翻译
+- `ratingToMedal()` / `getRatingTierInfo()` 工具函数复用
+
+#### 测试要点
+- [ ] 专题名称清晰可读（text-sm）
+- [ ] 奖牌制模式下显示"距省赛银牌还差 X Elo"
+- [ ] CF 段位制模式下显示"距 Specialist 还差 X Elo"
+- [ ] 已达最高段位时不显示距离文案
+- [ ] 进度条当前进度与预测之间有清晰竖线分隔
+- [ ] 分隔处无圆角、无间距，右侧保持圆角
+- [ ] 深色/浅色模式下分隔线可见
+- [ ] 无 prediction 数据时不显示分隔线
+
+---
+
+### Task 48.2: 训练详情页 Tab 逻辑 + Slider 手柄修复
+
+**状态**: 🔲 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+
+1. **Tab 重命名与行为变更**：
+   - "推荐做题" tab 改名为"当前题目"
+   - "题目列表" tab 只显示题目列表
+   - 在题目列表中点击某题 → 自动切换到"当前题目" tab 并展示该题
+   - 无论哪个 tab，"当前题目" tab 始终展示当前正在做的题目
+2. **Slider 手柄位移修复**：`slider.tsx` 的双端 slider 手柄拖动速度与底色不一致，疑似 `px-3` padding 导致 thumb 定位偏差。需排查 `@base-ui/react` Slider 坐标计算与 padding 的交互。
+
+#### 需要修改的文件
+
+- `frontend/src/pages/TrainingDetailPage.tsx` — tab 重命名、列表点击切换逻辑
+- `frontend/src/components/ui/slider.tsx` — 手柄定位修复
+- `frontend/src/locales/zh/training.json` + `frontend/src/locales/en/training.json` — `recommendMode` → 新 key
+
+#### 调用方清单
+- 列表模式点击题目 → `setSelectedProblemId` + `setDetailMode("recommend")`（推荐模式改名为当前题目）
+- 推荐模式下仍可获取推荐题目，但 tab 名称为"当前题目"
+
+#### 反向集成清单
+- Tab 切换后 ProblemViewer 正确加载对应题目
+- 推荐模式换题逻辑不受影响
+- Slider 修复后 recommend 和 list 模式均正常
+
+#### 测试要点
+- [ ] "推荐做题" tab 已改名为"当前题目"
+- [ ] "题目列表" tab 仅显示列表
+- [ ] 列表中点击题目后自动跳转回"当前题目" tab
+- [ ] "当前题目" tab 正确展示选中的题目
+- [ ] 推荐模式下换题功能正常
+- [ ] Slider 手柄拖动位置与视觉一致
+- [ ] 双端 Slider 拖动流畅，无位移倍率
+- [ ] 移动端触摸操作正常
+
+---
+
+### Task 48.3: 产品 Logo 改为圆形时钟 + Top bar 计时器优化
+
+**状态**: 🔲 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+
+1. **Sidebar 产品 Logo 替换为圆形模拟时钟**：将 MainLayout sidebar 顶部的 `Swords` 图标 + 品牌名替换为圆形模拟时钟组件，指针实时转动显示当前系统时间。需保持品牌辨识度（可在时钟中融入品牌元素，如 Swords 图标作为时钟中心点）。
+2. **Top bar 在线计时器优化**：PlayerInfoBar 中的在线计时器当前使用 `text-xs`（12px），字号太小。将其字号加大至 `text-sm` 或整合进时钟组件的展示逻辑中（如 hover 时钟显示在线时长）。确保用户能清晰看到在线时长。
+
+#### 需要修改的文件
+
+- `frontend/src/layouts/MainLayout.tsx` — sidebar 品牌区域替换为时钟组件；top bar 计时器字号调整
+- `frontend/src/components/AnalogClock.tsx` — 新增圆形模拟时钟组件（纯 SVG/Canvas）
+
+#### 调用方清单
+- MainLayout 是全局布局组件，所有页面均可见
+- Sidebar 品牌区域（桌面端 + 移动端 hamburger 菜单）
+- Top bar PlayerInfoBar 中的在线计时器
+
+#### 反向集成清单
+- 时钟组件与深色/浅色主题兼容
+- 时钟指针颜色使用 theme token（foreground / primary）
+- 秒针每秒更新，分针/时针平滑过渡
+- 折叠 sidebar 时时钟缩小但可见
+- 移动端 hamburger 菜单中时钟适配
+
+#### 测试要点
+- [ ] Sidebar 品牌区域显示圆形时钟，替代原 Swords 图标
+- [ ] 圆形时钟显示当前系统时间（时/分/秒针）
+- [ ] 秒针每秒转动
+- [ ] 深色/浅色模式下时钟清晰可读
+- [ ] 桌面端时钟尺寸合适（不影响 sidebar 布局）
+- [ ] 折叠 sidebar 时时钟缩小但可见
+- [ ] 移动端时钟尺寸适配
+- [ ] 时钟区域可点击（如跳转 dashboard）
+- [ ] Top bar 在线计时器字号清晰可读（≥ text-sm）
+- [ ] 性能：不影响页面渲染
+
+---
+
+### Task 48.4: Elo 预测可视化重设计
+
+**状态**: 🔲 待开始
+**优先级**: P1
+**依赖**: 无
+
+#### 任务描述
+
+替换当前 SolvingTimeline（垂直时间线列表，强制 5 分钟刻度）为更直观的可视化形式。推荐方案：小型 SVG 折线图/面积图，横轴为时间（分钟），纵轴为预计 Elo 变化，当前时间标记为竖线，期望解题时间标记为特殊点。图表应简洁、信息密度适中、一目了然。
+
+#### 需要修改的文件
+
+- `frontend/src/components/SolvingTimeline.tsx` — 重写为折线图/面积图形式
+- `frontend/src/locales/zh/common.json` + `frontend/src/locales/en/common.json` — 如需更新翻译
+
+#### 调用方清单
+- TrainingDetailPage 在 recommend 和 list 模式下均渲染 SolvingTimeline
+- 复用 `useTimeFactorPrediction` hook，数据结构不变
+
+#### 反向集成清单
+- prediction hook 数据格式不变（time_points, expected_time_minutes）
+- 组件 props 接口不变（SolvingTimelineProps）
+- 与 EloProgressBar 的 prediction 数据去重共享
+
+#### 测试要点
+- [ ] 图表正确显示 Elo 变化趋势
+- [ ] 当前时间竖线标记清晰
+- [ ] 期望解题时间标记可辨
+- [ ] 正值绿色、负值红色
+- [ ] 无 prediction 数据时不渲染
+- [ ] 深色/浅色模式下图表清晰
+- [ ] 移动端图表自适应宽度
+- [ ] 移动端触摸/缩放正常
+- [ ] 数据点少时（<3）不显示图表或降级显示
