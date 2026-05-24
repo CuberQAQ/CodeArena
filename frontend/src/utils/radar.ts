@@ -34,7 +34,7 @@ export type RadarDimensionKey = (typeof RADAR_DIMENSIONS)[number]["key"];
  */
 export function cfTagToDimensionKey(tag: string): RadarDimensionKey | undefined {
   for (const dim of RADAR_DIMENSIONS) {
-    if (dim.tags.includes(tag)) return dim.key;
+    if ((dim.tags as readonly string[]).includes(tag)) return dim.key;
   }
   return undefined;
 }
