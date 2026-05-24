@@ -71,6 +71,7 @@
   "eloProgressMax": "已达最高段位",
   "solvedCount": "已解决 {{count}} 题",
   "recommendMode": "推荐做题",
+  "currentProblem": "当前题目",
   "problemListMode": "题目列表",
   "changeProblem": "换一道",
   "loadingProblem": "加载题目中...",

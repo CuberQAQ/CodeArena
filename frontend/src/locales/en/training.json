@@ -71,6 +71,7 @@
   "eloProgressMax": "Max tier reached",
   "solvedCount": "{{count}} solved",
   "recommendMode": "Recommended",
+  "currentProblem": "Current Problem",
   "problemListMode": "Problem List",
   "changeProblem": "Change Problem",
   "loadingProblem": "Loading problem...",

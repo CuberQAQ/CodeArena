@@ -2759,7 +2759,7 @@ ContestDetailPage.tsx:570-572 对每个 `solved === false` 的题目**无条件�
 
 ### Task 48.2: 训练详情页 Tab 逻辑 + Slider 手柄修复
 
-**状态**: 🔲 待开始
+**状态**: 🟢 已完成
 **优先级**: P1
 **依赖**: 无
 
@@ -2799,7 +2799,7 @@ ContestDetailPage.tsx:570-572 对每个 `solved === false` 的题目**无条件�
 
 ---
 
-### Task 48.3: 产品 Logo 改为圆形时钟 + Top bar 计时器优化
+### Task 48.3: Top bar 静态时钟图标替换为动态圆形时钟
 
 **状态**: 🔲 待开始
 **优先级**: P1
@@ -2807,36 +2807,34 @@ ContestDetailPage.tsx:570-572 对每个 `solved === false` 的题目**无条件�
 
 #### 任务描述
 
-1. **Sidebar 产品 Logo 替换为圆形模拟时钟**：将 MainLayout sidebar 顶部的 `Swords` 图标 + 品牌名替换为圆形模拟时钟组件，指针实时转动显示当前系统时间。需保持品牌辨识度（可在时钟中融入品牌元素，如 Swords 图标作为时钟中心点）。
-2. **Top bar 在线计时器优化**：PlayerInfoBar 中的在线计时器当前使用 `text-xs`（12px），字号太小。将其字号加大至 `text-sm` 或整合进时钟组件的展示逻辑中（如 hover 时钟显示在线时长）。确保用户能清晰看到在线时长。
+PlayerInfoBar 中的在线计时器当前使用 lucide-react 的静态 `Clock` 图标（`size-3`，极小）+ `text-xs` 时间文字。需要：
+
+1. **替换静态 Clock 图标为动态圆形模拟时钟**：用一个小型 SVG 圆形时钟组件替换 `Clock` lucide-react 图标，时钟显示当前系统时间，秒针实时转动。整体尺寸适中（如 size-4 或 size-5），视觉上比当前静态图标更醒目。
+2. **计时文字字号加大**：在线时间文字从 `text-xs` 加大到 `text-sm`，确保清晰可读。
+3. **产品 Logo（Swords 图标）不做任何修改**。
 
 #### 需要修改的文件
 
-- `frontend/src/layouts/MainLayout.tsx` — sidebar 品牌区域替换为时钟组件；top bar 计时器字号调整
-- `frontend/src/components/AnalogClock.tsx` — 新增圆形模拟时钟组件（纯 SVG/Canvas）
+- `frontend/src/layouts/MainLayout.tsx` — PlayerInfoBar 中替换 `<Clock>` 为 AnalogClock 组件，文字字号调整
+- `frontend/src/components/AnalogClock.tsx` — 新增小型圆形模拟时钟组件（纯 SVG）
 
 #### 调用方清单
-- MainLayout 是全局布局组件，所有页面均可见
-- Sidebar 品牌区域（桌面端 + 移动端 hamburger 菜单）
-- Top bar PlayerInfoBar 中的在线计时器
+- MainLayout PlayerInfoBar 中的在线计时器区域（桌面端 + 移动端）
 
 #### 反向集成清单
 - 时钟组件与深色/浅色主题兼容
 - 时钟指针颜色使用 theme token（foreground / primary）
-- 秒针每秒更新，分针/时针平滑过渡
-- 折叠 sidebar 时时钟缩小但可见
-- 移动端 hamburger 菜单中时钟适配
+- 秒针每秒更新
+- 桌面端和移动端布局均适配
 
 #### 测试要点
-- [ ] Sidebar 品牌区域显示圆形时钟，替代原 Swords 图标
+- [ ] PlayerInfoBar 中 Clock 静态图标已替换为圆形动态时钟
 - [ ] 圆形时钟显示当前系统时间（时/分/秒针）
 - [ ] 秒针每秒转动
+- [ ] 在线时间文字使用 text-sm 或更大字号
 - [ ] 深色/浅色模式下时钟清晰可读
-- [ ] 桌面端时钟尺寸合适（不影响 sidebar 布局）
-- [ ] 折叠 sidebar 时时钟缩小但可见
 - [ ] 移动端时钟尺寸适配
-- [ ] 时钟区域可点击（如跳转 dashboard）
-- [ ] Top bar 在线计时器字号清晰可读（≥ text-sm）
+- [ ] Sidebar 产品 Logo（Swords 图标）未被修改
 - [ ] 性能：不影响页面渲染
 
 ---

@@ -325,7 +325,7 @@ describe("TrainingDetailPage", () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText("training:recommendMode")).toBeInTheDocument();
+      expect(screen.getByText("training:currentProblem")).toBeInTheDocument();
     });
     expect(screen.getByText("training:problemListMode")).toBeInTheDocument();
   });

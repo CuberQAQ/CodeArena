@@ -99,6 +99,8 @@ export default function TrainingDetailPage() {
   const [detailMode, setDetailMode] = useState<DetailMode>("recommend");
   const [recommendedProblem, setRecommendedProblem] = useState<RecommendedProblem | null>(null);
   const [recommendLoading, setRecommendLoading] = useState(false);
+  // Tracks whether the user explicitly selected a problem from the list
+  const [isListSelected, setIsListSelected] = useState(false);
 
   // Problem list mode state
   const [curatedProblems, setCuratedProblems] = useState<CuratedProblemInfo[]>([]);
@@ -314,6 +316,7 @@ export default function TrainingDetailPage() {
     try {
       const result = await getRecommendedProblem(topicId);
       setRecommendedProblem(result);
+      setIsListSelected(false);
     } catch {
       setRecommendedProblem(null);
     } finally {
@@ -388,6 +391,8 @@ export default function TrainingDetailPage() {
       // During protection period -- free switch
       if (isProtectionActive) {
         setSelectedProblemId(newProblemId);
+        setDetailMode("recommend");
+        setIsListSelected(true);
         return;
       }
 
@@ -406,6 +411,8 @@ export default function TrainingDetailPage() {
         await skipProblem(session.id, selectedProblemId);
       }
       setSelectedProblemId(pendingSwitchProblemId);
+      setDetailMode("recommend");
+      setIsListSelected(true);
     } catch (err) {
       setError(extractApiError(err, t("training:skipProblemFailed")));
     } finally {
@@ -424,6 +431,7 @@ export default function TrainingDetailPage() {
   const handleChangeProblem = useCallback(async () => {
     if (isProtectionActive || !session) {
       // During protection -- just fetch a new one, no skip penalty
+      setIsListSelected(false);
       fetchRecommendedProblem();
       return;
     }
@@ -439,6 +447,7 @@ export default function TrainingDetailPage() {
     skipLoadingRef.current = true;
     try {
       await skipProblem(session.id, selectedProblemId);
+      setIsListSelected(false);
       fetchRecommendedProblem();
     } catch (err) {
       setError(extractApiError(err, t("training:skipProblemFailed")));
@@ -491,6 +500,7 @@ export default function TrainingDetailPage() {
     setProtectionRemaining(null);
     setDetailMode("recommend");
     setRecommendedProblem(null);
+    setIsListSelected(false);
     setCuratedProblems([]);
     setCuratedTotal(0);
     setCuratedOffset(0);
@@ -541,6 +551,18 @@ export default function TrainingDetailPage() {
   // Derive the display problem for ProblemViewer based on mode
   const problemViewerProblem = (() => {
     if (detailMode === "recommend") {
+      // If the user explicitly selected a problem from the list, show that one
+      if (isListSelected) {
+        if (!selectedProblem || !selectedProblem.contest_id || !selectedProblem.index) return null;
+        return {
+          contestId: String(selectedProblem.contest_id),
+          index: selectedProblem.index,
+          rating: selectedProblem.rating,
+          problemId: selectedProblem.problem_id,
+          url: selectedProblem.url,
+        };
+      }
+      // Normal recommend flow -- show the recommended problem
       if (!recommendedProblem) return null;
       return {
         contestId: String(recommendedProblem.contest_id),
@@ -632,7 +654,7 @@ export default function TrainingDetailPage() {
           }`}
         >
           <Sparkles className="size-3" />
-          {t("training:recommendMode")}
+          {t("training:currentProblem")}
         </button>
         <button
           onClick={() => setDetailMode("list")}
@@ -700,12 +722,12 @@ export default function TrainingDetailPage() {
               nextMedalThreshold={topic.next_medal_threshold}
               problemId={
                 detailMode === "recommend"
-                  ? recommendedProblem?.problem_id
+                  ? (isListSelected ? selectedProblem?.problem_id : recommendedProblem?.problem_id)
                   : selectedProblem?.problem_id
               }
               problemRating={
                 detailMode === "recommend"
-                  ? recommendedProblem?.rating ?? null
+                  ? (isListSelected ? (selectedProblem?.rating ?? null) : (recommendedProblem?.rating ?? null))
                   : selectedProblem?.rating ?? null
               }
               topicName={topicDisplayName}
@@ -715,7 +737,15 @@ export default function TrainingDetailPage() {
           {/* ---- RECOMMEND MODE content ---- */}
           {detailMode === "recommend" && (
             <>
-              {recommendedProblem && (
+              {(() => {
+                // Determine which problem info to show in the right panel
+                const displayInfo = isListSelected
+                  ? (selectedProblem && selectedProblem.contest_id && selectedProblem.index
+                    ? { rating: selectedProblem.rating, url: selectedProblem.url, problemId: selectedProblem.problem_id }
+                    : null)
+                  : recommendedProblem;
+
+                return displayInfo ? (
                 <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold text-foreground">
                     {t("training:infoPanel.problemInfo")}
@@ -725,24 +755,28 @@ export default function TrainingDetailPage() {
                       <span className="text-muted-foreground">{t("training:infoPanel.rating")}</span>
                       <span
                         className="font-semibold"
-                        style={{ color: getRatingColor(recommendedProblem.rating) }}
+                        style={{ color: getRatingColor(displayInfo.rating) }}
                       >
-                        {recommendedProblem.rating ?? "-"}
+                        {displayInfo.rating ?? "-"}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("training:infoPanel.yourMelo")}</span>
-                      <span className="font-semibold text-foreground">
-                        {Math.round(recommendedProblem.melo)}
-                      </span>
-                    </div>
-                    {recommendedProblem.search_range && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">{t("training:infoPanel.searchRange")}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {recommendedProblem.search_range[0]} - {recommendedProblem.search_range[1]}
-                        </span>
-                      </div>
+                    {!isListSelected && recommendedProblem && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("training:infoPanel.yourMelo")}</span>
+                          <span className="font-semibold text-foreground">
+                            {Math.round(recommendedProblem.melo)}
+                          </span>
+                        </div>
+                        {recommendedProblem.search_range && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">{t("training:infoPanel.searchRange")}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {recommendedProblem.search_range[0]} - {recommendedProblem.search_range[1]}
+                            </span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -789,7 +823,7 @@ export default function TrainingDetailPage() {
                   </Button>
 
                   <a
-                    href={recommendedProblem.url}
+                    href={displayInfo.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
@@ -798,16 +832,17 @@ export default function TrainingDetailPage() {
                     <ExternalLink className="size-3.5" />
                   </a>
                 </div>
-              )}
+                ) : null;
+              })()}
 
-              {recommendLoading && !recommendedProblem && (
+              {!isListSelected && recommendLoading && !recommendedProblem && (
                 <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
                   <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
                   <p className="mt-2 text-xs text-muted-foreground">{t("training:loadingProblem")}</p>
                 </div>
               )}
 
-              {!recommendLoading && !recommendedProblem && (
+              {!isListSelected && !recommendLoading && !recommendedProblem && (
                 <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
                   <p className="text-xs text-muted-foreground">
                     {t("training:noRecommendedProblem")}
@@ -815,15 +850,19 @@ export default function TrainingDetailPage() {
                 </div>
               )}
 
-              {/* Solving timeline for recommended problem */}
-              {recommendedProblem && recommendedProblem.rating && (
-                <SolvingTimeline
-                  problemId={recommendedProblem.problem_id}
-                  problemRating={recommendedProblem.rating}
-                  userElo={recommendedProblem.melo}
-                  startTime={sessionStartTime}
-                />
-              )}
+              {/* Solving timeline */}
+              {(() => {
+                const timelineProblem = isListSelected ? selectedProblem : recommendedProblem;
+                const timelineElo = isListSelected ? (topic?.melo ?? 1200) : (recommendedProblem?.melo ?? topic?.melo ?? 1200);
+                return timelineProblem && timelineProblem.rating ? (
+                  <SolvingTimeline
+                    problemId={timelineProblem.problem_id}
+                    problemRating={timelineProblem.rating}
+                    userElo={timelineElo}
+                    startTime={sessionStartTime}
+                  />
+                ) : null;
+              })()}
             </>
           )}
 
