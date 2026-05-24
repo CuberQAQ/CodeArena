@@ -1,7 +1,7 @@
 """add training indexes
 
-Revision ID: q7r8s9t0u1v2
-Revises: p6q7r8s9t0u1
+Revision ID: r8s9t0u1v2w3
+Revises: q7r8s9t0u1v2
 Create Date: 2026-05-24 00:00:00.000000
 
 """
@@ -11,8 +11,8 @@ from collections.abc import Sequence
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "q7r8s9t0u1v2"
-down_revision: str | None = "p6q7r8s9t0u1"
+revision: str = "r8s9t0u1v2w3"
+down_revision: str | None = "q7r8s9t0u1v2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
