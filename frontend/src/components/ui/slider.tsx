@@ -85,8 +85,8 @@ export function Slider({
       disabled={disabled}
       className={cn("relative flex w-full touch-none select-none items-center", className)}
     >
-      <SliderControl className="relative h-5 w-full cursor-pointer px-3">
-        <SliderTrack className="absolute left-3 right-3 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted">
+      <SliderControl className="relative h-5 w-full cursor-pointer">
+        <SliderTrack className="absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted">
           <SliderIndicator className="absolute h-full rounded-full bg-primary data-[disabled]:opacity-50" />
         </SliderTrack>
         {isRange ? (

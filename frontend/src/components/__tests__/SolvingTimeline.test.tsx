@@ -338,8 +338,8 @@ describe("SolvingTimeline", () => {
       (el) => {
         const opacity = el.getAttribute("stroke-opacity");
         const dashArray = el.getAttribute("stroke-dasharray");
-        // Current time line: opacity=0.5, no dash array
-        return opacity === "0.5" && !dashArray;
+        // Current time line: opacity=0.6, no dash array
+        return opacity === "0.6" && !dashArray;
       },
     );
 

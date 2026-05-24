@@ -36,11 +36,11 @@ export interface SolvingTimelineProps {
 // ---------------------------------------------------------------------------
 
 const VB_WIDTH = 220;
-const VB_HEIGHT = 90;
+const VB_HEIGHT = 100;
 const PADDING_LEFT = 4;
 const PADDING_RIGHT = 4;
 const PADDING_TOP = 8;
-const PADDING_BOTTOM = 8;
+const PADDING_BOTTOM = 18;
 
 const CHART_WIDTH = VB_WIDTH - PADDING_LEFT - PADDING_RIGHT;
 const CHART_HEIGHT = VB_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
@@ -318,24 +318,19 @@ export function SolvingTimeline({
             const p2 = svgPoints[i + 1];
             const sameSign = (p1.elo >= 0 && p2.elo >= 0) || (p1.elo < 0 && p2.elo < 0);
             if (sameSign) {
-              // Both on the same side of zero -- one segment
               segs.push({
                 x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
                 color: p1.elo >= 0 ? "green" : "red",
               });
             } else {
-              // Crosses zero -- interpolate the crossing point and split
               const t = p1.elo / (p1.elo - p2.elo);
               const crossX = p1.x + t * (p2.x - p1.x);
-              const crossY = zeroY;
-              // First sub-segment (p1 side)
               segs.push({
-                x1: p1.x, y1: p1.y, x2: crossX, y2: crossY,
+                x1: p1.x, y1: p1.y, x2: crossX, y2: zeroY,
                 color: p1.elo >= 0 ? "green" : "red",
               });
-              // Second sub-segment (p2 side)
               segs.push({
-                x1: crossX, y1: crossY, x2: p2.x, y2: p2.y,
+                x1: crossX, y1: zeroY, x2: p2.x, y2: p2.y,
                 color: p2.elo >= 0 ? "green" : "red",
               });
             }
@@ -374,14 +369,13 @@ export function SolvingTimeline({
           );
         })}
 
-        {/* Expected time diamond marker */}
+        {/* Expected time diamond marker + label */}
         <g transform={`translate(${expectedX.toFixed(1)},${expectedY.toFixed(1)})`}>
           <polygon
             points="0,-4 4,0 0,4 -4,0"
             fill="var(--color-primary, currentColor)"
             opacity="0.85"
           />
-          {/* Expected time vertical dashed line */}
           <line
             x1="0"
             y1="4"
@@ -402,11 +396,53 @@ export function SolvingTimeline({
             x2={currentX.toFixed(1)}
             y2={VB_HEIGHT - PADDING_BOTTOM}
             stroke="currentColor"
-            strokeWidth="1"
-            strokeOpacity="0.5"
+            strokeWidth="1.5"
+            strokeOpacity="0.6"
           />
         )}
+
+        {/* X-axis time labels */}
+        {(() => {
+          const labelCount = Math.min(points.length, 6);
+          const step = Math.max(1, Math.floor((points.length - 1) / (labelCount - 1)));
+          const labels: Array<{ x: number; text: string }> = [];
+          for (let i = 0; i < points.length; i += step) {
+            labels.push({ x: mapX(points[i].minutes), text: `${points[i].minutes}m` });
+          }
+          // Always include last point
+          const lastX = mapX(points[points.length - 1].minutes);
+          if (labels[labels.length - 1].x !== lastX) {
+            labels.push({ x: lastX, text: `${points[points.length - 1].minutes}m` });
+          }
+          return labels.map((l, i) => (
+            <text
+              key={`xlabel-${i}`}
+              x={l.x.toFixed(1)}
+              y={(VB_HEIGHT - 3).toFixed(1)}
+              textAnchor="middle"
+              fill="currentColor"
+              opacity="0.4"
+              fontSize="7"
+              fontFamily="monospace"
+            >
+              {l.text}
+            </text>
+          ));
+        })()}
       </svg>
+
+      {/* Legend */}
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <svg width="8" height="8" viewBox="0 0 8 8"><polygon points="4,0 8,4 4,8 0,4" fill="var(--color-primary, currentColor)" opacity="0.85" /></svg>
+          {t("timeline.expected")}
+        </span>
+        {currentX !== null && (
+          <span className="flex items-center gap-1">
+            <svg width="8" height="8" viewBox="0 0 8 8"><line x1="4" y1="0" x2="4" y2="8" stroke="currentColor" strokeWidth="1.5" /></svg>
+          </span>
+        )}
+      </div>
 
       {/* Footer: expected time summary */}
       <div className="border-t border-border pt-2">

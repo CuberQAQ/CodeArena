@@ -214,7 +214,7 @@ export function getNextRankName(
   if (displayMode === "medal") {
     const entry = NEXT_MEDAL_MAP.find(([t]) => t === threshold);
     if (entry) {
-      return `${t(entry[2])} ${t(entry[1])}`;
+      return `${t(entry[1])}${t(entry[2])}`;
     }
   } else {
     const entry = NEXT_CF_TIER_MAP.find(([t]) => t === threshold);

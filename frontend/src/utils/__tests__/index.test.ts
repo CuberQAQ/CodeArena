@@ -475,32 +475,32 @@ describe("getNextRankName", () => {
   describe("medal mode", () => {
     it("returns medal name for threshold 1200 (provincial bronze)", () => {
       const result = getNextRankName(1200, t, "medal");
-      expect(result).toBe("medal:types.bronze medal:levels.provincial");
+      expect(result).toBe("medal:levels.provincialmedal:types.bronze");
     });
 
     it("returns medal name for threshold 1400 (provincial silver)", () => {
       const result = getNextRankName(1400, t, "medal");
-      expect(result).toBe("medal:types.silver medal:levels.provincial");
+      expect(result).toBe("medal:levels.provincialmedal:types.silver");
     });
 
     it("returns medal name for threshold 1600 (provincial gold)", () => {
       const result = getNextRankName(1600, t, "medal");
-      expect(result).toBe("medal:types.gold medal:levels.provincial");
+      expect(result).toBe("medal:levels.provincialmedal:types.gold");
     });
 
     it("returns medal name for threshold 2200 (regional gold)", () => {
       const result = getNextRankName(2200, t, "medal");
-      expect(result).toBe("medal:types.gold medal:levels.regional");
+      expect(result).toBe("medal:levels.regionalmedal:types.gold");
     });
 
     it("returns medal name for threshold 2600 (ec_final gold)", () => {
       const result = getNextRankName(2600, t, "medal");
-      expect(result).toBe("medal:types.gold medal:levels.ecFinal");
+      expect(result).toBe("medal:levels.ecFinalmedal:types.gold");
     });
 
     it("returns medal name for threshold 2800 (world_finals gold)", () => {
       const result = getNextRankName(2800, t, "medal");
-      expect(result).toBe("medal:types.gold medal:levels.worldFinals");
+      expect(result).toBe("medal:levels.worldFinalsmedal:types.gold");
     });
 
     it("returns numeric threshold for unmapped value", () => {
