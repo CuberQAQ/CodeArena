@@ -16,6 +16,8 @@
   "administrator": "管理员",
   "unauthorized": "未授权",
   "settings": "设置",
+  "collapseSidebar": "收起侧边栏",
+  "expandSidebar": "展开侧边栏",
   "playerBar": {
     "arenaRank": "#{{rank}}",
     "onlineTime": "在线"

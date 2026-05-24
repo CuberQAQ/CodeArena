@@ -16,6 +16,8 @@
   "administrator": "Administrator",
   "unauthorized": "Unauthorized",
   "settings": "Settings",
+  "collapseSidebar": "Collapse sidebar",
+  "expandSidebar": "Expand sidebar",
   "playerBar": {
     "arenaRank": "#{{rank}}",
     "onlineTime": "Online"

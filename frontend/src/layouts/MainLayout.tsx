@@ -12,6 +12,8 @@ import {
   Compass,
   Settings,
   Clock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -123,7 +125,19 @@ function PlayerInfoBar() {
 // Sidebar
 // ---------------------------------------------------------------------------
 
-function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
+
+function Sidebar({
+  open,
+  onClose,
+  collapsed,
+  onToggleCollapse,
+}: {
+  open: boolean;
+  onClose: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}) {
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
@@ -146,14 +160,26 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-border bg-card transition-transform lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-card transition-all duration-300 lg:static lg:translate-x-0",
+          // Desktop: toggle between collapsed (w-16) and expanded (w-60)
+          collapsed ? "lg:w-16" : "lg:w-60",
+          // Mobile: always full width
+          "w-60",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
         {/* Logo / Brand */}
-        <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-          <Swords className="size-5 text-primary" />
-          <span className="text-lg font-bold text-foreground">{t("nav:brand")}</span>
+        <div className={cn(
+          "flex h-14 items-center gap-2 border-b border-border transition-all duration-300",
+          collapsed ? "lg:justify-center lg:px-0" : "px-4",
+        )}>
+          <Swords className="size-5 shrink-0 text-primary" />
+          <span className={cn(
+            "text-lg font-bold text-foreground transition-all duration-300 overflow-hidden",
+            collapsed ? "lg:hidden lg:w-0 lg:opacity-0" : "w-auto opacity-100",
+          )}>
+            {t("nav:brand")}
+          </span>
           <button
             className="ml-auto rounded-md p-1 text-muted-foreground hover:text-foreground lg:hidden"
             onClick={onClose}
@@ -175,30 +201,76 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  collapsed && "lg:justify-center lg:px-0",
                 )
               }
+              title={collapsed ? t(labelKey) : undefined}
             >
-              <Icon className="size-4" />
-              {t(labelKey)}
+              <Icon className="size-4 shrink-0" />
+              <span className={cn(
+                "transition-all duration-300 overflow-hidden whitespace-nowrap",
+                collapsed ? "lg:hidden lg:w-0 lg:opacity-0" : "w-auto opacity-100",
+              )}>
+                {t(labelKey)}
+              </span>
             </NavLink>
           ))}
         </nav>
 
         {/* User info & logout */}
-        <div className="border-t border-border p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+        <div className={cn(
+          "border-t border-border transition-all duration-300",
+          collapsed ? "lg:px-2 lg:py-3" : "p-4",
+        )}>
+          <div className={cn(
+            "mb-2 flex items-center gap-2 text-sm font-medium text-foreground",
+            collapsed && "lg:justify-center",
+          )}>
             <Avatar userId={user?.id} size={36} />
-            <span className="truncate">{user?.username ?? t("profile")}</span>
+            <span className={cn(
+              "truncate transition-all duration-300",
+              collapsed ? "lg:hidden lg:w-0 lg:opacity-0" : "w-auto opacity-100",
+            )}>
+              {user?.username ?? t("profile")}
+            </span>
           </div>
-          <div className="mb-3 text-xs text-muted-foreground">
+          <div className={cn(
+            "mb-3 text-xs text-muted-foreground transition-all duration-300",
+            collapsed ? "lg:hidden lg:h-0 lg:opacity-0" : "h-auto opacity-100",
+          )}>
             {t("nav:eloTokens", { elo: user?.elo ?? 1200, tokens: user?.tokens ?? 0 })}
           </div>
-          <ThemeToggle />
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={handleLogout}>
-            <LogOut className="size-4" />
-            {t("nav:logout")}
+          <div className={cn(
+            "transition-all duration-300",
+            collapsed ? "lg:hidden lg:h-0 lg:opacity-0" : "h-auto opacity-100",
+          )}>
+            <ThemeToggle />
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("w-full gap-2", collapsed && "lg:justify-center lg:px-0")}
+            onClick={handleLogout}
+            title={collapsed ? t("nav:logout") : undefined}
+          >
+            <LogOut className="size-4 shrink-0" />
+            <span className={cn(
+              "transition-all duration-300 overflow-hidden",
+              collapsed ? "lg:hidden lg:w-0 lg:opacity-0" : "w-auto opacity-100",
+            )}>
+              {t("nav:logout")}
+            </span>
           </Button>
         </div>
+
+        {/* Collapse toggle button (desktop only) */}
+        <button
+          onClick={onToggleCollapse}
+          className="hidden lg:flex items-center justify-center h-10 border-t border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          title={collapsed ? t("nav:expandSidebar") : t("nav:collapseSidebar")}
+        >
+          {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+        </button>
       </aside>
     </>
   );
@@ -210,11 +282,35 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const { t } = useTranslation();
+
+  const toggleCollapse = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {
+        // Ignore storage errors
+      }
+      return next;
+    });
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapse}
+      />
 
       <div className="flex flex-1 flex-col">
         {/* Top bar */}

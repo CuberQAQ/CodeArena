@@ -644,7 +644,7 @@ export default function TrainingDetailPage() {
         </div>
 
         {/* ---- RIGHT: Info panel ---- */}
-        <div className="w-full shrink-0 space-y-4 lg:w-80">
+        <div className="w-full shrink-0 space-y-4 lg:w-80 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           {/* Compact stats (only when session exists) */}
           {session && (
             <div className="grid grid-cols-3 gap-2">
@@ -745,6 +745,37 @@ export default function TrainingDetailPage() {
                         </span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Difficulty range slider for recommend mode */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Filter className="size-3.5 text-muted-foreground" />
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {t("training:difficultyFilter")}
+                        </span>
+                      </div>
+                      <span className="text-xs font-semibold tabular-nums text-foreground">
+                        {t("training:difficultySlider.range", {
+                          min: sliderRange[0],
+                          max: sliderRange[1],
+                        })}
+                      </span>
+                    </div>
+                    <Slider
+                      value={sliderRange}
+                      onValueChange={(v) => {
+                        const range = v as [number, number];
+                        setSliderRange(range);
+                        setFilterMinRating(String(range[0]));
+                        setFilterMaxRating(String(range[1]));
+                      }}
+                      min={Math.max(800, (topic?.melo ?? 1200) - 200)}
+                      max={(topic?.melo ?? 1200) + 400}
+                      step={50}
+                      aria-label={t("training:difficultyFilter")}
+                    />
                   </div>
 
                   <Button

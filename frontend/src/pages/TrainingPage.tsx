@@ -13,6 +13,25 @@ import { buildRadarDataFromMElo } from "@/utils/radar";
 import type { ApiResponse, TopicInfo, RecommendedTopic, RadarDataPoint } from "@/types";
 
 // ---------------------------------------------------------------------------
+// Medal threshold label helper
+// ---------------------------------------------------------------------------
+
+function getMedalLabelForThreshold(threshold: number): { level: string; type: string } | null {
+  const map: [number, string, string][] = [
+    [2800, "worldFinals", "gold"],
+    [2600, "ecFinal", "gold"],
+    [2200, "regional", "gold"],
+    [1600, "provincial", "gold"],
+    [1400, "provincial", "silver"],
+    [1200, "provincial", "bronze"],
+  ];
+  for (const [t, level, type] of map) {
+    if (threshold === t) return { level, type };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Elo Progress Bar (FR-26.2)
 // ---------------------------------------------------------------------------
 
@@ -77,6 +96,9 @@ function EloProgressBar({ melo, currentThreshold, nextThreshold, t }: EloProgres
     : 100;
   const remaining = Math.max(nextThreshold - meloVal, 0);
 
+  // Resolve next medal level name from threshold
+  const nextMedalLabel = getMedalLabelForThreshold(nextThreshold);
+
   return (
     <div className="mt-2 space-y-1">
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -87,7 +109,9 @@ function EloProgressBar({ melo, currentThreshold, nextThreshold, t }: EloProgres
       </div>
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-muted-foreground">
-          M-Elo: {meloVal}
+          {nextMedalLabel
+            ? `${t("medal:levels." + nextMedalLabel.level)} ${t("medal:types." + nextMedalLabel.type)}`
+            : `M-Elo: ${meloVal}`}
         </p>
         <p className="text-[10px] font-medium text-muted-foreground">
           {t("eloUntilNext", { amount: remaining })}
