@@ -51,6 +51,7 @@ describe("useAuthStore", () => {
       user: null,
       isAuthenticated: false,
       isLoading: true,
+      loginTime: null,
     });
 
     // Clear all mocks
@@ -65,13 +66,14 @@ describe("useAuthStore", () => {
   // -----------------------------------------------------------------------
 
   describe("login", () => {
-    it("calls api.post /auth/login then api.get /auth/me, and sets user + isAuthenticated", async () => {
-      // Step 1: login returns tokens
+    it("calls api.post /auth/login then api.get /auth/me, and sets user + isAuthenticated + loginTime", async () => {
+      // Step 1: login returns tokens + login_time
       mockPost.mockResolvedValueOnce(
         makeApiReply({
           access_token: "at-123",
           refresh_token: "rt-456",
           token_type: "bearer",
+          login_time: "2026-05-24T12:00:00+00:00",
         }),
       );
       // Step 2: fetch /auth/me returns user profile
@@ -82,7 +84,7 @@ describe("useAuthStore", () => {
       // Verify API calls
       expect(mockPost).toHaveBeenCalledWith("/auth/login", {
         email: "test@example.com",
-        password: "password123",
+        password: "password123", // pragma: allowlist secret
       });
       expect(mockGet).toHaveBeenCalledWith("/auth/me");
 
@@ -90,10 +92,12 @@ describe("useAuthStore", () => {
       const state = useAuthStore.getState();
       expect(state.isAuthenticated).toBe(true);
       expect(state.user).toEqual(fakeUser);
+      expect(state.loginTime).toBe("2026-05-24T12:00:00+00:00");
 
       // Verify tokens persisted to localStorage
       expect(localStorage.getItem("access_token")).toBe("at-123");
       expect(localStorage.getItem("refresh_token")).toBe("rt-456");
+      expect(localStorage.getItem("login_time")).toBe("2026-05-24T12:00:00+00:00");
     });
 
     it("throws and does not set user when login API fails", async () => {
@@ -132,7 +136,7 @@ describe("useAuthStore", () => {
       expect(mockPost).toHaveBeenCalledWith("/auth/register", {
         username: "testuser",
         email: "test@example.com",
-        password: "password123",
+        password: "password123", // pragma: allowlist secret
       });
 
       const state = useAuthStore.getState();
@@ -161,19 +165,22 @@ describe("useAuthStore", () => {
   // -----------------------------------------------------------------------
 
   describe("logout", () => {
-    it("clears user, sets isAuthenticated=false, and removes tokens from localStorage", () => {
+    it("clears user, sets isAuthenticated=false, clears loginTime, and removes tokens from localStorage", () => {
       // Set up authenticated state
       localStorage.setItem("access_token", "at-123");
       localStorage.setItem("refresh_token", "rt-456");
-      useAuthStore.setState({ user: fakeUser, isAuthenticated: true });
+      localStorage.setItem("login_time", "2026-05-24T12:00:00+00:00");
+      useAuthStore.setState({ user: fakeUser, isAuthenticated: true, loginTime: "2026-05-24T12:00:00+00:00" });
 
       useAuthStore.getState().logout();
 
       const state = useAuthStore.getState();
       expect(state.user).toBeNull();
       expect(state.isAuthenticated).toBe(false);
+      expect(state.loginTime).toBeNull();
       expect(localStorage.getItem("access_token")).toBeNull();
       expect(localStorage.getItem("refresh_token")).toBeNull();
+      expect(localStorage.getItem("login_time")).toBeNull();
     });
   });
 
@@ -201,7 +208,7 @@ describe("useAuthStore", () => {
   // -----------------------------------------------------------------------
 
   describe("hydrate", () => {
-    it("sets isLoading=false and isAuthenticated=false when no token in localStorage", async () => {
+    it("sets isLoading=false and isAuthenticated=false and loginTime=null when no token in localStorage", async () => {
       useAuthStore.setState({ isLoading: true });
 
       await useAuthStore.getState().hydrate();
@@ -210,12 +217,14 @@ describe("useAuthStore", () => {
       expect(state.isLoading).toBe(false);
       expect(state.isAuthenticated).toBe(false);
       expect(state.user).toBeNull();
+      expect(state.loginTime).toBeNull();
       // Should not call /auth/me at all
       expect(mockGet).not.toHaveBeenCalled();
     });
 
-    it("fetches user and sets state when token is present and valid", async () => {
+    it("fetches user and sets state + restores loginTime when token is present and valid", async () => {
       localStorage.setItem("access_token", "valid-at");
+      localStorage.setItem("login_time", "2026-05-24T12:00:00+00:00");
       mockGet.mockResolvedValueOnce(makeApiReply(fakeUser));
 
       await useAuthStore.getState().hydrate();
@@ -224,6 +233,7 @@ describe("useAuthStore", () => {
       expect(state.user).toEqual(fakeUser);
       expect(state.isAuthenticated).toBe(true);
       expect(state.isLoading).toBe(false);
+      expect(state.loginTime).toBe("2026-05-24T12:00:00+00:00");
     });
 
     it("clears tokens when token is present but expired/invalid", async () => {

@@ -15,5 +15,9 @@
   "backToApp": "Back to App",
   "administrator": "Administrator",
   "unauthorized": "Unauthorized",
-  "settings": "Settings"
+  "settings": "Settings",
+  "playerBar": {
+    "arenaRank": "#{{rank}}",
+    "onlineTime": "Online"
+  }
 }
