@@ -455,7 +455,7 @@ describe("TrainingPage", () => {
     expect(screen.queryByTestId("medal-badge")).not.toBeInTheDocument();
   });
 
-  // 14. Elo progress bar shows "eloUntilNext" for normal topic
+  // 14. Elo progress bar shows next medal name and remaining elo for normal topic
   it("shows Elo progress info for topics with melo data", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
@@ -468,8 +468,10 @@ describe("TrainingPage", () => {
       expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
     });
     // DP: melo=1350, currentThreshold=1200, nextThreshold=1400
-    // remaining = 1400 - 1350 = 50
-    expect(screen.getByText(/50/)).toBeInTheDocument();
+    // Now shows next medal name from getMedalLabelForThreshold(1400) -> provincial silver
+    expect(screen.getByText(/medal:levels\.provincial/)).toBeInTheDocument();
+    // Also shows remaining elo: t("eloUntilNext", { amount: 50 })
+    expect(screen.getByText("eloUntilNext")).toBeInTheDocument();
   });
 
   // 15. Elo progress bar shows max tier for highest tier topic

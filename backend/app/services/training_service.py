@@ -508,6 +508,9 @@ class TrainingService:
 
         stars = calculate_stars_from_melo(melo)
 
+        # Compute medal info from M-Elo
+        medal_info, current_medal_threshold, next_medal_threshold = _compute_medal_info(melo)
+
         return TopicDetail(
             id=topic.id,
             name=topic.name,
@@ -521,6 +524,9 @@ class TrainingService:
             stars=stars,
             melo=melo,
             shield_active=shield_active,
+            medal=medal_info,
+            current_medal_threshold=current_medal_threshold,
+            next_medal_threshold=next_medal_threshold,
             problems=problem_infos,
         )
 

@@ -1,26 +1,24 @@
 """Codeforces problem statement scraper service.
 
-Uses Playwright (sync API) via ``run_in_executor`` to scrape CF problem pages,
+Uses Playwright (async API) to scrape CF problem pages,
 parse structured data, and cache results in the database.
 
 Key design decisions:
 - Browser instance is a **process-level singleton** to avoid cold-start cost.
 - Each scrape creates a **new browser context** (fresh cookies / storage).
-- Sync Playwright calls are wrapped with ``loop.run_in_executor(None, ...)``
-  so FastAPI async handlers are never blocked directly.
+- Async Playwright is used directly within FastAPI async handlers.
 - Parsed data is persisted as ``ProblemStatement`` rows (permanent cache).
 """
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import logging
 import re
 from typing import Any
 
 from bs4 import BeautifulSoup, Tag
-from playwright.sync_api import Browser, BrowserContext, sync_playwright
+from playwright.async_api import Browser, BrowserContext, async_playwright
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,23 +58,23 @@ def build_cf_url(contest_id: int, index: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Browser singleton
+# Browser singleton (async)
 # ---------------------------------------------------------------------------
 
 _playwright_instance = None
 _browser_instance: Browser | None = None
 
 
-def _ensure_browser() -> Browser:
+async def _ensure_browser() -> Browser:
     """Return the shared Chromium browser instance (lazy init)."""
     global _browser_instance, _playwright_instance
     if _browser_instance is None or not _browser_instance.is_connected():
         # Clean up old playwright if browser died
         if _playwright_instance is not None:
             with contextlib.suppress(Exception):
-                _playwright_instance.stop()
-        _playwright_instance = sync_playwright().start()
-        _browser_instance = _playwright_instance.chromium.launch(
+                await _playwright_instance.stop()
+        _playwright_instance = await async_playwright().start()
+        _browser_instance = await _playwright_instance.chromium.launch(
             headless=True,
             args=[
                 "--disable-blink-features=AutomationControlled",
@@ -87,40 +85,38 @@ def _ensure_browser() -> Browser:
     return _browser_instance
 
 
-def _new_context() -> BrowserContext:
+async def _new_context() -> BrowserContext:
     """Create a new browser context with anti-detection measures."""
-    browser = _ensure_browser()
-    context = browser.new_context(
-        user_agent=(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
-        ),
+    browser = await _ensure_browser()
+    context = await browser.new_context(
+        user_agent=("Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"),
         locale="en-US",
         viewport={"width": 1920, "height": 1080},
     )
-    context.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined });")
+    await context.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined });")
     return context
 
 
 # ---------------------------------------------------------------------------
-# Sync scraping functions (run in executor)
+# Async scraping functions
 # ---------------------------------------------------------------------------
 
 _DEFAULT_RETRIES = 3
 _RETRY_DELAY = 3  # seconds
 
 
-def _fetch_page_html(url: str, retries: int = _DEFAULT_RETRIES) -> str:
-    """Fetch full page HTML via Playwright.  *Blocking* -- call via executor."""
-    context = _new_context()
-    page = context.new_page()
+async def _fetch_page_html(url: str, retries: int = _DEFAULT_RETRIES) -> str:
+    """Fetch full page HTML via Playwright (async)."""
+    context = await _new_context()
+    page = await context.new_page()
     try:
         for attempt in range(1, retries + 1):
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-                page.wait_for_selector(".problem-statement", timeout=20_000)
+                await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                await page.wait_for_selector(".problem-statement", timeout=20_000)
                 # Do NOT wait for MathJax — capture raw <script type="math/tex"> tags
                 # so KaTeX can render them on the frontend
-                html = page.content()
+                html = await page.content()
                 if "problem-statement" not in html:
                     raise RuntimeError("Page does not contain .problem-statement")
                 return html
@@ -133,11 +129,11 @@ def _fetch_page_html(url: str, retries: int = _DEFAULT_RETRIES) -> str:
                     exc,
                 )
                 if attempt < retries:
-                    page.wait_for_timeout(_RETRY_DELAY * 1000)
+                    await page.wait_for_timeout(_RETRY_DELAY * 1000)
                 else:
                     raise RuntimeError(f"Failed to scrape {url} after {retries} attempts") from exc
     finally:
-        context.close()
+        await context.close()
 
     # Unreachable, but keeps type checkers happy
     raise RuntimeError("Unreachable")  # pragma: no cover
@@ -231,12 +227,6 @@ def _parse_problem_html(html: str) -> dict[str, Any]:
 class ProblemScraperService:
     """High-level async service for scraping and caching CF problem statements."""
 
-    @staticmethod
-    async def _run_sync(func: Any, *args: Any) -> Any:
-        """Run a blocking function in the default thread executor."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, func, *args)
-
     # ---- public API -------------------------------------------------------
 
     async def scrape_problem(self, contest_id: int, index: str) -> dict[str, Any]:
@@ -246,8 +236,8 @@ class ProblemScraperService:
         """
         url = build_cf_url(contest_id, index)
         logger.info("Scraping problem: %s", url)
-        html = await self._run_sync(_fetch_page_html, url)
-        data = await self._run_sync(_parse_problem_html, html)
+        html = await _fetch_page_html(url)
+        data = _parse_problem_html(html)
         return data
 
     async def get_or_scrape(
@@ -309,11 +299,11 @@ class ProblemScraperService:
         global _browser_instance, _playwright_instance
         if _browser_instance is not None:
             with contextlib.suppress(Exception):
-                _browser_instance.close()
+                await _browser_instance.close()
             _browser_instance = None
         if _playwright_instance is not None:
             with contextlib.suppress(Exception):
-                _playwright_instance.stop()
+                await _playwright_instance.stop()
             _playwright_instance = None
 
 
