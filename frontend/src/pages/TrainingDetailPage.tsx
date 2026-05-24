@@ -690,7 +690,7 @@ export default function TrainingDetailPage() {
         </div>
 
         {/* ---- RIGHT: Info panel ---- */}
-        <div className="w-full shrink-0 space-y-4 lg:w-80 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        <div className="w-full shrink-0 space-y-4 lg:w-80 lg:sticky lg:top-4">
           {/* Compact stats (only when session exists) */}
           {session && (
             <div className="grid grid-cols-3 gap-2">
@@ -804,8 +804,8 @@ export default function TrainingDetailPage() {
                         setFilterMinRating(String(range[0]));
                         setFilterMaxRating(String(range[1]));
                       }}
-                      min={Math.max(800, (topic?.melo ?? 1200) - 200)}
-                      max={(topic?.melo ?? 1200) + 400}
+                      min={Math.round(Math.max(800, (topic?.melo ?? 1200) - 200) / 100) * 100}
+                      max={Math.round(((topic?.melo ?? 1200) + 400) / 100) * 100}
                       step={100}
                       aria-label={t("training:difficultyFilter")}
                     />
@@ -869,44 +869,6 @@ export default function TrainingDetailPage() {
           {/* ---- LIST MODE content ---- */}
           {detailMode === "list" && (
             <>
-              {/* Difficulty range slider */}
-              <div className="rounded-lg border border-border bg-card p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Filter className="size-3.5 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {t("training:difficultyFilter")}
-                    </span>
-                  </div>
-                  <span className="text-xs font-semibold tabular-nums text-foreground">
-                    {t("training:difficultySlider.range", {
-                      min: sliderRange[0],
-                      max: sliderRange[1],
-                    })}
-                  </span>
-                </div>
-                <Slider
-                  value={sliderRange}
-                  onValueChange={(v) => {
-                    const range = v as [number, number];
-                    setSliderRange(range);
-                    setFilterMinRating(String(range[0]));
-                    setFilterMaxRating(String(range[1]));
-                  }}
-                  onValueCommitted={(v) => {
-                    const range = v as [number, number];
-                    // Trigger refresh on drag end with explicit filter values
-                    setCuratedOffset(0);
-                    setCuratedProblems([]);
-                    setTimeout(() => fetchCuratedProblems(false, { min: range[0], max: range[1] }), 0);
-                  }}
-                  min={Math.max(800, (topic?.melo ?? 1200) - 200)}
-                  max={(topic?.melo ?? 1200) + 400}
-                  step={100}
-                  aria-label={t("training:difficultyFilter")}
-                />
-              </div>
-
               {/* Problem list */}
               <div className="rounded-xl border border-border bg-card">
                 <div className="border-b border-border px-4 py-2.5">
