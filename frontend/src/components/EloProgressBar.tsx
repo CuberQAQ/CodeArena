@@ -194,9 +194,9 @@ export function EloProgressBar({
           )}
         </div>
 
-        {/* Labels below the bar -- left and right endpoints with rating color */}
+        {/* Labels below the bar -- left and right endpoints */}
         <div className="flex items-center justify-between text-[10px]">
-          <span className="font-mono font-semibold" style={{ color: getRatingColor(progressMin) }}>
+          <span className="font-mono font-semibold text-muted-foreground">
             {progressMin}
           </span>
           {isMaxTier && (
@@ -205,7 +205,7 @@ export function EloProgressBar({
             </span>
           )}
           {progressMax !== null && (
-            <span className="font-mono font-semibold" style={{ color: getRatingColor(progressMax) }}>
+            <span className="font-mono font-semibold text-muted-foreground">
               {progressMax}
             </span>
           )}
@@ -216,7 +216,7 @@ export function EloProgressBar({
       {!isMaxTier && distanceToNext !== null && (
         <p className="text-center text-[11px] text-muted-foreground">
           {t("eloProgress.untilNextPrefix")}
-          <span className="font-semibold" style={{ color: getRatingColor(nextMedalThreshold!) }}>
+          <span className="font-semibold text-foreground">
             {getNextRankName(nextMedalThreshold!, t, displayMode)}
           </span>
           {t("eloProgress.untilNextSuffix")}
