@@ -314,7 +314,10 @@ export default function TrainingDetailPage() {
     if (!topicId) return;
     setRecommendLoading(true);
     try {
-      const result = await getRecommendedProblem(topicId);
+      const result = await getRecommendedProblem(topicId, {
+        minRating: sliderRange[0],
+        maxRating: sliderRange[1],
+      });
       setRecommendedProblem(result);
       setIsListSelected(false);
     } catch {
@@ -322,7 +325,7 @@ export default function TrainingDetailPage() {
     } finally {
       setRecommendLoading(false);
     }
-  }, [topicId]);
+  }, [topicId, sliderRange]);
 
   // Fetch recommended problem when in recommend mode
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -768,14 +771,6 @@ export default function TrainingDetailPage() {
                             {Math.round(recommendedProblem.melo)}
                           </span>
                         </div>
-                        {recommendedProblem.search_range && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">{t("training:infoPanel.searchRange")}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {recommendedProblem.search_range[0]} - {recommendedProblem.search_range[1]}
-                            </span>
-                          </div>
-                        )}
                       </>
                     )}
                   </div>

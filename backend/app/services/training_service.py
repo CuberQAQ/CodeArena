@@ -555,6 +555,8 @@ class TrainingService:
         user: User,
         topic_id: uuid.UUID,
         cf_service: CFApiService,
+        min_rating: int | None = None,
+        max_rating: int | None = None,
     ) -> RecommendedProblemResponse | None:
         """Recommend a problem based on the user's M-Elo for the topic's tag.
 
@@ -613,7 +615,30 @@ class TrainingService:
         if not candidates:
             return None
 
-        # 5. Progressive range search with fallback
+        # 5a. Custom rating range override (from difficulty slider)
+        if min_rating is not None or max_rating is not None:
+            lo = min_rating if min_rating is not None else 0
+            hi = max_rating if max_rating is not None else 9999
+            in_range = [p for p in candidates if lo <= p.get("rating", 0) <= hi]
+            if in_range:
+                chosen = random.choice(in_range)
+                contest_id = chosen.get("contestId", 0)
+                index = chosen.get("index", "")
+                problem_id = f"{contest_id}{index}"
+                return RecommendedProblemResponse(
+                    problem_id=problem_id,
+                    contest_id=contest_id,
+                    index=index,
+                    name=chosen.get("name", ""),
+                    rating=chosen.get("rating"),
+                    tags=chosen.get("tags", []),
+                    url=f"https://codeforces.com/problemset/problem/{contest_id}/{index}" if contest_id else "",
+                    melo=melo,
+                    search_range=[lo, hi],
+                )
+            return None
+
+        # 5b. Progressive range search with fallback
         range_rounds = [
             (100, 200),  # base: [M-Elo - 100, M-Elo + 200]
             (200, 300),  # round 1: [M-Elo - 200, M-Elo + 300]

@@ -97,12 +97,16 @@ async def get_recommended_problem(
     topic_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    min_rating: int | None = None,
+    max_rating: int | None = None,
 ):
     """Get an adaptive problem recommendation based on the user's M-Elo.
 
     Returns a single unsolved problem within a rating range derived from
     the user's M-Elo for the topic's primary tag.  If no suitable problem
     is found (after expanding the range up to 3 rounds), returns null data.
+
+    Optional min_rating/max_rating override the default M-Elo-based range.
     """
     cf_service = _get_cf_service()
     result = await TrainingService.get_adaptive_problem(
@@ -110,6 +114,8 @@ async def get_recommended_problem(
         user=current_user,
         topic_id=topic_id,
         cf_service=cf_service,
+        min_rating=min_rating,
+        max_rating=max_rating,
     )
     if result is None:
         return success_response(

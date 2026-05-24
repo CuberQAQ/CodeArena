@@ -145,7 +145,7 @@ describe("trainingApi", () => {
 
       const result = await getRecommendedProblem("dp");
 
-      expect(mockGet).toHaveBeenCalledWith("/training/topics/dp/recommend");
+      expect(mockGet).toHaveBeenCalledWith("/training/topics/dp/recommend", { params: {} });
       expect(result).toEqual(mockProblem);
     });
 

@@ -55,9 +55,14 @@ export async function getRecommendedTopics(
 
 export async function getRecommendedProblem(
   topicId: string,
+  ratingFilter?: { minRating?: number; maxRating?: number },
 ): Promise<RecommendedProblem | null> {
+  const params: Record<string, unknown> = {};
+  if (ratingFilter?.minRating != null) params.min_rating = ratingFilter.minRating;
+  if (ratingFilter?.maxRating != null) params.max_rating = ratingFilter.maxRating;
   const res = await api.get<ApiResponse<RecommendedProblem | null>>(
     `/training/topics/${topicId}/recommend`,
+    { params },
   );
   return res.data.data;
 }
