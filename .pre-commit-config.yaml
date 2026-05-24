@@ -27,6 +27,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^frontend/src/.*\.[jt]sx?$
+      - id: tsc-frontend
+        name: tsc (frontend)
+        entry: bash -c 'cd frontend && npx tsc -b --noEmit'
+        language: system
+        pass_filenames: false
+        files: ^frontend/.*\.tsx?$
 
   # General: trailing whitespace, YAML, etc
   - repo: https://github.com/pre-commit/pre-commit-hooks

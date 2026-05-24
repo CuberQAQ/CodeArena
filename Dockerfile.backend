@@ -15,10 +15,12 @@ WORKDIR /app
 COPY backend/requirements-prod.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2) Install Playwright + Chromium (layer cached unless Playwright version changes)
+# 2) Install Playwright + Chromium to a shared location accessible by appuser
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN pip install --no-cache-dir playwright>=1.50.0 && \
     playwright install chromium --with-deps && \
-    playwright install-deps chromium
+    playwright install-deps chromium && \
+    chown -R appuser:appuser /opt/ms-playwright
 
 # 3) Copy application code (changes most often — last layer)
 COPY backend/ .
