@@ -66,6 +66,9 @@
   },
   "progress": "Progress",
   "meloLabel": "M-Elo",
+  "eloUntilNext": "{{amount}} Elo to next",
+  "eloProgressTarget": "Target: {{target}}",
+  "eloProgressMax": "Max tier reached",
   "solvedCount": "{{count}} solved",
   "recommendMode": "Recommended",
   "problemListMode": "Problem List",
@@ -86,6 +89,28 @@
     "problemInfo": "Problem Info",
     "rating": "Rating",
     "yourMelo": "Your M-Elo",
-    "searchRange": "Search Range"
+    "searchRange": "Search Range",
+    "viewOnCodeforces": "View on Codeforces"
+  },
+  "protection": {
+    "banner": "Protection {{time}} remaining",
+    "ended": "Protection period ended"
+  },
+  "skipDialog": {
+    "title": "Switch Problem?",
+    "message": "Switching will count as abandoning the current problem and deduct 5 M-Elo. Confirm?",
+    "cancel": "Cancel",
+    "confirm": "Switch"
+  },
+  "autoStartFailed": "Failed to auto-start training. Please try again later.",
+  "skipProblemFailed": "Failed to switch problem",
+  "difficultySlider": {
+    "range": "{{min}} - {{max}}",
+    "hint": "Drag to filter difficulty range"
+  },
+  "eloProgress": {
+    "meloLabel": "M-Elo",
+    "untilNext": "{{amount}} Elo to next medal",
+    "maxTier": "Max tier reached"
   }
 }

@@ -30,8 +30,10 @@ from app.schemas.training import (
     AbandonTrainingResponse,
     CuratedProblemInfo,
     CuratedProblemsResponse,
+    MedalInfo,
     RecommendedProblemResponse,
     RecommendedTopicResponse,
+    SkipProblemResponse,
     SubmitTrainingResponse,
     TopicDetail,
     TopicInfo,
@@ -45,6 +47,7 @@ from app.services import economy_service as economy_svc
 from app.services.achievement_service import AchievementService
 from app.services.cf_api_service import CFApiService
 from app.services.hint_service import HintService
+from app.services.medal_service import _FLAT_MEDAL_MAP, MedalService
 from app.services.melo_service import MEloService
 from app.services.pp_service import PPService
 from app.services.submission_tracker import SubmissionTracker
@@ -250,6 +253,43 @@ def calculate_stars_from_melo(melo: float | None) -> int:
     return 7
 
 
+def _compute_medal_info(melo: float | None) -> tuple[MedalInfo, int | None, int | None]:
+    """Compute medal info, current threshold, and next threshold from M-Elo.
+
+    Returns:
+        (medal_info, current_medal_threshold, next_medal_threshold)
+    """
+    if melo is None:
+        # Unranked: no medal, next threshold is provincial bronze (1200)
+        return MedalInfo(level="unranked", type=None), None, 1200
+
+    medal = MedalService._rating_to_medal(int(melo))
+
+    if medal["level"] == "unranked":
+        return MedalInfo(level="unranked", type=None), None, 1200
+
+    medal_type = medal["type"]
+    medal_level = medal["level"]
+
+    # Find the entry in _FLAT_MEDAL_MAP that matches the current medal
+    current_threshold = None
+    current_idx = None
+    for idx, (threshold, level, mtype) in enumerate(_FLAT_MEDAL_MAP):
+        if level == medal_level and mtype == medal_type:
+            current_threshold = threshold
+            current_idx = idx
+            break
+
+    if current_idx is None:
+        # Should not happen, but fallback
+        return MedalInfo(level=medal_level, type=medal_type), None, None
+
+    # Next threshold: the entry BEFORE it in the list (higher threshold)
+    next_threshold = None if current_idx == 0 else _FLAT_MEDAL_MAP[current_idx - 1][0]
+
+    return MedalInfo(level=medal_level, type=medal_type), current_threshold, next_threshold
+
+
 # ---------------------------------------------------------------------------
 # Training Service
 # ---------------------------------------------------------------------------
@@ -360,6 +400,9 @@ class TrainingService:
                 # Calculate stars based on M-Elo
                 stars = calculate_stars_from_melo(melo)
 
+            # Compute medal info from M-Elo
+            medal_info, current_medal_threshold, next_medal_threshold = _compute_medal_info(melo)
+
             topic_infos.append(
                 TopicInfo(
                     id=topic.id,
@@ -374,6 +417,9 @@ class TrainingService:
                     stars=stars,
                     melo=melo,
                     shield_active=shield_active,
+                    medal=medal_info,
+                    current_medal_threshold=current_medal_threshold,
+                    next_medal_threshold=next_medal_threshold,
                 )
             )
 
@@ -1214,10 +1260,11 @@ class TrainingService:
     ) -> AbandonTrainingResponse:
         """Abandon an active training session.
 
-        Applies quit-penalty Elo deduction following the rules in section 4.6:
-        - 0 submissions (no problems attempted): Elo unchanged
-        - 1-2 submissions: small penalty (-5 to -10)
-        - 3+ submissions: normal failure Elo calculation
+        Applies quit-penalty Elo deduction following the rules:
+        - Within protection period (300s from session start): No Elo change
+        - Protection period expired AND 0 submissions: Deduct exactly 5 M-Elo
+        - Protection period expired AND 1-2 submissions: small penalty (-5 to -10)
+        - Protection period expired AND 3+ submissions: normal failure Elo calculation
 
         The learning shield (Task 16.2) protects against Elo deductions
         when the user has never AC'd a problem with the topic's primary tag.
@@ -1232,6 +1279,17 @@ class TrainingService:
 
         session.status = "abandoned"
         session.completed_at = datetime.now(UTC)
+
+        # Check protection period (300 seconds from session start)
+        now = datetime.now(UTC)
+        started_at = session.started_at
+        if started_at is not None:
+            if started_at.tzinfo is None:
+                started_at = started_at.replace(tzinfo=UTC)
+            in_protection = (now - started_at).total_seconds() < 300
+        else:
+            # No started_at means the session just started -- treat as within protection
+            in_protection = True
 
         # Count total submissions in this session
         count_stmt = select(func.count(TrainingProblemRecord.id)).where(
@@ -1248,9 +1306,34 @@ class TrainingService:
 
         elo_change: int | None = None
 
-        if submission_count == 0:
-            # No submissions: Elo unchanged
-            pass
+        if in_protection:
+            # Within protection period: no Elo change regardless of submissions
+            logger.info(
+                "Protection period active for session=%s -- skipping Elo deduction on abandon",
+                session_id,
+            )
+        elif submission_count == 0:
+            # Protection period expired, 0 submissions: fixed 5 M-Elo deduction
+            if primary_tag and not shield_active:
+                await MEloService.get_or_create_melo(db, user.id, primary_tag)
+                await MEloService.update_melo(db, user.id, primary_tag, -5)
+                # Record EloHistory for the M-Elo deduction
+                history = EloHistory(
+                    user_id=user.id,
+                    elo_before=user.elo,
+                    elo_after=user.elo,
+                    elo_change=0,
+                    reason="training_abandon",
+                    reference_id=session_id,
+                )
+                db.add(history)
+                elo_change = -5
+            elif shield_active:
+                logger.info(
+                    "Shield active for user=%s tag=%s -- skipping Elo deduction on abandon",
+                    user.id,
+                    primary_tag,
+                )
         elif shield_active:
             # Shield active: no Elo deduction on abandon
             logger.info(
@@ -1281,6 +1364,128 @@ class TrainingService:
             total_problems=session.total_problems,
             elo_change=elo_change,
             shield_active=shield_active,
+        )
+
+    # ------------------------------------------------------------------
+    # 7b. Skip problem (switch problems during session)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def skip_problem(
+        db: AsyncSession,
+        user: User,
+        session_id: uuid.UUID,
+        problem_id: str,
+    ) -> SkipProblemResponse:
+        """Skip a problem in an active training session.
+
+        Rules:
+        - Within protection period (300s from session start): No penalty
+        - Protection period expired: Deduct 5 M-Elo from the topic's tag
+        - Creates/updates a TrainingProblemRecord with solved=False
+        - Records EloHistory for the M-Elo deduction
+        """
+        session = await db.get(TrainingSession, session_id)
+        if session is None:
+            raise NotFoundException(message="Training session not found")
+        if session.user_id != user.id:
+            raise ForbiddenException(message="Not your training session")
+        if session.status != "active":
+            raise BadRequestException(message="Training session is not active")
+
+        # Check protection period
+        now = datetime.now(UTC)
+        started_at = session.started_at
+        if started_at is not None:
+            if started_at.tzinfo is None:
+                started_at = started_at.replace(tzinfo=UTC)
+            in_protection = (now - started_at).total_seconds() < 300
+        else:
+            # No started_at means the session just started -- treat as within protection
+            in_protection = True
+
+        # Get problem rating
+        problem_rating = await TrainingService._get_problem_rating(db, session.topic_id, problem_id, None)
+
+        # Create or update problem record as skipped (solved=False)
+        existing_stmt = select(TrainingProblemRecord).where(
+            TrainingProblemRecord.session_id == session_id,
+            TrainingProblemRecord.problem_id == problem_id,
+        )
+        existing_result = await db.execute(existing_stmt)
+        existing_record = existing_result.scalar_one_or_none()
+
+        if existing_record is not None:
+            # Update existing record -- mark as not solved (skip)
+            existing_record.solved = False
+            existing_record.time_spent = existing_record.time_spent or 0.0
+        else:
+            record = TrainingProblemRecord(
+                session_id=session_id,
+                user_id=user.id,
+                topic_id=session.topic_id,
+                problem_id=problem_id,
+                problem_rating=problem_rating,
+                solved=False,
+                attempts=0,
+                time_spent=0.0,
+                solved_at=None,
+            )
+            db.add(record)
+
+        elo_change: int | None = None
+        new_melo: int | None = None
+
+        if not in_protection:
+            # Deduct 5 M-Elo from the topic's primary tag
+            primary_tag = await TrainingService._get_primary_tag_for_topic(db, session.topic_id)
+            if primary_tag:
+                # Check shield -- if active, skip deduction
+                shield_active = await MEloService.is_shield_active(db, user.id, primary_tag)
+                if shield_active:
+                    logger.info(
+                        "Shield active for user=%s tag=%s -- skipping M-Elo deduction on skip",
+                        user.id,
+                        primary_tag,
+                    )
+                else:
+                    melo_record = await MEloService.get_or_create_melo(db, user.id, primary_tag)
+                    await MEloService.update_melo(db, user.id, primary_tag, -5)
+                    await db.flush()
+                    await db.refresh(melo_record)
+                    new_melo = melo_record.elo
+                    elo_change = -5
+
+                    # Record EloHistory for the deduction
+                    history = EloHistory(
+                        user_id=user.id,
+                        elo_before=user.elo,
+                        elo_after=user.elo,
+                        elo_change=0,
+                        reason="training_skip",
+                        reference_id=session_id,
+                    )
+                    db.add(history)
+        else:
+            logger.info(
+                "Protection period active for session=%s -- no penalty on skip",
+                session_id,
+            )
+
+        await db.flush()
+
+        # Get current melo after potential deduction
+        if new_melo is None:
+            primary_tag = await TrainingService._get_primary_tag_for_topic(db, session.topic_id)
+            if primary_tag:
+                melo_record = await MEloService.get_or_create_melo(db, user.id, primary_tag)
+                new_melo = melo_record.elo
+
+        return SkipProblemResponse(
+            session_id=session_id,
+            problem_id=problem_id,
+            elo_change=elo_change,
+            new_melo=new_melo,
         )
 
     # ------------------------------------------------------------------

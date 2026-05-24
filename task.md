@@ -2486,3 +2486,228 @@ ContestDetailPage.tsx:570-572 对每个 `solved === false` 的题目**无条件�
 - [ ] 手机端自动切换为上下堆叠（响应式）
 - [ ] 放弃训练功能正常
 - [ ] 训练完成后正常显示结果页面
+
+---
+
+## 阶段 47: 训练模块 UX 升级 (FR-24~FR-31)
+
+### Task 47.1: 后端 — Topics 接口奖牌数据 + 保护期逻辑 + 题目跳过接口
+
+**状态**: 🔲 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+
+1. `GET /training/topics` 响应中每个 topic 增加奖牌信息: `medal`（level + type）、`next_medal_threshold`、`current_medal_threshold`，基于 `MedalService._rating_to_medal` 和 `_FLAT_MEDAL_MAP` 计算。
+2. `POST /training/session/{id}/abandon` 增加保护期判断: session 开始 300 秒内 abandon 不扣 Elo；保护期后无提交扣 5 M-Elo（固定值，**覆盖** requirements.md 4.6 节通用的"提交 0 次退出 = Elo 不变"规则），有提交保持原有阶梯惩罚逻辑。
+3. 新增 `POST /training/session/{id}/skip-problem` 接口: 保护期内无惩罚，保护期后扣 5 M-Elo，标记当前题目为跳过/放弃。
+4. `POST /auth/login` 响应中增加 `login_time` 字段（ISO 8601），前端用于在线时间计时。
+
+#### 需要修改的文件
+
+**后端**:
+- `backend/app/api/v1/training.py` — 修改 `list_topics` 返回奖牌字段；修改 `abandon_session` 增加保护期；新增 `skip_problem` endpoint
+- `backend/app/services/training_service.py` — `list_topics()` 中为每个 topic 计算奖牌信息；`abandon_training()` 增加保护期判断；新增 `skip_problem()` 方法
+- `backend/app/services/melo_service.py` — `skip_problem` 调用 melo 结算扣 5 M-Elo
+- `backend/app/schemas/training.py` — TopicInfo schema 增加奖牌字段；新增 skip response schema
+- `backend/app/api/v1/auth.py` — login 响应增加 `login_time` 字段
+- `backend/app/services/auth_service.py` — login 返回值增加 `login_time`
+
+#### 调用方清单
+- 前端 `TrainingPage.tsx` 调用 `GET /training/topics` 获取奖牌数据
+- 前端 `TrainingDetailPage.tsx` 调用 `POST /training/session/{id}/abandon` 和 `skip-problem`
+
+#### 反向集成清单
+- 奖牌数据复用 `MedalService._rating_to_medel`，与 Dashboard/Profile 一致
+- M-Elo 扣除通过 `MEloService` 正规结算流程，记录 `EloHistory`
+- 代币奖励: 跳过题目不获得代币
+- 成就事件: 无新增
+
+#### 测试要点
+- [ ] `GET /training/topics` 返回正确的 medal/next_medal_threshold/current_medal_threshold
+- [ ] melo < 1200 时 medal 为 unranked，next_medal_threshold 为 1200，current_medal_threshold 为 null
+- [ ] abandon 在保护期内不扣 Elo
+- [ ] abandon 保护期后无提交扣 5 M-Elo
+- [ ] abandon 保护期后有提交走原有结算逻辑
+- [ ] skip-problem 保护期内无惩罚
+- [ ] skip-problem 保护期后扣 5 M-Elo
+- [ ] skip-problem 返回更新后的 session 和 melo
+- [ ] login 响应包含 `login_time` 字段
+
+---
+
+### Task 47.2: 前端 — 顶栏玩家信息条
+
+**状态**: 🔲 待开始
+**优先级**: P0
+**依赖**: 无（与 Task 47.1 可并行）
+
+#### 任务描述
+
+改造桌面端顶栏为 osu! 风格的紧凑玩家信息条: 品牌、头像、昵称、Global Elo（带颜色）、当前奖牌 Badge、PP、排名、本次在线时间、深浅色切换、语言切换。移动端仅显示头像 + Elo + 在线时间。
+
+在线时间从用户登录时刻开始计时，格式 HH:MM:SS，每秒更新。后端 login API 新增 `login_time` 字段（Task 47.1），前端 auth store 存储该值作为计时基准。
+
+#### 需要修改的文件
+
+- `frontend/src/layouts/MainLayout.tsx` — 重构 header 区域，新增玩家信息条组件
+- `frontend/src/components/layout/PlayerInfoBar.tsx` — 新增组件（或内联在 MainLayout）
+- `frontend/src/stores/auth.ts` — 存储 `login_time`（从 login API 响应获取）
+- `frontend/src/types/index.ts` — 如需新增类型
+- `public/locales/zh/nav.json` + `public/locales/en/nav.json` — 新增在线时间等 i18n 文案
+
+#### 调用方清单
+- MainLayout 是全局布局组件，所有页面均受影响
+
+#### 反向集成清单
+- 奖牌展示复用 `MedalBadge` 组件
+- Elo 颜色复用 `getRatingColor` 工具函数
+- 在线时间需从 auth store 的 token 或 user 对象获取登录时间
+- PP 数据需从 user 对象或 API 获取
+- 排名数据如不可用可暂不显示
+
+#### 测试要点
+- [ ] 桌面端顶栏从左到右依次显示: 品牌、玩家信息、深浅色/语言切换
+- [ ] 玩家信息包含: 头像、昵称、Elo（带颜色）、奖牌 Badge、PP、排名（如有）、在线时间
+- [ ] 在线时间从登录开始每秒递增，格式 HH:MM:SS
+- [ ] 刷新页面后在线时间从登录时间重新计算
+- [ ] 移动端仅显示头像 + Elo + 在线时间
+- [ ] 移动端下拉菜单可展开完整玩家信息
+- [ ] 深色/浅色模式下均正常显示
+- [ ] 未登录状态不显示玩家信息
+
+---
+
+### Task 47.3: 前端 — 训练首页 Skill Radar + 专题卡片奖牌/进度条
+
+**状态**: 🔲 待开始
+**优先级**: P0
+**依赖**: Task 47.1（后端 topics 接口需返回奖牌数据）
+
+#### 任务描述
+
+1. 训练首页 `PageHeader` 下方添加较大的 Skill Radar（8 维 M-Elo），每个维度可点击跳转对应专题。
+2. 专题卡片增加奖牌 Badge（MedalBadge size="sm"）和 Elo 进度条（当前 M-Elo → 下一奖牌门槛），替换现有 ProgressRing（解题百分比）。
+
+#### 需要修改的文件
+
+- `frontend/src/pages/TrainingPage.tsx` — 添加 Radar、改造专题卡片
+- `frontend/src/components/charts/TrainingRadarChart.tsx` — 新增或从 DashboardCharts 提取独立组件
+- `public/locales/zh/training.json` + `public/locales/en/training.json` — 新增文案
+
+#### 调用方清单
+- TrainingPage 调用 `/training/melo` 获取雷达数据
+- TrainingPage 调用 `/training/topics` 获取奖牌数据
+- 雷达维度点击通过 `useNavigate` 跳转
+
+#### 反向集成清单
+- 雷达图复用 DashboardCharts 的聚合逻辑（8 维 from per-tag M-Elo）
+- 奖牌 Badge 复用 MedalBadge 组件
+- 进度条数据来自 Task 47.1 新增的 medal/next_medal_threshold/current_medal_threshold 字段
+
+#### 测试要点
+- [ ] 训练首页 PageHeader 下方显示 Skill Radar
+- [ ] 雷达图 8 个维度正确显示 M-Elo 数据
+- [ ] 点击雷达维度跳转到对应专题详情页
+- [ ] 专题卡片显示奖牌 Badge（正确对应 M-Elo 等级）
+- [ ] 专题卡片底部 Elo 进度条正确显示
+- [ ] 进度条文字显示"还差 X Elo"
+- [ ] 无奖牌时目标为省赛铜（1200）
+- [ ] 已达最高等级时进度满
+
+---
+
+### Task 47.4: 前端 — 训练详情页统一布局 + 自动开始 + 退出惩罚
+
+**状态**: 🔲 待开始
+**优先级**: P0
+**依赖**: Task 47.1（后端 skip-problem 接口 + 保护期逻辑）
+
+#### 任务描述
+
+1. 移除 topic→session phase 切换，进入详情页自动创建/恢复 session，始终使用左右双栏布局。
+2. 实现 5 分钟保护期: 保护期内退出/切换无惩罚；保护期后退出扣 5 M-Elo，切换需确认弹窗扣 5 M-Elo。
+3. 题目列表点击切换当前展示题目（不跳转 CF），每行保留 CF 外链。
+4. "题目信息"链接文案改为"在 Codeforces 中查看"。
+
+#### 需要修改的文件
+
+- `frontend/src/pages/TrainingDetailPage.tsx` — 重构: 移除 phase 切换、自动开始、统一布局、保护期、切换确认
+- `frontend/src/components/ui/alert-dialog.tsx` — 确认弹窗（如不存在需新增，shadcn/ui 组件）
+- `public/locales/zh/training.json` + `public/locales/en/training.json` — 新增保护期/确认弹窗/外链文案:
+  - `protectionCountdown`: "保护期剩余 {{time}}" / "Protection {{time}} remaining"
+  - `skipConfirmTitle`: "确认切换题目？" / "Switch Problem?"
+  - `skipConfirmMessage`: "切换题目将视为放弃当前题目，扣除 5 M-Elo。确认切换？" / "Switching will count as abandoning the current problem and deduct 5 M-Elo. Confirm?"
+  - `infoPanel.viewOnCodeforces`: "在 Codeforces 中查看" / "View on Codeforces"
+
+#### 调用方清单
+- TrainingDetailPage 调用 `POST /training/start` 自动创建 session
+- TrainingDetailPage 调用 `GET /training/topics/{id}/active-session` 恢复 session
+- TrainingDetailPage 调用 `POST /training/session/{id}/skip-problem` 切换题目
+- TrainingDetailPage 调用 `POST /training/session/{id}/abandon` 退出
+- 返回/导航离开时触发 abandon
+
+#### 反向集成清单
+- Session 恢复与现有点位提交追踪兼容
+- 保护期倒计时基于 session started_at
+- 确认弹窗使用标准 dialog 组件，与现有 UI 风格一致
+- 题目切换后 ProblemViewer 正确加载新题目
+
+#### 测试要点
+- [ ] 进入详情页自动创建 session，无"开始训练"按钮
+- [ ] 已有 active session 时自动恢复
+- [ ] 页面始终为左右双栏布局（左题目右信息）
+- [ ] 题目列表点击切换当前展示题目
+- [ ] 保护期内（前 5 分钟）页面顶部显示绿色倒计时（每秒更新）
+- [ ] 保护期倒计时在深色/浅色模式下均清晰可见
+- [ ] 保护期内退出/切换无 Elo 扣除
+- [ ] 保护期后退出扣 5 M-Elo
+- [ ] 保护期后切换弹出确认弹窗
+- [ ] 确认后扣 Elo 并切换题目
+- [ ] 取消后留在当前题目
+- [ ] CF 外链文案显示"在 Codeforces 中查看"
+- [ ] 深色/浅色模式正常
+- [ ] 移动端响应式布局正常
+
+---
+
+### Task 47.5: 前端 — 难度双端 Slider + 做题页 Elo 进度条
+
+**状态**: 🔲 待开始
+**优先级**: P1
+**依赖**: Task 47.4（统一布局完成后添加）
+
+#### 任务描述
+
+1. 替换难度筛选的两个 input 框为双端 range slider（M-Elo -200 ~ +400，步进 50），拖动结束自动刷新推荐。
+2. 训练做题页右侧面板顶部添加 Elo 进度条卡片: 底层显示当前 M-Elo 位置，顶层显示预计 Elo 变化（绿/红），文字标注当前值和差距。Prediction 接口 `/time-factor-prediction` 接受通用 `user_elo` 参数，前端传入当前 topic M-Elo 即可获得 M-Elo 维度的近似预测（注意实际结算有 2.0x 训练系数，显示值为近似趋势）。
+
+#### 需要修改的文件
+
+- `frontend/src/pages/TrainingDetailPage.tsx` — 难度筛选改为双端 slider；右侧面板添加 Elo 进度条
+- `frontend/src/components/EloProgressBar.tsx` — 新增组件（Elo 进度条卡片，含实时 prediction）
+- `frontend/src/components/ui/slider.tsx` — 如不存在需添加 shadcn/ui Slider 组件（基于 radix-ui）
+- `public/locales/zh/training.json` + `public/locales/en/training.json` — 新增文案
+
+#### 调用方清单
+- Slider 值变化触发 `getRecommendedProblem` 和 `getCuratedProblems`
+- EloProgressBar 调用 `/time-factor-prediction` 获取预计 Elo 变化
+
+#### 反向集成清单
+- Slider 范围基于当前 topic M-Elo 动态计算
+- Elo 进度条奖牌数据复用 MedalService 映射
+- Prediction 接口已有，无需后端变更
+
+#### 测试要点
+- [ ] 双端 slider 显示范围 M-Elo -200 ~ +400
+- [ ] 拖动任一端实时显示选中范围值
+- [ ] 拖动结束后自动刷新推荐题目
+- [ ] 移动端触摸拖动流畅
+- [ ] Elo 进度条显示当前 M-Elo 位置
+- [ ] 绿色/红色叠加层显示预计变化
+- [ ] 文字标注"距 X 还差 Y Elo"
+- [ ] prediction 失败时仅显示当前位置
+- [ ] 每分钟自动刷新 prediction 数据
+- [ ] Elo 进度条移动端适配（宽度自适应）
+- [ ] 深色/浅色模式下进度条颜色清晰可辨

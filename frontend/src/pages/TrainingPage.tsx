@@ -5,53 +5,109 @@ import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { PageHeader } from "@/components/PageHeader";
+import { MedalBadge } from "@/components/medal/MedalBadge";
+import { TrainingRadarChart } from "@/components/charts/TrainingRadarChart";
 import api from "@/services/api";
-import { getRecommendedTopics } from "@/services/trainingApi";
-import type { ApiResponse, TopicInfo, RecommendedTopic } from "@/types";
+import { getMElo, getRecommendedTopics } from "@/services/trainingApi";
+import { buildRadarDataFromMElo } from "@/utils/radar";
+import type { ApiResponse, TopicInfo, RecommendedTopic, RadarDataPoint } from "@/types";
 
-function ProgressRing({ percent }: { percent: number }) {
-  const radius = 16;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (percent / 100) * circumference;
+// ---------------------------------------------------------------------------
+// Elo Progress Bar (FR-26.2)
+// ---------------------------------------------------------------------------
+
+interface EloProgressBarProps {
+  melo: number | null;
+  currentThreshold: number | null;
+  nextThreshold: number | null;
+  t: (key: string, params?: Record<string, unknown>) => string;
+}
+
+function EloProgressBar({ melo, currentThreshold, nextThreshold, t }: EloProgressBarProps) {
+  // No data: nothing to show
+  if (melo === null || melo === undefined) {
+    return null;
+  }
+
+  const meloVal = Math.round(melo);
+
+  // At highest tier (nextThreshold is null, but currentThreshold exists)
+  if (nextThreshold === null && currentThreshold !== null) {
+    return (
+      <div className="mt-2 space-y-1">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400"
+            style={{ width: "100%" }}
+          />
+        </div>
+        <p className="text-[10px] text-muted-foreground">{t("eloProgressMax")}</p>
+      </div>
+    );
+  }
+
+  // No medal (unranked): use 0 -> 1200 range, target is "provincial bronze"
+  if (currentThreshold === null || nextThreshold === null) {
+    const progress = Math.min(Math.max((meloVal / 1200) * 100, 0), 100);
+    const remaining = Math.max(1200 - meloVal, 0);
+    return (
+      <div className="mt-2 space-y-1">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] text-muted-foreground">
+            {t("eloProgressTarget", { target: `${t("medal:levels.provincial")} ${t("medal:types.bronze")}` })}
+          </p>
+          <p className="text-[10px] font-medium text-muted-foreground">
+            {t("eloUntilNext", { amount: remaining })}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal: progress within current tier
+  const range = nextThreshold - currentThreshold;
+  const progress = range > 0
+    ? Math.min(Math.max(((meloVal - currentThreshold) / range) * 100, 0), 100)
+    : 100;
+  const remaining = Math.max(nextThreshold - meloVal, 0);
 
   return (
-    <svg width="40" height="40" className="shrink-0">
-      <circle
-        cx="20" cy="20" r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        className="text-muted-foreground/20"
-      />
-      <circle
-        cx="20" cy="20" r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        className="text-green-400"
-        transform="rotate(-90 20 20)"
-      />
-      <text
-        x="20" y="20"
-        textAnchor="middle"
-        dominantBaseline="central"
-        className="fill-foreground text-[10px] font-semibold"
-      >
-        {percent}%
-      </text>
-    </svg>
+    <div className="mt-2 space-y-1">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] text-muted-foreground">
+          M-Elo: {meloVal}
+        </p>
+        <p className="text-[10px] font-medium text-muted-foreground">
+          {t("eloUntilNext", { amount: remaining })}
+        </p>
+      </div>
+    </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export default function TrainingPage() {
-  const { t, i18n } = useTranslation("training");
+  const { t, i18n } = useTranslation(["training", "medal"]);
   const [topics, setTopics] = useState<TopicInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [recommendedTopics, setRecommendedTopics] = useState<RecommendedTopic[]>([]);
+  const [radarData, setRadarData] = useState<RadarDataPoint[]>([]);
 
   useEffect(() => {
     api
@@ -66,6 +122,16 @@ export default function TrainingPage() {
 
     getRecommendedTopics(3)
       .then((data) => setRecommendedTopics(data))
+      .catch(() => {});
+
+    // Fetch M-Elo data for radar chart
+    getMElo()
+      .then((meloResult) => {
+        if (meloResult.melos.length > 0) {
+          const radar = buildRadarDataFromMElo(meloResult.melos, meloResult.global_elo, t);
+          setRadarData(radar);
+        }
+      })
       .catch(() => {});
   }, [t]);
 
@@ -86,6 +152,9 @@ export default function TrainingPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t("topicTraining")} description={t("topicTrainingDesc")} />
+
+      {/* Skill Radar (FR-25.1) */}
+      <TrainingRadarChart data={radarData} topics={topics} />
 
       {/* Recommended topics section */}
       {recommendedTopics.length > 0 && (
@@ -137,9 +206,6 @@ export default function TrainingPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {topics.map((topic) => {
-            const progress = topic.total_problems > 0
-              ? Math.round((topic.solved_count / topic.total_problems) * 100)
-              : 0;
             const displayName = isZh && topic.name_zh ? topic.name_zh : topic.name;
 
             return (
@@ -154,22 +220,36 @@ export default function TrainingPage() {
                       <Dumbbell className="size-5 text-green-400" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-foreground group-hover:text-primary truncate">
-                        {t(`topic.${topic.slug}`, displayName)}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-foreground group-hover:text-primary truncate">
+                          {t(`topic.${topic.slug}`, displayName)}
+                        </h3>
+                        {/* Medal Badge (FR-26.1) */}
+                        {topic.medal && (
+                          <MedalBadge
+                            level={topic.medal.level}
+                            type={topic.medal.type}
+                            size="sm"
+                          />
+                        )}
+                      </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {t("progress")}: {topic.solved_count}/{topic.total_problems}
                       </p>
                     </div>
                   </div>
-                  <ProgressRing percent={progress} />
                 </div>
 
+                {/* Elo Progress Bar (FR-26.2) */}
+                <EloProgressBar
+                  melo={topic.melo}
+                  currentThreshold={topic.current_medal_threshold}
+                  nextThreshold={topic.next_medal_threshold}
+                  t={t}
+                />
+
                 {/* Hover-only secondary info */}
-                <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-                  {topic.melo !== null && (
-                    <span>{t("meloLabel")}: {Math.round(topic.melo)}</span>
-                  )}
+                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
                   <span>{t("solvedCount", { count: topic.solved_count })}</span>
                 </div>
               </Link>

@@ -174,6 +174,9 @@ export interface TopicInfo {
   stars: number;
   melo: number | null;
   shield_active: boolean;
+  medal: MedalInfo | null;
+  current_medal_threshold: number | null;
+  next_medal_threshold: number | null;
 }
 
 export interface TopicDetail extends TopicInfo {

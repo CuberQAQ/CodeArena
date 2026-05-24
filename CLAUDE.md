@@ -10,13 +10,15 @@
 
 2. **需求文档不可自行修改**：一旦 requirements.md 与用户确认，不经用户书面批准不得修改。
 
-3. **禁止 Workaround 和降级方案**：遇到意料外问题，立即向用户报告并等待决策，不允许自行变通。
+3. **需求文档只写产品终态**：requirements.md 只描述产品行为、业务规则和用户可感知的约束。禁止写入技术实现细节（具体库/框架名、文件路径、组件名、算法实现方式、API 端点名等）。技术选型和架构决策归入 task 描述，最终以代码形式落地（代码即文档）。
 
-4. **每个 task 使用独立的子 agent**：不同 task 必须启动新的 feature-engineer 和 professional-test-engineer agent，不跨 task 复用。
+4. **禁止 Workaround 和降级方案**：遇到意料外问题，立即向用户报告并等待决策，不允许自行变通。
 
-5. **每个 task 完成后必须 commit**：task 标记 🟢 后立即提交代码，不累积多个 task 一起提交。
+5. **每个 task 使用独立的子 agent**：不同 task 必须启动新的 feature-engineer 和 professional-test-engineer agent，不跨 task 复用。
 
-6. **并行调度规则**：只读 agent（bug-diagnostician、requirements-auditor）可并行启动以加速诊断/审计；写代码 agent（feature-engineer、professional-test-engineer）必须串行，同一时间只有 1 个 agent 在写文件。
+6. **每个 task 完成后必须 commit**：task 标记 🟢 后立即提交代码，不累积多个 task 一起提交。
+
+7. **并行调度规则**：只读 agent（bug-diagnostician、requirements-auditor）可并行启动以加速诊断/审计；写代码 agent（feature-engineer、professional-test-engineer）必须串行，同一时间只有 1 个 agent 在写文件。
 
 ## 项目常量
 
@@ -43,6 +45,10 @@
 2. **一次性提问**：整理成结构化问题列表向用户提问，每题说明为什么需要明确
 3. **循环细化**：追问直到所有需求精确无歧义
 4. **确认需求文档**：写入 `requirements.md`，请用户最终确认
+
+**需求文档纯净性检查**：确认前逐条审查，确保没有混入技术实现细节。将产品行为描述与技术方案分离：
+- **属于需求文档**：用户可感知的行为、业务规则、数据模型、非功能约束（如"支持中英文实时切换，无需刷新页面"）
+- **不属于需求文档**：具体技术选型（库/框架名）、实现方式（文件路径、组件名、算法名）、API 设计细节 → 这些记录在 task 描述中，最终以代码落地
 
 ### 阶段二：生成 task.md
 

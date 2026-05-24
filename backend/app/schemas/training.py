@@ -25,6 +25,21 @@ class SubmitTrainingProblemRequest(BaseModel):
     time_spent: float = Field(ge=0, description="Time spent in seconds")
 
 
+class SkipProblemRequest(BaseModel):
+    """Request body for skipping a problem in a training session."""
+
+    problem_id: str = Field(description="CF problem ID being skipped (e.g. '1920A')")
+
+
+class SkipProblemResponse(BaseModel):
+    """Response after skipping a problem in a training session."""
+
+    session_id: UUID
+    problem_id: str
+    elo_change: int | None = None
+    new_melo: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # Response schemas
 # ---------------------------------------------------------------------------
@@ -45,6 +60,13 @@ class TopicProblemInfo(BaseModel):
     time_spent: float | None = None
 
 
+class MedalInfo(BaseModel):
+    """Medal tier and type for a topic."""
+
+    level: str  # e.g. "provincial", "unranked"
+    type: str | None = None  # e.g. "gold", "silver", "bronze", None for unranked
+
+
 class TopicInfo(BaseModel):
     """Basic info about a topic category."""
 
@@ -60,6 +82,9 @@ class TopicInfo(BaseModel):
     stars: int = 0
     melo: float | None = None
     shield_active: bool = False
+    medal: MedalInfo | None = None
+    current_medal_threshold: int | None = None
+    next_medal_threshold: int | None = None
 
     model_config = {"from_attributes": True}
 

@@ -360,8 +360,16 @@ describe("formatDate", () => {
 // ---------------------------------------------------------------------------
 
 describe("ratingToMedal", () => {
+  // Mirrors backend MedalService._FLAT_MEDAL_MAP exactly:
+  // 2800+ -> world_finals/gold, 2600+ -> ec_final/gold, 2200+ -> regional/gold,
+  // 1600+ -> provincial/gold, 1400+ -> provincial/silver, 1200+ -> provincial/bronze, <1200 -> unranked
+
   it("returns unranked for low rating", () => {
     expect(ratingToMedal(1000)).toEqual({ level: "unranked" });
+  });
+
+  it("returns unranked just below 1200", () => {
+    expect(ratingToMedal(1199)).toEqual({ level: "unranked" });
   });
 
   it("returns provincial bronze at 1200", () => {
@@ -376,24 +384,24 @@ describe("ratingToMedal", () => {
     expect(ratingToMedal(1600)).toEqual({ level: "provincial", type: "gold" });
   });
 
-  it("returns regional bronze at 1800", () => {
-    expect(ratingToMedal(1800)).toEqual({ level: "regional", type: "bronze" });
+  it("returns provincial gold at 1800", () => {
+    expect(ratingToMedal(1800)).toEqual({ level: "provincial", type: "gold" });
   });
 
-  it("returns regional silver at 2000", () => {
-    expect(ratingToMedal(2000)).toEqual({ level: "regional", type: "silver" });
+  it("returns provincial gold at 2000", () => {
+    expect(ratingToMedal(2000)).toEqual({ level: "provincial", type: "gold" });
   });
 
   it("returns regional gold at 2200", () => {
     expect(ratingToMedal(2200)).toEqual({ level: "regional", type: "gold" });
   });
 
-  it("returns world finals bronze at 2400", () => {
-    expect(ratingToMedal(2400)).toEqual({ level: "world_finals", type: "bronze" });
+  it("returns regional gold at 2400", () => {
+    expect(ratingToMedal(2400)).toEqual({ level: "regional", type: "gold" });
   });
 
-  it("returns world finals silver at 2600", () => {
-    expect(ratingToMedal(2600)).toEqual({ level: "world_finals", type: "silver" });
+  it("returns ec_final gold at 2600", () => {
+    expect(ratingToMedal(2600)).toEqual({ level: "ec_final", type: "gold" });
   });
 
   it("returns world finals gold at 2800", () => {

@@ -132,11 +132,8 @@ export function extractApiError(err: unknown, fallback = "An unexpected error oc
 
 const FLAT_MEDAL_MAP: [number, string, string][] = [
   [2800, "world_finals", "gold"],
-  [2600, "world_finals", "silver"],
-  [2400, "world_finals", "bronze"],
+  [2600, "ec_final", "gold"],
   [2200, "regional", "gold"],
-  [2000, "regional", "silver"],
-  [1800, "regional", "bronze"],
   [1600, "provincial", "gold"],
   [1400, "provincial", "silver"],
   [1200, "provincial", "bronze"],
