@@ -437,3 +437,47 @@ time_factor 对所有 4 种模式（PvE、PvP、专题训练、虚拟比赛）�
 #### FR-31.1 题目外链文案
 
 训练详情页的题目外链文案从"题目信息"改为"在 Codeforces 中查看"（中文）/ "View on Codeforces"（英文）。
+
+### 4.24 PWA 安装支持
+
+#### FR-32.1 Web App Manifest
+
+- 应用必须提供有效的 `manifest.json`，使浏览器识别为可安装的 PWA
+- `name` 为 "Code Arena"，`short_name` 为 "Code Arena"
+- `start_url` 为 "/"，`display` 为 "standalone"
+- `background_color` 为 "#0a0a0a"（深色背景），`theme_color` 为 "#863bff"（品牌紫色）
+- 提供 192×192 和 512×512 两种尺寸的 PNG 图标（purpose 含 "any" 和 "maskable"），基于现有 favicon.svg（swords 图标）
+- 图标背景色为 "#863bff"，确保在各种壁纸下可辨识
+
+#### FR-32.2 HTML Meta 标签
+
+- `index.html` 中添加 `theme-color` meta 标签（值 "#863bff"）
+- 添加 `apple-mobile-web-app-capable`（"yes"）和 `apple-mobile-web-app-status-bar-style`（"black-translucent"）
+- 添加指向 manifest.json 的 `link rel="manifest"` 标签
+- 添加 180×180 Apple Touch Icon 的 `link rel="apple-touch-icon"` 标签
+
+#### FR-32.3 Service Worker 与缓存策略
+
+- 注册 Service Worker，使用 Network First 策略
+- App Shell（HTML、CSS、JS 打包产物）采用 Network First + 缓存回退
+- API 请求（/api/ 路径）不缓存，始终走网络
+- 静态资源（图片、字体等含 hash 文件名）采用 Cache First 策略，长期缓存
+- Service Worker 在构建时自动生成，不手动维护
+- 开发模式下不注册 Service Worker，避免缓存干扰调试
+
+#### FR-32.4 安装提示横幅
+
+- 浏览器触发 `beforeinstallprompt` 事件时，在页面顶部显示安装提示横幅
+- 横幅内容：提示文字 + "安装"按钮 + "关闭"按钮
+- 点击"安装"：触发浏览器原生安装流程
+- 点击"关闭"：关闭横幅，7 天内不再显示（localStorage 记录关闭时间）
+- 安装完成后（`appinstalled` 事件）：自动隐藏横幅
+- 已安装用户不再显示横幅
+- 横幅样式适配深色/浅色主题
+- 横幅不在登录页显示（仅已认证页面显示）
+
+#### FR-32.5 构建集成
+
+- PWA 资源（manifest、icons、service worker）在 Vite 构建时自动处理
+- 生产构建自动生成 Service Worker 并注入注册代码
+- 不影响现有 Docker/nginx 部署流程

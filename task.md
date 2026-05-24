@@ -2909,3 +2909,27 @@ PlayerInfoBar 中的在线计时器当前使用 lucide-react 的静态 `Clock` �
 **涉及文件**：`frontend/src/components/EloProgressBar.tsx`、`frontend/src/components/__tests__/EloProgressBar.test.tsx`
 
 **测试要点**：端点无彩色、等级名无彩色、Elo 加粗保留、现有测试通过
+
+---
+
+## 阶段 50: PWA 安装支持 (FR-32)
+
+> 2026-05-25 — 实现最小化 PWA 支持：安装到桌面/主屏 + Network First 缓存 + 自定义安装横幅
+
+### Task 50.1: PWA 图标生成 + Manifest 配置 (FR-32.1, FR-32.2, FR-32.5) 🟢
+
+- 安装 vite-plugin-pwa
+- 生成 192×192、512×512、180×180 PNG 图标（favicon.svg + #863bff 背景）
+- 配置 VitePWA 插件（manifest、autoUpdate、standalone）
+- index.html 添加 theme-color、apple-mobile-web-app、apple-touch-icon
+
+### Task 50.2: Service Worker 缓存策略 (FR-32.3, FR-32.5) 🔴
+
+**依赖**: Task 50.1
+**修改**: frontend/vite.config.ts — 扩展 workbox.runtimeCaching（HTML NetworkFirst、JS/CSS/images CacheFirst、/api/ 不缓存）
+
+### Task 50.3: 安装提示横幅组件 (FR-32.4) 🔴
+
+**依赖**: Task 50.1, Task 50.2
+**新增**: useInstallPrompt hook + InstallBanner 组件
+**修改**: MainLayout.tsx — 集成 InstallBanner（仅已认证页面）
