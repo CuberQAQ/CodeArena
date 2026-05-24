@@ -2873,3 +2873,39 @@ PlayerInfoBar 中的在线计时器当前使用 lucide-react 的静态 `Clock` �
 - [ ] 移动端图表自适应宽度
 - [ ] 移动端触摸/缩放正常
 - [ ] 数据点少时（<3）不显示图表或降级显示
+
+---
+
+## 阶段 49：训练模块 UI 修复 (Round 3)
+
+> 2026-05-25 — 前两轮修复部署后用户反馈的 4 个遗留问题
+
+### Task 49.1: Slider 手柄与进度条对齐修复 🟡
+
+**问题**：Slider 组件 `px-2` 内边距导致手柄(thumb)与 track 端点不对齐。@base-ui/react thumb 按 SliderControl 完整宽度定位，`px-2` + `left-2/right-2` 坐标系不一致，且左右边距不对称。
+
+**修复**：移除 SliderControl `px-2`，SliderTrack 改为 `inset-x-0`；TrainingDetailPage recommend 模式 slider 父容器加 `px-1` 外部边距。
+
+**涉及文件**：`frontend/src/components/ui/slider.tsx`、`frontend/src/pages/TrainingDetailPage.tsx`
+
+**测试要点**：手柄 min/max 时对齐 track 端点、recommend/list 模式均正常、左右对称
+
+### Task 49.2: Elo 预测图表文字渲染优化 + Hover Tooltip 🟡
+
+**问题**：SVG text `fontSize 6/7` + `fontFamily monospace` 桌面端锯齿；无 hover 交互。
+
+**修复**：SVG 加 `textRendering="geographicPrecision"`，fontFamily 改 `system-ui, sans-serif`；添加 `hoveredPoint` state + 透明 rect 接收 mouse 事件 + SVG tooltip（竖线+圆点+标签 "Xm | +Y Elo"）。
+
+**涉及文件**：`frontend/src/components/SolvingTimeline.tsx`
+
+**测试要点**：轴标签清晰、tooltip 显示/隐藏正确、tooltip 值插值准确、不溢出 viewBox、现有测试不回归
+
+### Task 49.3: EloProgressBar 去除端点和等级名颜色 🟡
+
+**问题**：用户要求去掉进度条两端 Elo 数值的颜色和距离文本中等级名的颜色。
+
+**修复**：移除端点 `<span>` 和等级名 `<span>` 的 `style={{ color: getRatingColor(...) }}`，改为 `text-foreground`。
+
+**涉及文件**：`frontend/src/components/EloProgressBar.tsx`、`frontend/src/components/__tests__/EloProgressBar.test.tsx`
+
+**测试要点**：端点无彩色、等级名无彩色、Elo 加粗保留、现有测试通过

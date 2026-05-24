@@ -781,7 +781,7 @@ export default function TrainingDetailPage() {
                   </div>
 
                   {/* Difficulty range slider for recommend mode */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 px-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <Filter className="size-3.5 text-muted-foreground" />

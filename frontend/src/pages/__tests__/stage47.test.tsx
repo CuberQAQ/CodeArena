@@ -136,8 +136,8 @@ describe("Slider range derivation from M-Elo", () => {
     const meloVal = melo ?? 1200;
     const sliderMin = Math.max(800, meloVal - 200);
     const sliderMax = meloVal + 400;
-    const snappedMin = Math.round(sliderMin / 50) * 50;
-    const snappedMax = Math.round(sliderMax / 50) * 50;
+    const snappedMin = Math.round(sliderMin / 100) * 100;
+    const snappedMax = Math.round(sliderMax / 100) * 100;
     return [snappedMin, snappedMax];
   }
 
@@ -177,13 +177,12 @@ describe("Slider range derivation from M-Elo", () => {
     expect(max).toBe(3400); // 3000 + 400 = 3400
   });
 
-  it("snaps to step of 50", () => {
+  it("snaps to step of 100", () => {
     const [min, max] = deriveSliderRange(1525);
-    // 1525 - 200 = 1325, snapped to 1350 (round(1325/50)*50 = round(26.5)*50 = 27*50 = 1350)
-    // Actually Math.round(1325/50) = Math.round(26.5) = 27 -> 1350
-    expect(min).toBe(1350);
-    // 1525 + 400 = 1925, snapped to 1950 (round(1925/50) = round(38.5) = 39 -> 1950)
-    expect(max).toBe(1950);
+    // 1525 - 200 = 1325, snapped to 1300 (round(1325/100)*100 = round(13.25)*100 = 13*100 = 1300)
+    expect(min).toBe(1300);
+    // 1525 + 400 = 1925, snapped to 1900 (round(1925/100) = round(19.25) = 19 -> 1900)
+    expect(max).toBe(1900);
   });
 });
 
