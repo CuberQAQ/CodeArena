@@ -81,3 +81,16 @@ export async function getCuratedProblems(
   );
   return res.data.data;
 }
+
+// ---------------------------------------------------------------------------
+// Skip problem (FR-28.3) — skip current problem with optional Elo penalty
+// ---------------------------------------------------------------------------
+
+export async function skipProblem(
+  sessionId: string,
+  problemId: string,
+): Promise<void> {
+  await api.post(`/training/session/${sessionId}/skip-problem`, {
+    problem_id: problemId,
+  });
+}

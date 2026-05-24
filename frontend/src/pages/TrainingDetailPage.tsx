@@ -6,7 +6,6 @@ import {
   Circle,
   ExternalLink,
   Loader2,
-  Play,
   RefreshCw,
   StopCircle,
   Clock,
@@ -14,9 +13,11 @@ import {
   List,
   Sparkles,
   Filter,
+  Shield,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { StreakEffect } from "@/components/animations/StreakEffect";
 import { CoinAnimation } from "@/components/animations/CoinAnimation";
@@ -29,6 +30,7 @@ import {
   getActiveTrainingSession,
   getRecommendedProblem,
   getCuratedProblems,
+  skipProblem,
 } from "@/services/trainingApi";
 import type {
   ApiResponse,
@@ -39,8 +41,30 @@ import type {
   TrainingSessionInfo,
 } from "@/types";
 
-type Phase = "loading" | "topic" | "session" | "result";
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Protection period duration in seconds (5 minutes). */
+const PROTECTION_DURATION = 300;
+
+type Phase = "loading" | "active" | "result";
 type DetailMode = "recommend" | "list";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Format remaining protection seconds as M:SS. */
+function formatProtectionTime(seconds: number): string {
+  const m = Math.floor(Math.max(0, seconds) / 60);
+  const s = Math.floor(Math.max(0, seconds) % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function TrainingDetailPage() {
   const { id: topicId } = useParams<{ id: string }>();
@@ -64,6 +88,11 @@ export default function TrainingDetailPage() {
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
   const hasAutoSelected = useRef(false);
 
+  // Skip confirmation dialog
+  const [skipDialogOpen, setSkipDialogOpen] = useState(false);
+  const [pendingSwitchProblemId, setPendingSwitchProblemId] = useState<string | null>(null);
+  const skipLoadingRef = useRef(false);
+
   // Dual mode state
   const [detailMode, setDetailMode] = useState<DetailMode>("recommend");
   const [recommendedProblem, setRecommendedProblem] = useState<RecommendedProblem | null>(null);
@@ -78,38 +107,120 @@ export default function TrainingDetailPage() {
   const [filterMinRating, setFilterMinRating] = useState<string>("");
   const [filterMaxRating, setFilterMaxRating] = useState<string>("");
 
-  // -- Data loading --
+  // Protection period remaining seconds
+  const [protectionRemaining, setProtectionRemaining] = useState<number | null>(null);
+
+  // -- Navigation guard --
+  useEffect(() => {
+    if (phase !== "active" || !session) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [phase, session]);
+
+  // -- Auto-start session on mount --
   useEffect(() => {
     if (!topicId) return;
 
-    api
-      .get<ApiResponse<TopicDetail>>(`/training/topics/${topicId}`)
-      .then(async (res) => {
-        setTopic(res.data.data);
+    let cancelled = false;
 
+    const init = async () => {
+      try {
+        // 1. Load topic details
+        const topicRes = await api.get<ApiResponse<TopicDetail>>(`/training/topics/${topicId}`);
+        if (cancelled) return;
+        const topicData = topicRes.data.data;
+        setTopic(topicData);
+
+        // 2. Try to recover active session
         try {
           const activeSession = await getActiveTrainingSession(topicId);
+          if (cancelled) return;
           if (activeSession) {
             setSession(activeSession);
-            setPhase("session");
+            const startedAt = activeSession.started_at ? new Date(activeSession.started_at) : new Date();
             const initialElapsed = activeSession.started_at
-              ? Math.max(0, Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000))
+              ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000))
               : 0;
             setElapsed(initialElapsed);
-            timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
-          } else {
-            setPhase("topic");
+            setPhase("active");
+            return;
           }
         } catch {
-          setPhase("topic");
+          // No active session, proceed to create one
         }
-      })
-      .catch(() => {
+
+        // 3. No active session -- auto-start new one
+        try {
+          const startRes = await api.post<ApiResponse<TrainingSessionInfo>>("/training/start", {
+            topic_id: topicId,
+          });
+          if (cancelled) return;
+          const sessionData = startRes.data.data;
+          setSession(sessionData);
+          const startedAt = sessionData.started_at ? new Date(sessionData.started_at) : new Date();
+          const initialElapsed = sessionData.started_at
+            ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000))
+            : 0;
+          setElapsed(initialElapsed);
+          setPhase("active");
+        } catch (err) {
+          if (cancelled) return;
+          // Auto-start failed -- show error but stay on page in a degraded state
+          setError(extractApiError(err, t("training:autoStartFailed")));
+          setPhase("active");
+        }
+      } catch {
+        if (cancelled) return;
         setError(t("training:failedLoadTopic"));
-        setPhase("topic");
-      });
+        setPhase("active");
+      }
+    };
+
+    init();
+    return () => {
+      cancelled = true;
+    };
   }, [topicId, t]);
 
+  // -- Start timer when entering active phase --
+  useEffect(() => {
+    if (phase !== "active") return;
+    // Clear any existing timer first
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [phase]);
+
+  // -- Protection period countdown --
+  /* eslint-disable react-hooks/set-state-in-effect -- interval callback updates remaining time */
+  useEffect(() => {
+    if (phase !== "active" || !session?.started_at) {
+      setProtectionRemaining(null);
+      return;
+    }
+
+    const startedAt = new Date(session.started_at).getTime();
+
+    const update = () => {
+      const secs = Math.max(0, PROTECTION_DURATION - Math.floor((Date.now() - startedAt) / 1000));
+      setProtectionRemaining(secs > 0 ? secs : null);
+    };
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [phase, session?.started_at]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -119,7 +230,7 @@ export default function TrainingDetailPage() {
 
   // Poll submission tracking status during active training session
   useEffect(() => {
-    if (!session || phase !== "session") return;
+    if (!session || phase !== "active") return;
 
     const pollTracking = async () => {
       try {
@@ -158,19 +269,23 @@ export default function TrainingDetailPage() {
     };
   }, [session, phase, topicId, t]);
 
-  // Auto-select first unsolved problem when entering session phase
+  // Auto-select first unsolved problem when entering active phase
+  /* eslint-disable react-hooks/set-state-in-effect -- one-time auto-select via ref guard */
   useEffect(() => {
-    if (phase === "session" && topic && !hasAutoSelected.current) {
+    if (phase === "active" && topic && !hasAutoSelected.current) {
       hasAutoSelected.current = true;
       const firstUnsolved = topic.problems?.find(
         (p) => !p.solved && p.contest_id && p.index,
       );
       if (firstUnsolved) {
-        const timer = setTimeout(() => setSelectedProblemId(firstUnsolved.problem_id), 0);
-        return () => clearTimeout(timer);
+        setSelectedProblemId(firstUnsolved.problem_id);
+      } else if (topic.problems && topic.problems.length > 0) {
+        // All problems solved -- pick the first one
+        setSelectedProblemId(topic.problems[0].problem_id);
       }
     }
   }, [phase, topic]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // -- Fetch recommended problem --
   const fetchRecommendedProblem = useCallback(async () => {
@@ -186,10 +301,10 @@ export default function TrainingDetailPage() {
     }
   }, [topicId]);
 
-  // Fetch recommended problem when topic phase starts and mode is recommend
+  // Fetch recommended problem when in recommend mode
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (phase === "topic" && detailMode === "recommend" && topicId) {
+    if (phase === "active" && detailMode === "recommend" && topicId) {
       fetchRecommendedProblem();
     }
   }, [phase, detailMode, topicId, fetchRecommendedProblem]);
@@ -230,37 +345,99 @@ export default function TrainingDetailPage() {
   // Fetch curated problems when switching to list mode
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (phase === "topic" && detailMode === "list" && topicId && curatedProblems.length === 0) {
+    if (phase === "active" && detailMode === "list" && topicId && curatedProblems.length === 0) {
       fetchCuratedProblems(false);
     }
   }, [phase, detailMode, topicId, curatedProblems.length, fetchCuratedProblems]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // -- Session management --
-  const startSession = async () => {
-    if (!topicId) return;
-    setError("");
-    setLoading(true);
-    try {
-      const res = await api.post<ApiResponse<TrainingSessionInfo>>("/training/start", {
-        topic_id: topicId,
-      });
-      const sessionData = res.data.data;
-      setSession(sessionData);
-      setPhase("session");
-      const initialElapsed = sessionData.started_at
-        ? Math.max(0, Math.floor((Date.now() - new Date(sessionData.started_at).getTime()) / 1000))
-        : 0;
-      setElapsed(initialElapsed);
-      timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
-    } catch (err) {
-      setError(extractApiError(err, t("training:failedStartSession")));
-    } finally {
-      setLoading(false);
-    }
-  };
+  // -- Derived data --
+  const selectedProblem = topic?.problems?.find(
+    (p) => p.problem_id === selectedProblemId,
+  );
 
-  const abandonSession = async () => {
+  const isProtectionActive = protectionRemaining !== null && protectionRemaining > 0;
+
+  // -- Problem switching logic --
+  const handleProblemSwitch = useCallback(
+    (newProblemId: string) => {
+      if (newProblemId === selectedProblemId) return;
+
+      // During protection period -- free switch
+      if (isProtectionActive) {
+        setSelectedProblemId(newProblemId);
+        return;
+      }
+
+      // After protection -- show confirmation dialog
+      setPendingSwitchProblemId(newProblemId);
+      setSkipDialogOpen(true);
+    },
+    [selectedProblemId, isProtectionActive],
+  );
+
+  const handleSkipConfirm = useCallback(async () => {
+    if (!session || !pendingSwitchProblemId || skipLoadingRef.current) return;
+    skipLoadingRef.current = true;
+    try {
+      if (selectedProblemId) {
+        await skipProblem(session.id, selectedProblemId);
+      }
+      setSelectedProblemId(pendingSwitchProblemId);
+    } catch (err) {
+      setError(extractApiError(err, t("training:skipProblemFailed")));
+    } finally {
+      skipLoadingRef.current = false;
+      setSkipDialogOpen(false);
+      setPendingSwitchProblemId(null);
+    }
+  }, [session, pendingSwitchProblemId, selectedProblemId, t]);
+
+  const handleSkipCancel = useCallback(() => {
+    setSkipDialogOpen(false);
+    setPendingSwitchProblemId(null);
+  }, []);
+
+  // -- Recommend mode "change problem" handler --
+  const handleChangeProblem = useCallback(async () => {
+    if (isProtectionActive || !session) {
+      // During protection -- just fetch a new one, no skip penalty
+      fetchRecommendedProblem();
+      return;
+    }
+
+    // After protection -- need confirmation dialog
+    // We treat "change problem" as switching to a new problem
+    setPendingSwitchProblemId("__recommend_change__");
+    setSkipDialogOpen(true);
+  }, [isProtectionActive, session, fetchRecommendedProblem]);
+
+  const handleRecommendSkipConfirm = useCallback(async () => {
+    if (!session || !selectedProblemId || skipLoadingRef.current) return;
+    skipLoadingRef.current = true;
+    try {
+      await skipProblem(session.id, selectedProblemId);
+      fetchRecommendedProblem();
+    } catch (err) {
+      setError(extractApiError(err, t("training:skipProblemFailed")));
+    } finally {
+      skipLoadingRef.current = false;
+      setSkipDialogOpen(false);
+      setPendingSwitchProblemId(null);
+    }
+  }, [session, selectedProblemId, fetchRecommendedProblem, t]);
+
+  // Unified skip confirm handler
+  const handleUnifiedSkipConfirm = useCallback(() => {
+    if (pendingSwitchProblemId === "__recommend_change__") {
+      handleRecommendSkipConfirm();
+    } else {
+      handleSkipConfirm();
+    }
+  }, [pendingSwitchProblemId, handleRecommendSkipConfirm, handleSkipConfirm]);
+
+  // -- Session management --
+  const abandonSession = useCallback(async () => {
     if (!session) return;
     setError("");
     setLoading(true);
@@ -273,121 +450,230 @@ export default function TrainingDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [session, t]);
 
-  const handleReset = () => {
+  const handleBack = useCallback(() => {
+    // During protection -- abandon without penalty (backend handles this)
+    abandonSession();
+  }, [abandonSession]);
+
+  const handleReset = useCallback(() => {
     setSession(null);
-    setPhase("topic");
+    setPhase("loading");
     setElapsed(0);
     setError("");
     setAchievements([]);
     setShowAchievements(false);
     setSelectedProblemId(null);
     hasAutoSelected.current = false;
-  };
+    setProtectionRemaining(null);
+    setDetailMode("recommend");
+    setRecommendedProblem(null);
+    setCuratedProblems([]);
+    setCuratedTotal(0);
+    setCuratedOffset(0);
+  }, []);
 
-  // -- LOADING --
+  // ---------------------------------------------------------------------------
+  // RENDER: Loading
+  // ---------------------------------------------------------------------------
   if (phase === "loading") {
     return <LoadingSpinner text={t("training:loadingTopic")} className="py-20" />;
   }
 
-  // -- TOPIC VIEW (dual mode) --
-  if (phase === "topic" && topic) {
-    const topicDisplayName = isZh && topic.name_zh ? topic.name_zh : topic.name;
-
+  // ---------------------------------------------------------------------------
+  // RENDER: Result
+  // ---------------------------------------------------------------------------
+  if (phase === "result") {
     return (
-      <div className="mx-auto max-w-6xl space-y-5">
+      <div className="mx-auto max-w-2xl space-y-5 text-center">
+        <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-green-500/10">
+          <Trophy className="size-8 text-green-400" />
+        </div>
+        <h1 className="text-2xl font-bold text-foreground">{t("training:trainingComplete")}</h1>
+        {session && (
+          <p className="text-sm text-muted-foreground">
+            {t("training:solvedOutOf", {
+              solved: session.problems_solved,
+              total: session.total_problems,
+            })}
+          </p>
+        )}
+        <div className="flex justify-center gap-3">
+          <Button onClick={handleReset}>{t("training:trainAgain")}</Button>
+          <Button variant="outline" onClick={() => navigate("/training")}>
+            {t("training:backToTopics")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // RENDER: Active (unified dual-column layout)
+  // ---------------------------------------------------------------------------
+
+  const topicDisplayName = topic ? (isZh && topic.name_zh ? topic.name_zh : topic.name) : "";
+  const sessionStartTime = session?.started_at ? new Date(session.started_at) : new Date();
+
+  // Derive the display problem for ProblemViewer based on mode
+  const problemViewerProblem = (() => {
+    if (detailMode === "recommend") {
+      if (!recommendedProblem) return null;
+      return {
+        contestId: String(recommendedProblem.contest_id),
+        index: recommendedProblem.index,
+        rating: recommendedProblem.rating,
+        problemId: recommendedProblem.problem_id,
+        url: recommendedProblem.url,
+        melo: recommendedProblem.melo,
+      };
+    }
+    // List mode -- use selectedProblem
+    if (!selectedProblem || !selectedProblem.contest_id || !selectedProblem.index) return null;
+    return {
+      contestId: String(selectedProblem.contest_id),
+      index: selectedProblem.index,
+      rating: selectedProblem.rating,
+      problemId: selectedProblem.problem_id,
+      url: selectedProblem.url,
+    };
+  })();
+
+  return (
+    <div className="space-y-3">
+      {/* Achievement popup */}
+      {achievements.length > 0 && showAchievements && (
+        <AchievementPopup
+          achievements={achievements}
+          onComplete={() => setShowAchievements(false)}
+        />
+      )}
+
+      {/* Protection period banner */}
+      {protectionRemaining !== null && protectionRemaining > 0 && (
+        <div className="flex items-center justify-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm font-medium text-green-400">
+          <Shield className="size-4" />
+          {t("training:protection.banner", { time: formatProtectionTime(protectionRemaining) })}
+        </div>
+      )}
+
+      {/* Skip confirmation dialog */}
+      <ConfirmDialog
+        open={skipDialogOpen}
+        onClose={handleSkipCancel}
+        onConfirm={handleUnifiedSkipConfirm}
+        title={t("training:skipDialog.title")}
+        message={t("training:skipDialog.message")}
+        cancelText={t("training:skipDialog.cancel")}
+        confirmText={t("training:skipDialog.confirm")}
+        confirmClassName="bg-destructive/10 text-destructive hover:bg-destructive/20"
+      />
+
+      {/* Top navigation bar */}
+      <div className="flex items-center justify-between">
         <button
-          onClick={() => navigate("/training")}
+          onClick={handleBack}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          {t("training:backToTopics")}
+          {t("training:topics")}
         </button>
-
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
+        <div className="flex items-center gap-3">
+          {/* Topic name */}
+          {topic && (
+            <span className="text-sm font-medium text-foreground">
               {t("training:topic." + topic.slug, topicDisplayName)}
-            </h1>
-            {topic.description && (
-              <p className="mt-1 text-sm text-muted-foreground">{topic.description}</p>
-            )}
+            </span>
+          )}
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Clock className="size-4" />
+            <span className="font-mono">{formatTime(elapsed)}</span>
           </div>
-          <Button onClick={startSession} disabled={loading}>
-            {loading ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 size-4" />
-            )}
-            {t("training:startTraining")}
-          </Button>
         </div>
+      </div>
 
-        {error && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
-        {/* Dual mode tabs */}
-        <div className="flex gap-1 rounded-lg border border-border bg-muted/50 p-1">
-          <button
-            onClick={() => setDetailMode("recommend")}
-            className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              detailMode === "recommend"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Sparkles className="size-3.5" />
-            {t("training:recommendMode")}
-          </button>
-          <button
-            onClick={() => setDetailMode("list")}
-            className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              detailMode === "list"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <List className="size-3.5" />
-            {t("training:problemListMode")}
-          </button>
+      {/* Error display */}
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
         </div>
+      )}
 
-        {/* Recommend mode */}
-        {detailMode === "recommend" && (
-          <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-            {/* Left: Problem statement */}
-            <div>
-              {recommendLoading && (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-sm text-muted-foreground">
-                    {t("training:loadingProblem")}
-                  </span>
-                </div>
-              )}
-              {!recommendLoading && recommendedProblem && (
-                <ProblemViewer
-                  contestId={recommendedProblem.contest_id}
-                  index={recommendedProblem.index}
-                  blindBox={false}
-                />
-              )}
-              {!recommendLoading && !recommendedProblem && (
-                <div className="rounded-xl border border-border bg-card px-4 py-12 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {t("training:noRecommendedProblem")}
-                  </p>
-                </div>
-              )}
+      {/* Main dual-column layout */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+        {/* ---- LEFT: ProblemViewer ---- */}
+        <div className="flex-1 min-w-0">
+          {problemViewerProblem ? (
+            <ProblemViewer
+              contestId={problemViewerProblem.contestId}
+              index={problemViewerProblem.index}
+              blindBox={false}
+            />
+          ) : (
+            <div className="rounded-xl border border-border bg-card px-4 py-12 text-center">
+              <List className="mx-auto size-8 text-muted-foreground/50" />
+              <p className="mt-3 text-sm text-muted-foreground">
+                {t("training:selectProblemHint")}
+              </p>
             </div>
+          )}
+        </div>
 
-            {/* Right: Info panel */}
-            <div className="space-y-4">
-              {/* Problem info card */}
+        {/* ---- RIGHT: Info panel ---- */}
+        <div className="w-full shrink-0 space-y-4 lg:w-80">
+          {/* Compact stats (only when session exists) */}
+          {session && (
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-border bg-card p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">{t("training:solvedLabel")}</p>
+                <p className="mt-0.5 text-lg font-bold text-green-400">{session.problems_solved}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">{t("common:total")}</p>
+                <p className="mt-0.5 text-lg font-bold text-foreground">{session.total_problems}</p>
+              </div>
+              <div className="relative rounded-xl border border-border bg-card p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">{t("training:streak")}</p>
+                <div className="mt-0.5 flex items-center justify-center">
+                  <StreakEffect streak={session.streak_count} />
+                </div>
+                <div className="absolute -top-2 right-2">
+                  <CoinAnimation amount={lastTokensEarned} triggerKey={tokenTriggerKey} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mode tabs (compact) */}
+          <div className="flex gap-1 rounded-lg border border-border bg-muted/50 p-1">
+            <button
+              onClick={() => setDetailMode("recommend")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                detailMode === "recommend"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Sparkles className="size-3" />
+              {t("training:recommendMode")}
+            </button>
+            <button
+              onClick={() => setDetailMode("list")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                detailMode === "list"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <List className="size-3" />
+              {t("training:problemListMode")}
+            </button>
+          </div>
+
+          {/* ---- RECOMMEND MODE content ---- */}
+          {detailMode === "recommend" && (
+            <>
               {recommendedProblem && (
                 <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold text-foreground">
@@ -423,10 +709,10 @@ export default function TrainingDetailPage() {
                     variant="outline"
                     size="sm"
                     className="w-full"
-                    onClick={fetchRecommendedProblem}
+                    onClick={handleChangeProblem}
                     disabled={recommendLoading}
                   >
-                    <RefreshCw className="mr-1.5 size-3.5" />
+                    <RefreshCw className={`mr-1.5 size-3.5 ${recommendLoading ? "animate-spin" : ""}`} />
                     {t("training:changeProblem")}
                   </Button>
 
@@ -436,325 +722,182 @@ export default function TrainingDetailPage() {
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
                   >
-                    {t("training:infoPanel.problemInfo")}
+                    {t("training:infoPanel.viewOnCodeforces")}
                     <ExternalLink className="size-3.5" />
                   </a>
                 </div>
               )}
 
-              {/* Solving timeline */}
+              {recommendLoading && !recommendedProblem && (
+                <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
+                  <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+                  <p className="mt-2 text-xs text-muted-foreground">{t("training:loadingProblem")}</p>
+                </div>
+              )}
+
+              {!recommendLoading && !recommendedProblem && (
+                <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    {t("training:noRecommendedProblem")}
+                  </p>
+                </div>
+              )}
+
+              {/* Solving timeline for recommended problem */}
               {recommendedProblem && recommendedProblem.rating && (
                 <SolvingTimeline
                   problemId={recommendedProblem.problem_id}
                   problemRating={recommendedProblem.rating}
                   userElo={recommendedProblem.melo}
-                  startTime={new Date()}
+                  startTime={sessionStartTime}
                 />
               )}
-            </div>
-          </div>
-        )}
+            </>
+          )}
 
-        {/* Problem list mode */}
-        {detailMode === "list" && (
-          <div className="space-y-4">
-            {/* Difficulty filter */}
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
-              <Filter className="size-4 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">
-                {t("training:difficultyFilter")}:
-              </span>
-              <input
-                type="number"
-                placeholder={t("training:minRating")}
-                value={filterMinRating}
-                onChange={(e) => setFilterMinRating(e.target.value)}
-                className="w-24 rounded-md border border-border bg-transparent px-2 py-1 text-xs text-foreground"
-              />
-              <span className="text-xs text-muted-foreground">-</span>
-              <input
-                type="number"
-                placeholder={t("training:maxRating")}
-                value={filterMaxRating}
-                onChange={(e) => setFilterMaxRating(e.target.value)}
-                className="w-24 rounded-md border border-border bg-transparent px-2 py-1 text-xs text-foreground"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setCuratedOffset(0);
-                  setCuratedProblems([]);
-                  // Will trigger re-fetch via useEffect
-                  setTimeout(() => fetchCuratedProblems(false), 0);
-                }}
-              >
-                {t("training:apply")}
-              </Button>
-            </div>
-
-            {/* Problem list */}
-            <div className="rounded-xl border border-border bg-card">
-              <div className="border-b border-border px-5 py-3">
-                <h2 className="text-sm font-semibold text-foreground">
-                  {t("training:problems", { count: curatedTotal })}
-                </h2>
-              </div>
-              {curatedLoading && curatedProblems.length === 0 ? (
-                <div className="px-5 py-8 text-center">
-                  <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : curatedProblems.length === 0 ? (
-                <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-                  {t("training:noProblems")}
-                </div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {curatedProblems.map((problem) => (
-                    <div
-                      key={problem.problem_id}
-                      className="flex items-center gap-4 px-5 py-3"
-                    >
-                      {problem.solved ? (
-                        <CheckCircle2 className="size-4 shrink-0 text-green-400" />
-                      ) : (
-                        <Circle className="size-4 shrink-0 text-muted-foreground" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {problem.contest_id}
-                          {problem.index} - {stripIndexPrefix(problem.name)}
-                        </p>
-                      </div>
-                      {problem.rating && (
-                        <span
-                          className="shrink-0 text-sm font-bold"
-                          style={{ color: getRatingColor(problem.rating) }}
-                        >
-                          {problem.rating}
-                        </span>
-                      )}
-                      <a
-                        href={problem.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-muted-foreground hover:text-foreground"
-                      >
-                        <ExternalLink className="size-4" />
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Load more */}
-            {curatedHasMore && (
-              <div className="flex justify-center">
+          {/* ---- LIST MODE content ---- */}
+          {detailMode === "list" && (
+            <>
+              {/* Difficulty filter */}
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-2.5">
+                <Filter className="size-3.5 text-muted-foreground shrink-0" />
+                <input
+                  type="number"
+                  placeholder={t("training:minRating")}
+                  value={filterMinRating}
+                  onChange={(e) => setFilterMinRating(e.target.value)}
+                  className="w-20 rounded-md border border-border bg-transparent px-1.5 py-1 text-xs text-foreground"
+                />
+                <span className="text-xs text-muted-foreground">-</span>
+                <input
+                  type="number"
+                  placeholder={t("training:maxRating")}
+                  value={filterMaxRating}
+                  onChange={(e) => setFilterMaxRating(e.target.value)}
+                  className="w-20 rounded-md border border-border bg-transparent px-1.5 py-1 text-xs text-foreground"
+                />
                 <Button
+                  size="xs"
                   variant="outline"
-                  size="sm"
-                  onClick={() => fetchCuratedProblems(true)}
-                  disabled={curatedLoading}
+                  onClick={() => {
+                    setCuratedOffset(0);
+                    setCuratedProblems([]);
+                    setTimeout(() => fetchCuratedProblems(false), 0);
+                  }}
                 >
-                  {curatedLoading ? (
-                    <>
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      {t("training:loadingMore")}
-                    </>
-                  ) : (
-                    t("training:loadMore")
-                  )}
+                  {t("training:apply")}
                 </Button>
               </div>
-            )}
-            {!curatedHasMore && curatedProblems.length > 0 && (
-              <p className="text-center text-xs text-muted-foreground">
-                {t("training:noMoreProblems")}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
 
-  // -- SESSION IN PROGRESS --
-  if (phase === "session" && session && topic) {
-    const selectedProblem = topic.problems?.find(
-      (p) => p.problem_id === selectedProblemId,
-    );
-
-    return (
-      <div className="space-y-4">
-        {achievements.length > 0 && showAchievements && (
-          <AchievementPopup
-            achievements={achievements}
-            onComplete={() => setShowAchievements(false)}
-          />
-        )}
-
-        {/* Top navigation bar */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => navigate("/training")}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            {t("training:topics")}
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Clock className="size-4" />
-              <span className="font-mono">{formatTime(elapsed)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Main dual-column layout */}
-        <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
-          {/* Left side: ProblemViewer */}
-          <div className="flex-1 min-w-0">
-            {error && (
-              <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-            {selectedProblem && selectedProblem.contest_id && selectedProblem.index ? (
-              <ProblemViewer
-                contestId={selectedProblem.contest_id}
-                index={selectedProblem.index}
-                blindBox={false}
-              />
-            ) : (
-              <div className="rounded-xl border border-border bg-card px-4 py-12 text-center">
-                <List className="mx-auto size-8 text-muted-foreground/50" />
-                <p className="mt-3 text-sm text-muted-foreground">
-                  {t("training:selectProblemHint")}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Right side panel */}
-          <div className="w-full shrink-0 space-y-4 lg:w-72">
-            {/* Compact stats */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-xl border border-border bg-card p-3 text-center">
-                <p className="text-[10px] text-muted-foreground">{t("training:solvedLabel")}</p>
-                <p className="mt-0.5 text-lg font-bold text-green-400">{session.problems_solved}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-card p-3 text-center">
-                <p className="text-[10px] text-muted-foreground">{t("common:total")}</p>
-                <p className="mt-0.5 text-lg font-bold text-foreground">{session.total_problems}</p>
-              </div>
-              <div className="relative rounded-xl border border-border bg-card p-3 text-center">
-                <p className="text-[10px] text-muted-foreground">{t("training:streak")}</p>
-                <div className="mt-0.5 flex items-center justify-center">
-                  <StreakEffect streak={session.streak_count} />
+              {/* Problem list */}
+              <div className="rounded-xl border border-border bg-card">
+                <div className="border-b border-border px-4 py-2.5">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    {t("training:problems", { count: curatedTotal })}
+                  </h2>
                 </div>
-                <div className="absolute -top-2 right-2">
-                  <CoinAnimation amount={lastTokensEarned} triggerKey={tokenTriggerKey} />
-                </div>
-              </div>
-            </div>
-
-            {/* Problem selector */}
-            <div className="rounded-xl border border-border bg-card">
-              <div className="border-b border-border px-4 py-2.5">
-                <h2 className="text-sm font-semibold text-foreground">
-                  {t("training:problems", { count: topic.problems?.length ?? 0 })}
-                </h2>
-              </div>
-              <div className="divide-y divide-border max-h-[50vh] overflow-y-auto">
-                {topic.problems?.map((problem) => {
-                  const isSelected = selectedProblemId === problem.problem_id;
-                  return (
-                    <div
-                      key={problem.problem_id}
-                      className={`cursor-pointer transition-colors ${
-                        isSelected ? "bg-primary/5" : "hover:bg-muted/30"
-                      }`}
-                      onClick={() => {
-                        if (problem.contest_id && problem.index) {
-                          setSelectedProblemId(problem.problem_id);
-                        }
-                      }}
-                    >
-                      <div className="flex items-center gap-2.5 px-4 py-2.5">
-                        {problem.solved ? (
-                          <CheckCircle2 className="size-3.5 shrink-0 text-green-400" />
-                        ) : (
-                          <Circle className="size-3.5 shrink-0 text-muted-foreground" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-foreground">
-                            {problem.contest_id}
-                            {problem.index} - {stripIndexPrefix(problem.name)}
-                          </p>
-                        </div>
-                        {problem.rating && (
-                          <span
-                            className="shrink-0 text-xs font-bold"
-                            style={{ color: getRatingColor(problem.rating) }}
+                {curatedLoading && curatedProblems.length === 0 ? (
+                  <div className="px-4 py-6 text-center">
+                    <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : curatedProblems.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                    {t("training:noProblems")}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border max-h-[45vh] overflow-y-auto">
+                    {curatedProblems.map((problem) => {
+                      const isSelected = selectedProblemId === problem.problem_id;
+                      return (
+                        <div
+                          key={problem.problem_id}
+                          className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                            isSelected
+                              ? "bg-primary/5"
+                              : "hover:bg-muted/30"
+                          }`}
+                          onClick={() => handleProblemSwitch(problem.problem_id)}
+                        >
+                          {problem.solved ? (
+                            <CheckCircle2 className="size-3.5 shrink-0 text-green-400" />
+                          ) : (
+                            <Circle className="size-3.5 shrink-0 text-muted-foreground" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {problem.contest_id}
+                              {problem.index} - {stripIndexPrefix(problem.name)}
+                            </p>
+                          </div>
+                          {problem.rating && (
+                            <span
+                              className="shrink-0 text-xs font-bold"
+                              style={{ color: getRatingColor(problem.rating) }}
+                            >
+                              {problem.rating}
+                            </span>
+                          )}
+                          <a
+                            href={problem.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 text-muted-foreground hover:text-foreground"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            {problem.rating}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                            <ExternalLink className="size-3.5" />
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
 
-            {/* Solving timeline */}
-            {selectedProblem && selectedProblem.rating && (
-              <SolvingTimeline
-                problemId={selectedProblem.problem_id}
-                problemRating={selectedProblem.rating}
-                userElo={selectedProblem.rating}
-                startTime={new Date()}
-              />
-            )}
+              {/* Load more */}
+              {curatedHasMore && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchCuratedProblems(true)}
+                    disabled={curatedLoading}
+                  >
+                    {curatedLoading ? (
+                      <>
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                        {t("training:loadingMore")}
+                      </>
+                    ) : (
+                      t("training:loadMore")
+                    )}
+                  </Button>
+                </div>
+              )}
 
-            {/* Abandon training button */}
-            <Button variant="destructive" className="w-full" onClick={abandonSession} disabled={loading}>
-              <StopCircle className="mr-1.5 size-3.5" />
-              {t("training:endSession")}
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+              {/* Solving timeline for selected problem in list mode */}
+              {selectedProblem && selectedProblem.rating && (
+                <SolvingTimeline
+                  problemId={selectedProblem.problem_id}
+                  problemRating={selectedProblem.rating}
+                  userElo={selectedProblem.rating}
+                  startTime={sessionStartTime}
+                />
+              )}
+            </>
+          )}
 
-  // -- RESULT --
-  if (phase === "result") {
-    return (
-      <div className="mx-auto max-w-2xl space-y-5 text-center">
-        <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-green-500/10">
-          <Trophy className="size-8 text-green-400" />
-        </div>
-        <h1 className="text-2xl font-bold text-foreground">{t("training:trainingComplete")}</h1>
-        {session && (
-          <p className="text-sm text-muted-foreground">
-            {t("training:solvedOutOf", {
-              solved: session.problems_solved,
-              total: session.total_problems,
-            })}
-          </p>
-        )}
-        <div className="flex justify-center gap-3">
-          <Button onClick={handleReset}>{t("training:trainAgain")}</Button>
-          <Button variant="outline" onClick={() => navigate("/training")}>
-            {t("training:backToTopics")}
+          {/* Abandon training button */}
+          <Button
+            variant="destructive"
+            className="w-full"
+            onClick={abandonSession}
+            disabled={loading || !session}
+          >
+            <StopCircle className="mr-1.5 size-3.5" />
+            {t("training:endSession")}
           </Button>
         </div>
       </div>
-    );
-  }
-
-  // Fallback
-  return <LoadingSpinner className="py-20" />;
+    </div>
+  );
 }

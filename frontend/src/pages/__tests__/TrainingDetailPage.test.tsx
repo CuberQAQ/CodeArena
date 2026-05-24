@@ -35,6 +35,28 @@ vi.mock("@/components/ui/button", () => ({
   },
 }));
 
+vi.mock("@/components/ui/alert-dialog", () => ({
+  ConfirmDialog: ({ open, onConfirm, onClose, title, message, cancelText, confirmText }: {
+    open: boolean;
+    onConfirm: () => void;
+    onClose: () => void;
+    title: string;
+    message: string;
+    cancelText?: string;
+    confirmText?: string;
+  }) => {
+    if (!open) return null;
+    return (
+      <div data-testid="confirm-dialog">
+        <span data-testid="dialog-title">{title}</span>
+        <span data-testid="dialog-message">{message}</span>
+        <button data-testid="dialog-confirm" onClick={onConfirm}>{confirmText ?? "Confirm"}</button>
+        <button data-testid="dialog-cancel" onClick={onClose}>{cancelText ?? "Cancel"}</button>
+      </div>
+    );
+  },
+}));
+
 vi.mock("@/components/LoadingSpinner", () => ({
   LoadingSpinner: ({ text }: { text?: string }) => (
     <div data-testid="loading-spinner">{text ?? "Loading..."}</div>
@@ -103,12 +125,14 @@ vi.mock("@/services/api", () => ({
 const mockGetRecommendedProblem = vi.fn();
 const mockGetCuratedProblems = vi.fn();
 const mockGetActiveTrainingSession = vi.fn().mockResolvedValue(null);
+const mockSkipProblem = vi.fn();
 
 vi.mock("@/services/trainingApi", () => ({
   getActiveTrainingSession: (...args: unknown[]) => mockGetActiveTrainingSession(...args),
   getRecommendedTopics: vi.fn().mockResolvedValue([]),
   getRecommendedProblem: (...args: unknown[]) => mockGetRecommendedProblem(...args),
   getCuratedProblems: (...args: unknown[]) => mockGetCuratedProblems(...args),
+  skipProblem: (...args: unknown[]) => mockSkipProblem(...args),
 }));
 
 // ---------------------------------------------------------------------------
@@ -127,6 +151,19 @@ const sampleTopic = {
     { problem_id: "p2", name: "Three Sum", contest_id: "2", index: "B", rating: 1500, url: "https://codeforces.com/2/B", solved: true, time_spent: 120, attempts: 2 },
     { problem_id: "p3", name: "Frog Jump", contest_id: "3", index: "C", rating: 1800, url: "https://codeforces.com/3/C", solved: false, time_spent: null, attempts: 0 },
   ],
+};
+
+const sampleSession = {
+  id: "sess-auto",
+  topic_id: "topic1",
+  topic_name: "Dynamic Programming",
+  problems_solved: 0,
+  total_problems: 3,
+  streak_count: 0,
+  status: "active",
+  started_at: new Date().toISOString(),
+  last_solved_rating: null,
+  streak_tokens_earned: 0,
 };
 
 const sampleRecommendedProblem = {
@@ -167,15 +204,29 @@ function renderPage(topicId = "topic1") {
   );
 }
 
-function mockTopicFetch(topic = sampleTopic) {
+function setupAutoStartMocks(sessionData = sampleSession) {
+  // GET topic detail
   mockApiGet.mockImplementation((url: string) => {
     if (url.includes("/training/topics/") && !url.includes("recommend") && !url.includes("curated") && !url.includes("active-session")) {
-      return Promise.resolve({ data: { success: true, data: topic, message: "ok" } });
+      return Promise.resolve({ data: { success: true, data: sampleTopic, message: "ok" } });
+    }
+    if (url.includes("active-session")) {
+      return mockGetActiveTrainingSession().then(d => ({ data: { success: true, data: d } }));
     }
     if (url.includes("submission-tracking")) {
       return Promise.resolve({ data: { data: { status: "settled" } } });
     }
     return Promise.resolve({ data: { success: true, data: null } });
+  });
+  // POST auto-start session and abandon
+  mockApiPost.mockImplementation((url: string) => {
+    if (url.includes("/training/start")) {
+      return Promise.resolve({ data: { success: true, data: sessionData } });
+    }
+    if (url.includes("abandon")) {
+      return Promise.resolve({ data: { success: true, data: { session_id: "sess1", status: "abandoned", problems_solved: 0, total_problems: 3 } } });
+    }
+    return Promise.resolve({ data: { success: true, data: {} } });
   });
 }
 
@@ -185,7 +236,6 @@ function mockTopicFetch(topic = sampleTopic) {
 
 describe("TrainingDetailPage", () => {
   afterEach(() => {
-    // Clean up any lingering timers from the component
     vi.useRealTimers();
   });
 
@@ -196,7 +246,10 @@ describe("TrainingDetailPage", () => {
     mockGetRecommendedProblem.mockResolvedValue(sampleRecommendedProblem);
     mockGetCuratedProblems.mockResolvedValue(sampleCuratedProblems);
     mockGetActiveTrainingSession.mockResolvedValue(null);
+    mockSkipProblem.mockResolvedValue(undefined);
   });
+
+  // ---- Loading ----
 
   it("shows loading spinner initially", () => {
     mockApiGet.mockReturnValue(new Promise(() => {}));
@@ -204,28 +257,71 @@ describe("TrainingDetailPage", () => {
     expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
   });
 
-  it("renders topic name and description", async () => {
-    mockTopicFetch();
+  // ---- Auto-start session ----
+
+  it("auto-starts session when no active session exists", async () => {
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
-      // t("training:topic.dp", "Dynamic Programming") returns "Dynamic Programming" (fallback)
-      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
+      expect(mockApiPost).toHaveBeenCalledWith("/training/start", { topic_id: "topic1" });
     });
-    expect(screen.getByText("Learn DP basics")).toBeInTheDocument();
   });
 
-  it("shows start training button", async () => {
-    mockTopicFetch();
+  it("recovers existing active session without starting new one", async () => {
+    const existingSession = { ...sampleSession, id: "existing-sess" };
+    mockGetActiveTrainingSession.mockResolvedValue(existingSession);
+    setupAutoStartMocks();
+
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText("training:startTraining")).toBeInTheDocument();
-    });
+      expect(screen.getByText("training:endSession")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Should NOT have called POST /training/start since we recovered a session
+    expect(mockApiPost).not.toHaveBeenCalledWith("/training/start", expect.anything());
   });
 
-  it("shows dual mode tabs (recommend and problem list)", async () => {
-    mockTopicFetch();
+  it("shows unified layout with session stats when session is active", async () => {
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:solvedLabel")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    expect(screen.getByText("common:total")).toBeInTheDocument();
+    expect(screen.getByText("training:streak")).toBeInTheDocument();
+  });
+
+  it("shows error but stays on page when auto-start fails", async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url.includes("/training/topics/") && !url.includes("recommend") && !url.includes("curated") && !url.includes("active-session")) {
+        return Promise.resolve({ data: { success: true, data: sampleTopic, message: "ok" } });
+      }
+      return Promise.resolve({ data: { data: null } });
+    });
+    mockApiPost.mockImplementation((url: string) => {
+      if (url.includes("/training/start")) {
+        return Promise.reject({
+          response: { data: { error: { message: "Cannot start" } } },
+        });
+      }
+      return Promise.resolve({ data: { success: true, data: {} } });
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Cannot start")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+
+  // ---- Unified dual-column layout ----
+
+  it("shows dual mode tabs in right panel", async () => {
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
@@ -234,8 +330,37 @@ describe("TrainingDetailPage", () => {
     expect(screen.getByText("training:problemListMode")).toBeInTheDocument();
   });
 
-  it("shows recommend mode by default with problem viewer", async () => {
-    mockTopicFetch();
+  it("shows topic name in top bar", async () => {
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
+    });
+  });
+
+  it("shows timer in top bar", async () => {
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("0:00")).toBeInTheDocument();
+    });
+  });
+
+  it("shows back button with topics text", async () => {
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:topics")).toBeInTheDocument();
+    });
+  });
+
+  // ---- Recommend mode ----
+
+  it("shows recommended problem viewer by default", async () => {
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
@@ -244,7 +369,7 @@ describe("TrainingDetailPage", () => {
   });
 
   it("shows change problem button in recommend mode", async () => {
-    mockTopicFetch();
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
@@ -253,7 +378,7 @@ describe("TrainingDetailPage", () => {
   });
 
   it("shows solving timeline when recommended problem has rating", async () => {
-    mockTopicFetch();
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
@@ -261,8 +386,91 @@ describe("TrainingDetailPage", () => {
     });
   });
 
+  it("shows problem info card with rating and melo", async () => {
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:infoPanel.rating")).toBeInTheDocument();
+    });
+    expect(screen.getByText("training:infoPanel.yourMelo")).toBeInTheDocument();
+  });
+
+  it("shows search range when recommended problem has search_range", async () => {
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:infoPanel.searchRange")).toBeInTheDocument();
+    });
+  });
+
+  it("shows View on Codeforces link", async () => {
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:infoPanel.viewOnCodeforces")).toBeInTheDocument();
+    });
+  });
+
+  it("shows no recommended problem message when none found", async () => {
+    mockGetRecommendedProblem.mockResolvedValue(null);
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:noRecommendedProblem")).toBeInTheDocument();
+    });
+  });
+
+  it("shows dash when recommended problem has no rating", async () => {
+    mockGetRecommendedProblem.mockResolvedValue({
+      ...sampleRecommendedProblem,
+      rating: null,
+    });
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:infoPanel.rating")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show SolvingTimeline when recommended problem has no rating", async () => {
+    mockGetRecommendedProblem.mockResolvedValue({
+      ...sampleRecommendedProblem,
+      rating: null,
+    });
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:changeProblem")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("solving-timeline")).not.toBeInTheDocument();
+  });
+
+  it("refreshes recommended problem when change problem button is clicked", async () => {
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:changeProblem")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("training:changeProblem"));
+    });
+
+    expect(mockGetRecommendedProblem).toHaveBeenCalledTimes(2);
+  });
+
+  // ---- List mode ----
+
   it("switches to problem list mode when tab is clicked", async () => {
-    mockTopicFetch();
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
@@ -278,81 +486,8 @@ describe("TrainingDetailPage", () => {
     });
   });
 
-  it("shows no recommended problem message when none found", async () => {
-    mockGetRecommendedProblem.mockResolvedValue(null);
-    mockTopicFetch();
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:noRecommendedProblem")).toBeInTheDocument();
-    });
-  });
-
-  it("calls start session API when start button is clicked", async () => {
-    const sampleSession = {
-      id: "sess1", topic_id: "topic1", problems_solved: 1, total_problems: 3, streak_count: 2, status: "active",
-    };
-    mockApiPost.mockResolvedValue({ data: { success: true, data: sampleSession } });
-    mockTopicFetch();
-
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText("training:startTraining"));
-    });
-
-    expect(mockApiPost).toHaveBeenCalledWith("/training/start", { topic_id: "topic1" });
-  });
-
-  it("shows error when session start fails", async () => {
-    mockApiPost.mockImplementation((url: string) => {
-      if (url.includes("/training/start")) {
-        return Promise.reject({
-          response: { data: { error: { message: "Cannot start" } } },
-        });
-      }
-      return Promise.resolve({ data: { success: true, data: {} } });
-    });
-    mockTopicFetch();
-
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText("training:startTraining"));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Cannot start")).toBeInTheDocument();
-    });
-  });
-
-  it("navigates to /training when back button is clicked", async () => {
-    mockTopicFetch();
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:backToTopics")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("training:backToTopics"));
-
-    expect(mockNavigate).toHaveBeenCalledWith("/training");
-  });
-
-  it("shows no problems message when topic has no problems in list mode", async () => {
-    mockGetCuratedProblems.mockResolvedValue({
-      problems: [],
-      total: 0,
-      offset: 0,
-      limit: 20,
-    });
-    mockTopicFetch({ ...sampleTopic, problems: [] });
+  it("shows curated problems in list mode", async () => {
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
@@ -364,100 +499,13 @@ describe("TrainingDetailPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("training:noProblems")).toBeInTheDocument();
+      expect(screen.getByText("1A - Problem A")).toBeInTheDocument();
     });
+    expect(screen.getByText("2B - Problem B")).toBeInTheDocument();
   });
 
-  it("shows problem info card with rating and melo in recommend mode", async () => {
-    mockTopicFetch();
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:infoPanel.rating")).toBeInTheDocument();
-    });
-    expect(screen.getByText("training:infoPanel.yourMelo")).toBeInTheDocument();
-  });
-
-  it("refreshes recommended problem when change problem button is clicked", async () => {
-    mockTopicFetch();
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:changeProblem")).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText("training:changeProblem"));
-    });
-
-    expect(mockGetRecommendedProblem).toHaveBeenCalledTimes(2);
-  });
-
-  // --- SESSION PHASE ---
-
-  it("enters session phase when active session exists on load", async () => {
-    const sessionData = {
-      id: "sess-active",
-      topic_id: "topic1",
-      problems_solved: 1,
-      total_problems: 3,
-      streak_count: 0,
-      status: "active",
-      started_at: new Date().toISOString(),
-    };
-    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
-    mockTopicFetch();
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:endSession")).toBeInTheDocument();
-    }, { timeout: 3000 });
-
-    // Session stats should be visible
-    expect(screen.getByText("training:solvedLabel")).toBeInTheDocument();
-    expect(screen.getByText("common:total")).toBeInTheDocument();
-    expect(screen.getByText("training:streak")).toBeInTheDocument();
-  });
-
-  it("shows session problems in session phase", async () => {
-    const sessionData = {
-      id: "sess-problems",
-      topic_id: "topic1",
-      problems_solved: 1,
-      total_problems: 3,
-      streak_count: 0,
-      status: "active",
-      started_at: new Date().toISOString(),
-    };
-    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
-    mockTopicFetch();
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:endSession")).toBeInTheDocument();
-    }, { timeout: 3000 });
-
-    // Problems from topic should be visible
-    expect(screen.getByText("1A - Two Sum")).toBeInTheDocument();
-    expect(screen.getByText("2B - Three Sum")).toBeInTheDocument();
-    expect(screen.getByText("3C - Frog Jump")).toBeInTheDocument();
-  });
-
-  // --- CURATED PROBLEMS ---
-
-  it("shows problem list with load more when has more problems", async () => {
-    mockGetCuratedProblems.mockResolvedValue({
-      problems: [
-        { problem_id: "1A", contest_id: 1, index: "A", name: "Problem A", rating: 1200, tags: ["dp"], url: "https://codeforces.com/1/A", solved: false },
-        { problem_id: "2B", contest_id: 2, index: "B", name: "Problem B", rating: 1400, tags: ["dp"], url: "https://codeforces.com/2/B", solved: true },
-      ],
-      total: 10,
-      offset: 0,
-      limit: 20,
-    });
-    mockTopicFetch();
+  it("shows load more button when there are more problems", async () => {
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
@@ -473,16 +521,14 @@ describe("TrainingDetailPage", () => {
     });
   });
 
-  it("shows no more problems message when all loaded", async () => {
+  it("shows no problems message when topic has no problems in list mode", async () => {
     mockGetCuratedProblems.mockResolvedValue({
-      problems: [
-        { problem_id: "1A", contest_id: 1, index: "A", name: "Problem A", rating: 1200, tags: ["dp"], url: "https://codeforces.com/1/A", solved: true },
-      ],
-      total: 1,
+      problems: [],
+      total: 0,
       offset: 0,
       limit: 20,
     });
-    mockTopicFetch();
+    setupAutoStartMocks();
     renderPage();
 
     await waitFor(() => {
@@ -494,183 +540,80 @@ describe("TrainingDetailPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("training:noMoreProblems")).toBeInTheDocument();
+      expect(screen.getByText("training:noProblems")).toBeInTheDocument();
     });
   });
 
-  // --- RECOMMEND MODE EDGE CASES ---
+  // ---- Session management ----
 
-  it("shows search range when recommended problem has search_range", async () => {
-    mockTopicFetch();
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:infoPanel.searchRange")).toBeInTheDocument();
-    });
-  });
-
-  it("shows no rating dash when recommended problem has no rating", async () => {
-    mockGetRecommendedProblem.mockResolvedValue({
-      ...sampleRecommendedProblem,
-      rating: null,
-    });
-    mockTopicFetch();
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:infoPanel.rating")).toBeInTheDocument();
-    });
-  });
-
-  it("does not show SolvingTimeline when recommended problem has no rating", async () => {
-    mockGetRecommendedProblem.mockResolvedValue({
-      ...sampleRecommendedProblem,
-      rating: null,
-    });
-    mockTopicFetch();
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("training:changeProblem")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByTestId("solving-timeline")).not.toBeInTheDocument();
-  });
-
-  // --- SESSION ABANDON & RESET ---
-
-  it("abandons session and shows result phase (covers abandonSession lines 259-272)", async () => {
-    const sessionData = {
-      id: "sess-abandon",
-      topic_id: "topic1",
-      problems_solved: 1,
-      total_problems: 3,
-      streak_count: 2,
-      status: "active",
-      started_at: new Date().toISOString(),
-    };
-    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
-    mockApiPost.mockResolvedValue({ data: { success: true, data: {} } });
-    mockTopicFetch();
-
+  it("calls abandon API when end session button is clicked", async () => {
+    setupAutoStartMocks();
     const { container } = renderPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /endSession/ })).toBeInTheDocument();
-    }, { timeout: 10000 });
+      expect(screen.getByText("training:endSession")).toBeInTheDocument();
+    }, { timeout: 3000 });
 
-    // Find and click the abandon button
-    const buttons = container.querySelectorAll('button');
-    const abandonBtn = Array.from(buttons).find(b => b.textContent?.includes("endSession"));
-    expect(abandonBtn).toBeTruthy();
+    // Find the end session button
+    const endBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("endSession"),
+    );
+    expect(endBtn).toBeTruthy();
 
-    fireEvent.click(abandonBtn!);
+    // Click the button
+    fireEvent.click(endBtn!);
 
-    // Verify abandonSession was called (covers lines 259-272)
+    // Verify the abandon API was called
     await waitFor(() => {
       expect(mockApiPost).toHaveBeenCalledWith(
         expect.stringContaining("abandon"),
       );
-    }, { timeout: 5000 });
+    }, { timeout: 3000 });
+  });
 
-    // Verify state changes occurred (loading → result phase)
-    // Even if DOM hasn't re-rendered yet, the API call proves the function ran
-    expect(mockApiPost).toHaveBeenCalledTimes(1);
-  }, 20000);
-
-  it("resets from result phase back to topic phase (covers handleReset lines 274-283)", async () => {
-    const sessionData = {
-      id: "sess-reset",
-      topic_id: "topic1",
-      problems_solved: 2,
-      total_problems: 3,
-      streak_count: 1,
-      status: "active",
-      started_at: new Date().toISOString(),
-    };
-    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
-    mockApiPost.mockResolvedValue({ data: { success: true, data: {} } });
-    mockTopicFetch();
-
-    const { container } = renderPage();
+  it("calls abandon API when back button is clicked during active session", async () => {
+    setupAutoStartMocks();
+    renderPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /endSession/ })).toBeInTheDocument();
-    }, { timeout: 10000 });
+      expect(screen.getByText("training:topics")).toBeInTheDocument();
+    }, { timeout: 3000 });
 
-    // Click end session
-    const buttons = container.querySelectorAll('button');
-    const abandonBtn = Array.from(buttons).find(b => b.textContent?.includes("endSession"));
-    fireEvent.click(abandonBtn!);
+    // Click back button
+    fireEvent.click(screen.getByText("training:topics"));
 
+    // Back button also triggers abandon
     await waitFor(() => {
       expect(mockApiPost).toHaveBeenCalledWith(
         expect.stringContaining("abandon"),
       );
-    }, { timeout: 5000 });
+    }, { timeout: 3000 });
+  });
 
-    // Click "Train Again" to trigger handleReset (covers lines 274-283)
-    const resetBtn = Array.from(buttons).find(b => b.textContent?.includes("trainAgain"));
-    if (resetBtn) {
-      fireEvent.click(resetBtn);
-    }
+  // ---- Protection period ----
 
-    // handleReset sets phase back to "topic"
-    expect(mockApiPost).toHaveBeenCalled();
-  }, 20000);
-
-  it("navigates to /training from result phase back to topics button (covers line 746)", async () => {
-    const sessionData = {
-      id: "sess-nav",
-      topic_id: "topic1",
-      problems_solved: 1,
-      total_problems: 3,
-      streak_count: 0,
-      status: "active",
-      started_at: new Date().toISOString(),
+  it("shows protection period banner when session just started", async () => {
+    // Session started 10 seconds ago
+    const recentSession = {
+      ...sampleSession,
+      started_at: new Date(Date.now() - 10000).toISOString(),
     };
-    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
-    mockApiPost.mockResolvedValue({ data: { success: true, data: {} } });
-    mockTopicFetch();
+    setupAutoStartMocks(recentSession);
 
-    const { container } = renderPage();
+    renderPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /endSession/ })).toBeInTheDocument();
-    }, { timeout: 10000 });
+      expect(screen.getByText(/training:protection.banner/)).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
 
-    // Click end session
-    const buttons = container.querySelectorAll('button');
-    const abandonBtn = Array.from(buttons).find(b => b.textContent?.includes("endSession"));
-    fireEvent.click(abandonBtn!);
-
-    await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith(
-        expect.stringContaining("abandon"),
-      );
-    }, { timeout: 5000 });
-
-    // The "Back to Topics" button in session header (line 746 area)
-    const backBtn = Array.from(buttons).find(b => b.textContent?.includes("topics"));
-    if (backBtn) {
-      fireEvent.click(backBtn);
-      expect(mockNavigate).toHaveBeenCalledWith("/training");
-    }
-  }, 20000);
-
-  // Covers selected problem in session phase (lines 708-721)
-  it("shows problem viewer when selecting a problem in session phase", async () => {
-    const sessionData = {
-      id: "sess-select",
-      topic_id: "topic1",
-      problems_solved: 0,
-      total_problems: 3,
-      streak_count: 0,
-      status: "active",
-      started_at: new Date().toISOString(),
+  it("does not show protection banner when session started more than 5 min ago", async () => {
+    // Session started 10 minutes ago
+    const oldSession = {
+      ...sampleSession,
+      started_at: new Date(Date.now() - 600000).toISOString(),
     };
-    mockGetActiveTrainingSession.mockResolvedValue(sessionData);
-    mockTopicFetch();
+    setupAutoStartMocks(oldSession);
 
     renderPage();
 
@@ -678,8 +621,22 @@ describe("TrainingDetailPage", () => {
       expect(screen.getByText("training:endSession")).toBeInTheDocument();
     }, { timeout: 3000 });
 
-    // Problem should be auto-selected (first unsolved problem)
-    // "1A - Two Sum" is first unsolved problem in sampleTopic
-    expect(screen.getByText("1A - Two Sum")).toBeInTheDocument();
+    // Protection banner should NOT be shown
+    expect(screen.queryByText(/training:protection.banner/)).not.toBeInTheDocument();
+  });
+
+  // ---- Navigation guard ----
+
+  it("registers beforeunload event when session is active", async () => {
+    const addSpy = vi.spyOn(window, "addEventListener");
+    setupAutoStartMocks();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("training:endSession")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    expect(addSpy).toHaveBeenCalledWith("beforeunload", expect.any(Function));
+    addSpy.mockRestore();
   });
 });

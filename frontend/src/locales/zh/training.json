@@ -89,6 +89,19 @@
     "problemInfo": "题目信息",
     "rating": "难度",
     "yourMelo": "你的 M-Elo",
-    "searchRange": "搜索范围"
-  }
+    "searchRange": "搜索范围",
+    "viewOnCodeforces": "在 Codeforces 中查看"
+  },
+  "protection": {
+    "banner": "保护期剩余 {{time}}",
+    "ended": "保护期已结束"
+  },
+  "skipDialog": {
+    "title": "确认切换题目？",
+    "message": "切换题目将视为放弃当前题目，扣除 5 M-Elo。确认切换？",
+    "cancel": "取消",
+    "confirm": "确认切换"
+  },
+  "autoStartFailed": "自动开始训练失败，请稍后重试",
+  "skipProblemFailed": "切换题目失败"
 }
