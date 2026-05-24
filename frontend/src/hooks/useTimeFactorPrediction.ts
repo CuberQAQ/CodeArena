@@ -30,6 +30,11 @@ export interface PredictionData {
 
 const _pendingRequests = new Map<string, Promise<PredictionData>>();
 
+/** Clear the in-flight dedup cache. Intended for test isolation only. */
+export function _resetPendingCache() {
+  _pendingRequests.clear();
+}
+
 function makeCacheKey(
   problemId: string,
   problemRating: number,

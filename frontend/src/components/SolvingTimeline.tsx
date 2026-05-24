@@ -1,16 +1,18 @@
-/** Solving Timeline component.
+/**
+ * SolvingTimeline component.
  *
- * Displays a vertical timeline showing predicted Elo change at various
- * solve-time milestones. The current elapsed time is highlighted with a
- * live marker that advances every minute.
+ * Displays a compact SVG area/line chart showing predicted Elo change over
+ * solve time. Positive values are shaded green, negative values red. The
+ * current elapsed time is shown as a vertical marker, and the expected solve
+ * time is highlighted with a diamond marker.
  *
  * Uses the shared useTimeFactorPrediction hook so requests are deduplicated
  * when both EloProgressBar and SolvingTimeline are mounted for the same
  * problem.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Clock, Star, TrendingDown, TrendingUp } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useTimeFactorPrediction } from "@/hooks/useTimeFactorPrediction";
 
@@ -28,6 +30,26 @@ export interface SolvingTimelineProps {
   /** When the solving session started */
   startTime: Date;
 }
+
+// ---------------------------------------------------------------------------
+// SVG chart dimensions (viewBox)
+// ---------------------------------------------------------------------------
+
+const VB_WIDTH = 220;
+const VB_HEIGHT = 90;
+const PADDING_LEFT = 4;
+const PADDING_RIGHT = 4;
+const PADDING_TOP = 8;
+const PADDING_BOTTOM = 8;
+
+const CHART_WIDTH = VB_WIDTH - PADDING_LEFT - PADDING_RIGHT;
+const CHART_HEIGHT = VB_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
+
+// Colors
+const GREEN_LINE = "#22c55e";
+const GREEN_FILL = "rgba(34,197,94,0.15)";
+const RED_LINE = "#ef4444";
+const RED_FILL = "rgba(239,68,68,0.15)";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -66,18 +88,6 @@ export function SolvingTimeline({
     };
   }, [startTime]);
 
-  // Determine the closest time point for the current time
-  const getCurrentPointIndex = useCallback((): number => {
-    if (!data) return -1;
-    // Find the first point at or after currentMinutes
-    for (let i = 0; i < data.time_points.length; i++) {
-      if (data.time_points[i].minutes >= currentMinutes) {
-        return i;
-      }
-    }
-    return data.time_points.length - 1;
-  }, [data, currentMinutes]);
-
   // ---------------------------------------------------------------------------
   // Loading state
   // ---------------------------------------------------------------------------
@@ -89,33 +99,158 @@ export function SolvingTimeline({
           <Clock className="size-4 text-muted-foreground" />
           {t("timeline.title")}
         </div>
-        <div className="space-y-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div className="size-3 rounded-full bg-muted animate-pulse" />
-              <div className="flex-1">
-                <div className="h-3 w-16 rounded bg-muted animate-pulse" />
-              </div>
-              <div className="h-3 w-10 rounded bg-muted animate-pulse" />
-            </div>
-          ))}
+        {/* Skeleton: simplified wave shape */}
+        <div className="relative h-[90px] w-full overflow-hidden rounded-md bg-muted/40">
+          <div className="absolute inset-0 animate-pulse">
+            <svg
+              viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
+              className="h-full w-full"
+              preserveAspectRatio="none"
+            >
+              <path
+                d={`M${PADDING_LEFT},${VB_HEIGHT / 2} Q${VB_WIDTH * 0.25},${VB_HEIGHT * 0.25} ${VB_WIDTH * 0.5},${VB_HEIGHT * 0.4} T${VB_WIDTH - PADDING_RIGHT},${VB_HEIGHT * 0.55}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                opacity="0.2"
+              />
+            </svg>
+          </div>
         </div>
       </div>
     );
   }
 
   // Error or no data state -- show nothing (graceful degradation)
-  if (error || !data || data.time_points.length === 0) {
+  if (error || !data || data.time_points.length < 2) {
     return null;
   }
 
-  const currentIdx = getCurrentPointIndex();
-  // Find the closest time point to the expected time
-  const expectedIdx = data.time_points.reduce((bestIdx, point, idx) => {
+  // ---------------------------------------------------------------------------
+  // Chart data processing
+  // ---------------------------------------------------------------------------
+
+  const points = data.time_points;
+  const minMinutes = points[0].minutes;
+  const maxMinutes = points[points.length - 1].minutes;
+  const minutesRange = maxMinutes - minMinutes || 1; // avoid div-by-zero
+
+  const eloValues = points.map((p) => p.elo_change_estimate);
+  const maxElo = Math.max(...eloValues, 0);
+  const minElo = Math.min(...eloValues, 0);
+  const eloRange = maxElo - minElo || 1; // avoid div-by-zero
+
+  // Map data points to SVG coordinates
+  // Y: higher elo = higher on chart (lower y value)
+  const mapX = (minutes: number) =>
+    PADDING_LEFT + ((minutes - minMinutes) / minutesRange) * CHART_WIDTH;
+  const mapY = (elo: number) =>
+    PADDING_TOP + ((maxElo - elo) / eloRange) * CHART_HEIGHT;
+
+  // Zero-line Y position
+  const zeroY = mapY(0);
+
+  // Current time X position (clamped to chart bounds)
+  const currentX = (() => {
+    if (currentMinutes <= 0) return null;
+    const x = mapX(currentMinutes);
+    if (x < PADDING_LEFT || x > VB_WIDTH - PADDING_RIGHT) return null;
+    return x;
+  })();
+
+  // Find the closest point to expected time
+  const expectedIdx = points.reduce((bestIdx, point, idx) => {
     const diff = Math.abs(point.minutes - data.expected_time_minutes);
-    const bestDiff = Math.abs(data.time_points[bestIdx].minutes - data.expected_time_minutes);
+    const bestDiff = Math.abs(points[bestIdx].minutes - data.expected_time_minutes);
     return diff < bestDiff ? idx : bestIdx;
   }, 0);
+  const expectedPoint = points[expectedIdx];
+  const expectedX = mapX(expectedPoint.minutes);
+  const expectedY = mapY(expectedPoint.elo_change_estimate);
+
+  // Build the SVG polyline path (for the line)
+  const linePath = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${mapX(p.minutes).toFixed(1)},${mapY(p.elo_change_estimate).toFixed(1)}`)
+    .join(" ");
+
+  // Build filled areas: split into positive and negative regions
+  // We need to compute the area between the curve and the zero line.
+  // For each segment, we create a closed path that fills from the line to zeroY.
+
+  // Positive area path (green): segments where elo >= 0
+  // Negative area path (red): segments where elo <= 0
+  // For smooth visuals, we handle sign-crossing by interpolating the zero crossing point.
+
+  function buildAreaPaths() {
+    const svgPoints = points.map((p) => ({
+      x: mapX(p.minutes),
+      y: mapY(p.elo_change_estimate),
+      elo: p.elo_change_estimate,
+    }));
+
+    const segments: Array<{ type: "positive" | "negative"; path: string }> = [];
+    let currentSegment: Array<{ x: number; y: number }> = [];
+    let currentType: "positive" | "negative" | null = null;
+
+    function getZeroCrossing(
+      p1: { x: number; y: number; elo: number },
+      p2: { x: number; y: number; elo: number },
+    ) {
+      // Linear interpolation to find x where elo crosses zero
+      const t = p1.elo / (p1.elo - p2.elo);
+      return {
+        x: p1.x + t * (p2.x - p1.x),
+        y: zeroY,
+      };
+    }
+
+    function flushSegment() {
+      if (currentSegment.length < 1 || currentType === null) return;
+
+      // Build closed area path: line on top, zero line on bottom (reversed)
+      const areaPoints = [...currentSegment];
+      // Close along the zero line
+      areaPoints.push({ x: currentSegment[currentSegment.length - 1].x, y: zeroY });
+      areaPoints.push({ x: currentSegment[0].x, y: zeroY });
+
+      const path = areaPoints
+        .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+        .join(" ");
+
+      segments.push({ type: currentType, path });
+      currentSegment = [];
+    }
+
+    for (let i = 0; i < svgPoints.length; i++) {
+      const pt = svgPoints[i];
+      const ptType: "positive" | "negative" = pt.elo >= 0 ? "positive" : "negative";
+
+      if (currentType !== null && currentType !== ptType) {
+        // Sign change: interpolate zero crossing
+        const crossing = getZeroCrossing(svgPoints[i - 1], pt);
+        currentSegment.push(crossing);
+        flushSegment();
+        // Start new segment from the crossing
+        currentSegment = [crossing];
+        currentType = ptType;
+      }
+
+      if (currentType === null) {
+        currentType = ptType;
+      }
+
+      currentSegment.push(pt);
+    }
+
+    flushSegment();
+    return segments;
+  }
+
+  const areaSegments = buildAreaPaths();
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -125,93 +260,153 @@ export function SolvingTimeline({
         {t("timeline.title")}
       </div>
 
-      {/* Timeline */}
-      <div className="relative pl-4">
-        {/* Vertical line */}
-        <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
+      {/* SVG Chart */}
+      <svg
+        data-testid="elo-chart"
+        viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
+        className="h-auto w-full"
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={t("timeline.title")}
+      >
+        {/* Zero line (horizontal) */}
+        <line
+          x1={PADDING_LEFT}
+          y1={zeroY}
+          x2={VB_WIDTH - PADDING_RIGHT}
+          y2={zeroY}
+          stroke="currentColor"
+          strokeWidth="0.5"
+          strokeOpacity="0.2"
+          strokeDasharray="3,3"
+        />
 
-        <div className="space-y-2.5">
-          {data.time_points.map((point, idx) => {
-            const isCurrentOrPast = idx <= currentIdx && currentMinutes > 0;
-            const isCurrentPoint = idx === currentIdx && currentMinutes > 0;
-            const isExpected = idx === expectedIdx;
-            const isPositive = point.elo_change_estimate > 0;
+        {/* Filled areas */}
+        {areaSegments.map((seg, idx) => (
+          <path
+            key={`area-${idx}`}
+            d={seg.path}
+            fill={seg.type === "positive" ? GREEN_FILL : RED_FILL}
+            stroke="none"
+          />
+        ))}
 
-            return (
-              <div
-                key={point.minutes}
-                className={`relative flex items-center gap-3 transition-colors duration-300 ${
-                  isCurrentOrPast ? "opacity-100" : "opacity-50"
-                }`}
-              >
-                {/* Dot */}
-                <div
-                  className={`relative z-10 size-[7px] shrink-0 rounded-full transition-colors duration-300 ${
-                    isCurrentPoint
-                      ? "bg-primary ring-2 ring-primary/30"
-                      : isExpected
-                        ? "bg-yellow-400 ring-2 ring-yellow-400/30"
-                        : isCurrentOrPast
-                          ? "bg-foreground"
-                          : "bg-muted-foreground"
-                  }`}
-                />
+        {/* Line (on top of fills) */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeOpacity="0.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
 
-                {/* Time label */}
-                <span
-                  className={`w-14 shrink-0 text-xs font-mono ${
-                    isCurrentPoint
-                      ? "text-primary font-bold"
-                      : isExpected
-                        ? "text-yellow-400 font-semibold"
-                        : isCurrentOrPast
-                          ? "text-foreground"
-                          : "text-muted-foreground"
-                  }`}
-                >
-                  {point.minutes}m
-                </span>
+        {/* Colored line segments: split at zero crossings */}
+        {(() => {
+          const svgPoints = points.map((p) => ({
+            x: mapX(p.minutes),
+            y: mapY(p.elo_change_estimate),
+            elo: p.elo_change_estimate,
+          }));
+          const segs: Array<{
+            x1: number; y1: number; x2: number; y2: number;
+            color: "green" | "red";
+          }> = [];
+          for (let i = 0; i < svgPoints.length - 1; i++) {
+            const p1 = svgPoints[i];
+            const p2 = svgPoints[i + 1];
+            const sameSign = (p1.elo >= 0 && p2.elo >= 0) || (p1.elo < 0 && p2.elo < 0);
+            if (sameSign) {
+              // Both on the same side of zero -- one segment
+              segs.push({
+                x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
+                color: p1.elo >= 0 ? "green" : "red",
+              });
+            } else {
+              // Crosses zero -- interpolate the crossing point and split
+              const t = p1.elo / (p1.elo - p2.elo);
+              const crossX = p1.x + t * (p2.x - p1.x);
+              const crossY = zeroY;
+              // First sub-segment (p1 side)
+              segs.push({
+                x1: p1.x, y1: p1.y, x2: crossX, y2: crossY,
+                color: p1.elo >= 0 ? "green" : "red",
+              });
+              // Second sub-segment (p2 side)
+              segs.push({
+                x1: crossX, y1: crossY, x2: p2.x, y2: p2.y,
+                color: p2.elo >= 0 ? "green" : "red",
+              });
+            }
+          }
+          return segs.map((s, i) => (
+            <line
+              key={`${s.color}-${i}`}
+              x1={s.x1.toFixed(1)}
+              y1={s.y1.toFixed(1)}
+              x2={s.x2.toFixed(1)}
+              y2={s.y2.toFixed(1)}
+              stroke={s.color === "green" ? GREEN_LINE : RED_LINE}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          ));
+        })()}
 
-                {/* Elo change estimate */}
-                <span
-                  className={`flex items-center gap-1 text-xs font-semibold ${
-                    isCurrentPoint
-                      ? isPositive
-                        ? "text-green-400"
-                        : "text-red-400"
-                      : isPositive
-                        ? "text-green-400/70"
-                        : "text-red-400/70"
-                  }`}
-                >
-                  {isPositive ? (
-                    <TrendingUp className="size-3" />
-                  ) : (
-                    <TrendingDown className="size-3" />
-                  )}
-                  {isPositive ? "+" : ""}
-                  {point.elo_change_estimate}
-                </span>
+        {/* Data points */}
+        {points.map((p, i) => {
+          const cx = mapX(p.minutes);
+          const cy = mapY(p.elo_change_estimate);
+          const isExpected = i === expectedIdx;
+          const color = p.elo_change_estimate >= 0 ? GREEN_LINE : RED_LINE;
+          return (
+            <circle
+              key={`dot-${i}`}
+              cx={cx.toFixed(1)}
+              cy={cy.toFixed(1)}
+              r={isExpected ? 2.5 : 1.5}
+              fill={isExpected ? "var(--color-primary, currentColor)" : color}
+              stroke={isExpected ? "var(--color-primary, currentColor)" : "none"}
+              strokeWidth={0}
+              opacity={isExpected ? 1 : 0.7}
+            />
+          );
+        })}
 
-                {/* Expected time badge */}
-                {isExpected && (
-                  <span className="flex items-center gap-0.5 rounded-md bg-yellow-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-yellow-400">
-                    <Star className="size-2.5" />
-                    {t("timeline.expected")}
-                  </span>
-                )}
+        {/* Expected time diamond marker */}
+        <g transform={`translate(${expectedX.toFixed(1)},${expectedY.toFixed(1)})`}>
+          <polygon
+            points="0,-4 4,0 0,4 -4,0"
+            fill="var(--color-primary, currentColor)"
+            opacity="0.85"
+          />
+          {/* Expected time vertical dashed line */}
+          <line
+            x1="0"
+            y1="4"
+            x2="0"
+            y2={(VB_HEIGHT - PADDING_BOTTOM - expectedY).toFixed(1)}
+            stroke="var(--color-primary, currentColor)"
+            strokeWidth="0.5"
+            strokeDasharray="2,2"
+            strokeOpacity="0.4"
+          />
+        </g>
 
-                {/* Current time marker (arrow) */}
-                {isCurrentPoint && currentMinutes > 0 && (
-                  <span className="ml-auto rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                    {t("timeline.now")}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+        {/* Current time vertical line */}
+        {currentX !== null && (
+          <line
+            x1={currentX.toFixed(1)}
+            y1={PADDING_TOP}
+            x2={currentX.toFixed(1)}
+            y2={VB_HEIGHT - PADDING_BOTTOM}
+            stroke="currentColor"
+            strokeWidth="1"
+            strokeOpacity="0.5"
+          />
+        )}
+      </svg>
 
       {/* Footer: expected time summary */}
       <div className="border-t border-border pt-2">
