@@ -1,14 +1,13 @@
 /**
  * EloProgressBar -- displays the user's M-Elo for a training topic with:
  *   - Medal color context
- *   - Progress bar toward the next medal threshold
+ *   - Progress bar toward the next rank threshold
  *   - Predicted Elo change overlay from shared prediction hook
  *
  * Gracefully degrades when prediction API is unavailable.
  */
 
 import { useEffect, useRef } from "react";
-import { TrendingDown, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getRatingColor } from "@/utils";
 import { useTimeFactorPrediction } from "@/hooks/useTimeFactorPrediction";
@@ -28,25 +27,8 @@ export interface EloProgressBarProps {
   problemId?: string | null;
   /** Current problem rating */
   problemRating?: number | null;
-}
-
-// ---------------------------------------------------------------------------
-// Medal threshold label helper
-// ---------------------------------------------------------------------------
-
-function getMedalLabelForThreshold(threshold: number): { level: string; type: string } | null {
-  const map: [number, string, string][] = [
-    [2800, "worldFinals", "gold"],
-    [2600, "ecFinal", "gold"],
-    [2200, "regional", "gold"],
-    [1600, "provincial", "gold"],
-    [1400, "provincial", "silver"],
-    [1200, "provincial", "bronze"],
-  ];
-  for (const [t, level, type] of map) {
-    if (threshold === t) return { level, type };
-  }
-  return null;
+  /** Optional topic name to display in the header */
+  topicName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,9 +41,9 @@ export function EloProgressBar({
   nextMedalThreshold,
   problemId,
   problemRating,
+  topicName,
 }: EloProgressBarProps) {
-  const { t, i18n } = useTranslation("training");
-  const isZh = i18n.language?.startsWith("zh");
+  const { t } = useTranslation("training");
 
   // Shared prediction hook (deduplicated with SolvingTimeline)
   const { prediction, refetch } = useTimeFactorPrediction(
@@ -120,13 +102,8 @@ export function EloProgressBar({
         )
       : null;
 
-  // Distance to next medal
+  // Distance to next rank
   const distanceToNext = progressMax !== null ? Math.max(0, progressMax - melo) : null;
-
-  // Medal label for the next threshold
-  const nextMedalInfo = nextMedalThreshold !== null
-    ? getMedalLabelForThreshold(nextMedalThreshold)
-    : null;
 
   // -------------------------------------------------------------------------
   // Render
@@ -134,53 +111,43 @@ export function EloProgressBar({
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-2.5">
-      {/* Header: M-Elo value with color */}
+      {/* Header: Topic name + M-Elo label, predicted change */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">
+            {topicName ? `${topicName} ` : ""}
             {t("eloProgress.meloLabel")}
           </span>
           <span className="text-lg font-bold" style={{ color }}>
             {Math.round(melo)}
           </span>
         </div>
-        {/* Predicted change badge */}
+        {/* Predicted change -- compact text, no icon */}
         {eloChange !== null && (
-          <div
-            className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${
-              eloChange >= 0
-                ? "bg-green-500/10 text-green-400"
-                : "bg-red-500/10 text-red-400"
+          <span
+            className={`text-sm font-semibold ${
+              eloChange >= 0 ? "text-green-400" : "text-red-400"
             }`}
           >
-            {eloChange >= 0 ? (
-              <TrendingUp className="size-3" />
-            ) : (
-              <TrendingDown className="size-3" />
-            )}
             {eloChange >= 0 ? "+" : ""}
             {eloChange}
-          </div>
+          </span>
         )}
       </div>
 
       {/* Progress bar */}
       <div className="space-y-1">
         <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-          {/* Base progress (current position) */}
+          {/* Base progress (current position) -- white/black adaptive */}
           <div
-            className="absolute left-0 top-0 h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${progressPercent}%`,
-              backgroundColor: color,
-              opacity: 0.6,
-            }}
+            className="absolute left-0 top-0 h-full rounded-full bg-foreground transition-all duration-500"
+            style={{ width: `${progressPercent}%` }}
           />
 
           {/* Prediction overlay */}
           {predictedPercent !== null && Math.abs(predictedPercent - progressPercent) > 0.5 && (
             <div
-              className="absolute top-0 h-full rounded-full transition-all duration-500"
+              className="absolute top-0 h-full transition-all duration-500"
               style={{
                 left: `${Math.min(progressPercent, predictedPercent)}%`,
                 width: `${Math.abs(predictedPercent - progressPercent)}%`,
@@ -189,33 +156,21 @@ export function EloProgressBar({
               }}
             />
           )}
-
-          {/* Current position marker */}
-          <div
-            className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-full bg-foreground shadow-sm"
-            style={{ left: `${progressPercent}%` }}
-          />
         </div>
 
-        {/* Labels below the bar */}
+        {/* Labels below the bar -- only left and right numeric endpoints */}
         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
           <span>{progressMin}</span>
-          {isMaxTier ? (
+          {isMaxTier && (
             <span className="font-medium text-foreground">
               {t("eloProgressMax")}
             </span>
-          ) : nextMedalInfo ? (
-            <span>
-              {isZh
-                ? `${t("medal:levels." + nextMedalInfo.level)}${t("medal:types." + nextMedalInfo.type)}`
-                : `${t("medal:types." + nextMedalInfo.type)} ${t("medal:levels." + nextMedalInfo.level)}`}
-            </span>
-          ) : null}
+          )}
           {progressMax !== null && <span>{progressMax}</span>}
         </div>
       </div>
 
-      {/* Distance to next */}
+      {/* Distance to next rank */}
       {!isMaxTier && distanceToNext !== null && (
         <p className="text-[11px] text-muted-foreground">
           {t("eloProgress.untilNext", { amount: Math.ceil(distanceToNext) })}

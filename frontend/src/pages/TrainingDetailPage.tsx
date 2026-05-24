@@ -594,24 +594,23 @@ export default function TrainingDetailPage() {
 
       {/* Top navigation bar */}
       <div className="flex items-center justify-between">
-        <button
-          onClick={handleBack}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          {t("training:topics")}
-        </button>
         <div className="flex items-center gap-3">
-          {/* Topic name */}
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            {t("training:topics")}
+          </button>
           {topic && (
-            <span className="text-sm font-medium text-foreground">
+            <span className="text-lg font-bold text-foreground">
               {t("training:topic." + topic.slug, topicDisplayName)}
             </span>
           )}
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Clock className="size-4" />
-            <span className="font-mono">{formatTime(elapsed)}</span>
-          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Clock className="size-4" />
+          <span className="font-mono">{formatTime(elapsed)}</span>
         </div>
       </div>
 
@@ -621,6 +620,32 @@ export default function TrainingDetailPage() {
           {error}
         </div>
       )}
+
+      {/* Mode tabs -- full width above dual-column layout */}
+      <div className="flex gap-1 rounded-lg border border-border bg-muted/50 p-1">
+        <button
+          onClick={() => setDetailMode("recommend")}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            detailMode === "recommend"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Sparkles className="size-3" />
+          {t("training:recommendMode")}
+        </button>
+        <button
+          onClick={() => setDetailMode("list")}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            detailMode === "list"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <List className="size-3" />
+          {t("training:problemListMode")}
+        </button>
+      </div>
 
       {/* Main dual-column layout */}
       <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
@@ -683,34 +708,9 @@ export default function TrainingDetailPage() {
                   ? recommendedProblem?.rating ?? null
                   : selectedProblem?.rating ?? null
               }
+              topicName={topicDisplayName}
             />
           )}
-
-          {/* Mode tabs (compact) */}
-          <div className="flex gap-1 rounded-lg border border-border bg-muted/50 p-1">
-            <button
-              onClick={() => setDetailMode("recommend")}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                detailMode === "recommend"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Sparkles className="size-3" />
-              {t("training:recommendMode")}
-            </button>
-            <button
-              onClick={() => setDetailMode("list")}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                detailMode === "list"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <List className="size-3" />
-              {t("training:problemListMode")}
-            </button>
-          </div>
 
           {/* ---- RECOMMEND MODE content ---- */}
           {detailMode === "recommend" && (

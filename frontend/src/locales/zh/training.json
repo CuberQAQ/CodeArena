@@ -110,7 +110,7 @@
   },
   "eloProgress": {
     "meloLabel": "M-Elo",
-    "untilNext": "距下一奖牌还差 {{amount}} Elo",
+    "untilNext": "距下一等级还差 {{amount}} Elo",
     "maxTier": "已达最高段位"
   }
 }
