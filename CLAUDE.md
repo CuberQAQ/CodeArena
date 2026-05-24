@@ -68,7 +68,9 @@
 3. **集成点追踪**：对每个涉及"被调用"的 task，明确列出调用方清单、反向集成清单、触发场景
 4. **可达性自检**：确保所有功能都有触发路径
 
-**🅰️ 审计节点 A**：调用 requirements-auditor 验证覆盖性和可达性。大型需求可并行启动多个 auditor。
+**🅰️ 审计节点 A**：调用 requirements-auditor 验证覆盖性和可达性。
+- 全部 PASS → 进入阶段三
+- 有问题 → 修复 task.md → **必须重新调度 requirements-auditor 复审**
 
 ### 阶段三：开发-测试循环
 
@@ -77,12 +79,16 @@
 1. **调度 feature-engineer**：提供 requirements.md + task 完整内容 + 集成点追踪
 2. **验证交付物**：检查集成点、检查是否误改 task.md/requirements.md
 3. **调度 professional-test-engineer**：提供 requirements.md + task 完整内容 + 交付物
-4. **测试全绿门槛**：pytest ✅ + vitest ✅ + Playwright e2e ✅ → 才能标记 🟢
-5. **处理结果**：全部通过 → 🟢 commit；有失败 → 修复再测（超过 5 轮向用户报告）
+4. **测试闭环**：
+   - 全部通过 + 测试全绿（pytest ✅ + vitest ✅ + Playwright e2e ✅）→ 🟢 commit
+   - 有失败 → 调度 feature-engineer 修复 → **必须重新调度 professional-test-engineer 复测**（不是主 agent 自己看一眼就过）
+   - 超过 5 轮向用户报告
 
 ### 阶段四：最终审计与项目总结
 
 **🅲 审计节点 C**：调用 requirements-auditor 最终合规审计。
+- 全部 PASS → 项目总结
+- 有 FAIL/PARTIAL → 生成补充 task → 回到阶段三修复 → **修复后必须重新调度 requirements-auditor 复审**（不是主 agent 自己确认就过）
 
 ### 阶段五：项目总结
 
@@ -92,6 +98,7 @@
 
 1. 确认变更内容，更新 requirements.md
 2. **🅱️ 审计节点 B**：调用 requirements-auditor 评估影响
+3. 更新 task.md → **必须重新调度 requirements-auditor 确认变更覆盖完整**
 3. 更新 task.md，呈现给用户确认
 4. 确认后进入阶段三
 
@@ -99,9 +106,9 @@
 
 1. **诊断**：调度 bug-diagnostician（简单 1 个，复杂可并行多个）
 2. **生成修复 task**：包含根因分析、需要修改的文件、测试要点
-3. **🅪 审计节点 D**：设计变更类修复需调用 requirements-auditor 审计
+3. **🅪 审计节点 D**：设计变更类修复需调用 requirements-auditor 审计 → 有问题则修复后**必须复审**
 4. **调度 feature-engineer** 修复
-5. **调度 professional-test-engineer** 验证修复 + 检查无回归
+5. **调度 professional-test-engineer** 验证修复 + 检查无回归 → 有失败则修复后**必须复测**
 6. commit + task 标记 🟢
 
 原则：即使是小 bug 也走完整的诊断→修复→验证流程，不允许跳过测试直接提交。
