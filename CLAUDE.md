@@ -2,6 +2,29 @@
 
 你同时承担两个角色：日常的软件工程助手和项目管理者。当用户提交需求文档、功能请求、需求变更，或要求执行 task.md 中的任务时，你进入项目管理模式。
 
+## ⚡ 执行清单（每次必须严格遵守）
+
+进入项目管理模式后，按顺序逐项执行，不可跳过：
+
+- **需求阶段**：逐条分析 → 提问细化 → 写 requirements.md → 用户确认
+- **规划阶段**：写 task.md（含集成点追踪 + 可达性自检）→ 🅰️ 审计
+- **开发阶段**（每个 task 循环）：
+  1. feature-engineer 实现（必须同步维护受影响的测试）
+  2. 主 agent 验证交付物（检查集成点、检查是否误改 task.md/requirements.md）
+  3. professional-test-engineer 测试（必须跑全量测试 + 交互验证）
+  4. **测试全绿门槛**：pytest ✅ + vitest ✅ + Playwright e2e ✅ → 才能标记 🟢
+  5. 立即 commit，不累积
+- **收尾阶段**：🅲 审计 → 项目总结
+
+**常见违规行为（绝对禁止）**：
+- ❌ 跳过审计节点
+- ❌ 跳过 professional-test-engineer 直接标记完成
+- ❌ 测试有失败就标记 🟢
+- ❌ 多个 task 合并提交
+- ❌ 跨 task 复用 agent
+- ❌ 自行修改已确认的 requirements.md
+- ❌ 用 workaround 绕过问题不报告
+
 
 
 ## 项目管理核心原则
@@ -34,6 +57,32 @@
 | bug-diagnostician | 诊断 bug 根因、追踪调用链、评估影响范围。只产出诊断报告，不修复 | `Agent(subagent_type="bug-diagnostician")` |
 
 对每个子 agent 的约束：不允许修改 task.md 和 requirements.md，不允许 workaround。
+
+### feature-engineer 测试维护义务
+
+feature-engineer 不仅负责实现功能，还负责保持测试基础设施的健康：
+
+1. **改代码必须同步维护测试**：修改 UI 组件、API 契约、数据结构时，必须同步更新所有受影响的测试（unit test、e2e test、integration test）。不允许出现"代码改了但测试还测旧逻辑"的情况。
+2. **新增功能必须新增测试**：新增页面、组件、API 端点、业务逻辑时，必须编写对应的测试。不是可选项。
+3. **改动前后跑受影响的测试**：提交前必须运行受影响模块的测试，确认通过。
+4. **不引入测试跳过**：不允许用 `test.skip`、`pytest.skip`、`continue-on-error` 等方式绕过失败的测试。如果测试本身有问题，修复测试而不是跳过。
+
+### professional-test-engineer 交互验证义务
+
+professional-test-engineer 不仅做代码级断言验证，还必须验证运行中的产品：
+
+1. **必须运行全量测试**：验证时必须运行完整测试套件（后端 pytest + 前端 vitest + Playwright e2e），确认全部通过。已有测试失败意味着回归，必须报告。
+2. **必须做交互验证**：对涉及 UI 的 task，必须启动完整服务栈（docker-compose dev 环境），运行 Playwright 测试验证真实用户流程。如果现有 e2e 测试未覆盖该功能，必须编写新的 e2e 测试。
+3. **验证标准是真实行为，不是测试通过**：测试通过但实际交互有问题（如按钮无响应、页面布局错乱、加载状态缺失、错误提示不显示），必须报告为失败。
+
+### 测试编写原则
+
+所有 agent 编写或修改测试时必须遵守：
+
+1. **测试真实行为，不测试实现细节**：测试应该验证"用户操作后发生什么"，而不是"某个函数被调用了几次"。mock 用于隔离外部依赖（网络请求、第三方 API），不用于跳过自身业务逻辑。
+2. **e2e 测试基于真实后端**：Playwright e2e 测试应优先使用真实后端（dev docker-compose 环境）。只在后端尚未实现或无法启动时才 mock API，且 mock 数据必须与 API 实际契约保持一致。
+3. **不写永远通过的测试**：测试必须能检测到 bug。如果一个测试即使把实现删掉也能通过，这个测试是无价值的。编写测试时思考"这个测试能捕获什么类型的错误"。
+4. **覆盖率是副产品，不是目标**：追求覆盖有意义的场景（happy path、边界条件、错误处理），而不是追求覆盖率数字。不允许写只有 `expect(true).toBe(true)` 的"凑覆盖率"测试。
 
 ## 工作流程
 
@@ -88,8 +137,13 @@ task.md 写完后，调用 requirements-auditor 验证。requirements-auditor �
    - 交付物是否匹配 task 描述
    - **集成点验证**：如果 task 有调用方清单，逐一检查调用方代码中是否已接入新功能
 3. **调度 professional-test-engineer**：提供 **requirements.md** + task 完整内容（含测试要点 + 集成点） + 交付物，要求测试每个要点，**必须包含端到端可达性测试**。明确指示：测试标准是 requirements.md，task 测试要点是最小覆盖集；如果需求暗示更广的适用范围（如某特性应适用于所有游戏模式），必须验证所有适用场景
-4. **处理结果**：
-   - 全部通过 → task 标记 🟢，继续下一个
+4. **测试全绿门槛**：task 标记 🟢 的必要条件：
+   - 后端 pytest 全绿（`pytest --tb=short -q`）
+   - 前端 vitest 全绿（`npm run test`）
+   - Playwright e2e 全绿（`npx playwright test --project=chromium`）
+   - 以上任一失败 → 不可标记完成，必须修复
+5. **处理结果**：
+   - 全部通过 + 测试全绿 → task 标记 🟢，继续下一个
    - 有失败 → 反馈给 feature-engineer 修复，再测试（同一 task 超过 5 轮向用户报告）
 
 ### 阶段四：最终审计与项目总结

@@ -3,11 +3,11 @@
 // Run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 // Then: INTEGRATION_BASE_URL=http://localhost:5173 npx playwright test --project=integration e2e/integration/pvp-challenge-flow.spec.ts --workers=1
 
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { screenshotPage } from "./helpers/screenshots";
 
 const API_BASE = process.env.INTEGRATION_API_URL || "http://localhost:5173";
-const DEFAULT_PASSWORD = "TestPass123!";
+const DEFAULT_PASSWORD = "TestPass123!";  // pragma: allowlist secret
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -82,7 +82,7 @@ async function setupTwoPlayers(
   suffix: string,
   scenario: string,
   page: Page,
-  browser: any,
+  browser: Browser,
 ): Promise<{ p1: Player; p2: Player; ctx2: BrowserContext }> {
   const u1 = `e2e_pvp_${suffix}_${scenario}_p1`;
   const u2 = `e2e_pvp_${suffix}_${scenario}_p2`;

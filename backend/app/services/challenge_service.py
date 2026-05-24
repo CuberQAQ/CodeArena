@@ -517,7 +517,12 @@ class ChallengeService:
                             if bg_session is None:
                                 logger.error("Background settlement: session %s not found", session_id)
                                 return
-                            await _settle_challenge(bg_db, bg_session, submitting_user_id=user.id, cf_service=cf_service)
+                            await _settle_challenge(
+                                bg_db,
+                                bg_session,
+                                submitting_user_id=user.id,
+                                cf_service=cf_service,
+                            )
                             await bg_db.commit()
                         except Exception:
                             logger.exception("Background settlement failed for session %s", session_id)
