@@ -100,6 +100,62 @@ class MEloService:
         return list(result.scalars().all())
 
     @staticmethod
+    async def ensure_melos_for_tags(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        tags: list[str],
+    ) -> list[UserTagElo]:
+        """Get or create M-Elo records for a list of tags in bulk.
+
+        Fetches all existing records in one query, then creates only the
+        missing ones.
+
+        Args:
+            db: Async database session.
+            user_id: The user's UUID.
+            tags: List of CF tag names.
+
+        Returns:
+            List of UserTagElo records in the same order as *tags*.
+        """
+        # Fetch user's current Global Elo (needed for new records)
+        user = await db.get(User, user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        # Batch-fetch existing records
+        stmt = select(UserTagElo).where(
+            UserTagElo.user_id == user_id,
+            UserTagElo.tag.in_(tags),
+        )
+        result = await db.execute(stmt)
+        existing_map: dict[str, UserTagElo] = {r.tag: r for r in result.scalars().all()}
+
+        # Create missing records
+        missing_tags = [t for t in tags if t not in existing_map]
+        if missing_tags:
+            for tag in missing_tags:
+                melo = UserTagElo(
+                    user_id=user_id,
+                    tag=tag,
+                    elo=user.elo,
+                    total_submissions=0,
+                    first_ac_at=None,
+                )
+                db.add(melo)
+                existing_map[tag] = melo
+                logger.info(
+                    "Created M-Elo for user=%s tag=%s initial_elo=%d",
+                    user_id,
+                    tag,
+                    user.elo,
+                )
+            await db.flush()
+
+        # Return in the requested order
+        return [existing_map[t] for t in tags]
+
+    @staticmethod
     async def update_melo(
         db: AsyncSession,
         user_id: uuid.UUID,

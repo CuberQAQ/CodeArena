@@ -135,28 +135,28 @@ export default function TrainingDetailPage() {
 
     const init = async () => {
       try {
-        // 1. Load topic details
-        const topicRes = await api.get<ApiResponse<TopicDetail>>(`/training/topics/${topicId}`);
+        // 1. Load topic details + recover active session in parallel
+        const [topicRes, activeSession] = await Promise.all([
+          api.get<ApiResponse<TopicDetail>>(`/training/topics/${topicId}`).catch((e) => {
+            throw e;
+          }),
+          getActiveTrainingSession(topicId).catch(() => null),
+        ]);
         if (cancelled) return;
+
         const topicData = topicRes.data.data;
         setTopic(topicData);
 
-        // 2. Try to recover active session
-        try {
-          const activeSession = await getActiveTrainingSession(topicId);
-          if (cancelled) return;
-          if (activeSession) {
-            setSession(activeSession);
-            const startedAt = activeSession.started_at ? new Date(activeSession.started_at) : new Date();
-            const initialElapsed = activeSession.started_at
-              ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000))
-              : 0;
-            setElapsed(initialElapsed);
-            setPhase("active");
-            return;
-          }
-        } catch {
-          // No active session, proceed to create one
+        // 2. If active session found, resume it
+        if (activeSession) {
+          setSession(activeSession);
+          const startedAt = activeSession.started_at ? new Date(activeSession.started_at) : new Date();
+          const initialElapsed = activeSession.started_at
+            ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000))
+            : 0;
+          setElapsed(initialElapsed);
+          setPhase("active");
+          return;
         }
 
         // 3. No active session -- auto-start new one
@@ -175,7 +175,6 @@ export default function TrainingDetailPage() {
           setPhase("active");
         } catch (err) {
           if (cancelled) return;
-          // Auto-start failed -- show error but stay on page in a degraded state
           setError(extractApiError(err, t("training:autoStartFailed")));
           setPhase("active");
         }

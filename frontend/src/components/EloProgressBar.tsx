@@ -2,32 +2,20 @@
  * EloProgressBar -- displays the user's M-Elo for a training topic with:
  *   - Medal color context
  *   - Progress bar toward the next medal threshold
- *   - Predicted Elo change overlay from /time-factor-prediction API
+ *   - Predicted Elo change overlay from shared prediction hook
  *
- * Refreshes prediction every 60 seconds (or when the problem changes).
  * Gracefully degrades when prediction API is unavailable.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getRatingColor } from "@/utils";
-import api from "@/services/api";
+import { useTimeFactorPrediction } from "@/hooks/useTimeFactorPrediction";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface TimePoint {
-  minutes: number;
-  time_factor: number;
-  elo_change_estimate: number;
-}
-
-interface PredictionData {
-  expected_time_minutes: number;
-  time_points: TimePoint[];
-}
 
 export interface EloProgressBarProps {
   /** Current M-Elo for the topic */
@@ -74,43 +62,23 @@ export function EloProgressBar({
 }: EloProgressBarProps) {
   const { t, i18n } = useTranslation("training");
   const isZh = i18n.language?.startsWith("zh");
-  const [prediction, setPrediction] = useState<PredictionData | null>(null);
+
+  // Shared prediction hook (deduplicated with SolvingTimeline)
+  const { prediction, refetch } = useTimeFactorPrediction(
+    problemId ?? null,
+    problemRating ?? null,
+    melo,
+  );
+
+  // Auto-refresh prediction every 60 seconds
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // -------------------------------------------------------------------------
-  // Fetch prediction
-  // -------------------------------------------------------------------------
-  const fetchPrediction = useCallback(async () => {
-    if (!problemId || !problemRating) return;
-    try {
-      const res = await api.get("/time-factor-prediction", {
-        params: {
-          problem_id: problemId,
-          problem_rating: problemRating,
-          user_elo: Math.round(melo),
-        },
-      });
-      setPrediction(res.data.data as PredictionData);
-    } catch {
-      // Graceful degradation: prediction API unavailable
-    }
-  }, [problemId, problemRating, melo]);
-
-  // Fetch on mount and when problem changes
-  /* eslint-disable react-hooks/set-state-in-effect -- fetches prediction data from API */
-  useEffect(() => {
-    fetchPrediction();
-  }, [fetchPrediction]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Refresh prediction every 60 seconds
   useEffect(() => {
     if (!problemId || !problemRating) return;
-    intervalRef.current = setInterval(fetchPrediction, 60_000);
+    intervalRef.current = setInterval(refetch, 60_000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [fetchPrediction, problemId, problemRating]);
+  }, [refetch, problemId, problemRating]);
 
   // -------------------------------------------------------------------------
   // Derived values

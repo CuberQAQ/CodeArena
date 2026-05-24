@@ -4,28 +4,19 @@
  * solve-time milestones. The current elapsed time is highlighted with a
  * live marker that advances every minute.
  *
- * Used during problem solving in PvP, PvE, and Free Play sessions.
+ * Uses the shared useTimeFactorPrediction hook so requests are deduplicated
+ * when both EloProgressBar and SolvingTimeline are mounted for the same
+ * problem.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock, Star, TrendingDown, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import api from "@/services/api";
+import { useTimeFactorPrediction } from "@/hooks/useTimeFactorPrediction";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface TimePoint {
-  minutes: number;
-  time_factor: number;
-  elo_change_estimate: number;
-}
-
-interface PredictionData {
-  expected_time_minutes: number;
-  time_points: TimePoint[];
-}
 
 export interface SolvingTimelineProps {
   /** Problem ID (e.g. "1920A") */
@@ -49,46 +40,15 @@ export function SolvingTimeline({
   startTime,
 }: SolvingTimelineProps) {
   const { t } = useTranslation("common");
-  const [data, setData] = useState<PredictionData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [currentMinutes, setCurrentMinutes] = useState(0);
   const minuteRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch prediction data on mount
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchPrediction = async () => {
-      setLoading(true);
-      setError(false);
-      try {
-        const res = await api.get("/time-factor-prediction", {
-          params: {
-            problem_id: problemId,
-            problem_rating: problemRating,
-            user_elo: userElo,
-          },
-        });
-        if (!cancelled) {
-          setData(res.data.data as PredictionData);
-        }
-      } catch {
-        if (!cancelled) {
-          setError(true);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchPrediction();
-    return () => {
-      cancelled = true;
-    };
-  }, [problemId, problemRating, userElo]);
+  // Shared prediction hook (deduplicated with EloProgressBar)
+  const { prediction: data, loading, error } = useTimeFactorPrediction(
+    problemId,
+    problemRating,
+    userElo,
+  );
 
   // Calculate initial elapsed and set up per-minute update
   useEffect(() => {

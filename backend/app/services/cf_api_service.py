@@ -89,9 +89,9 @@ class CFApiService:
     def __init__(
         self,
         base_url: str | None = None,
-        timeout: float = 30.0,
+        timeout: float = 10.0,
         min_interval: float = 2.0,
-        max_retries: int = 3,
+        max_retries: int = 1,
         default_ttl: float = DEFAULT_CACHE_TTL,
     ) -> None:
         self._base_url = (base_url or settings.CF_API_BASE_URL).rstrip("/")

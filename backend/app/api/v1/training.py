@@ -342,11 +342,8 @@ async def get_melo(
             seen.add(tag)
             primary_tags.append(tag)
 
-    # Ensure an M-Elo record exists for every predefined tag
-    melos = []
-    for tag in primary_tags:
-        melo = await MEloService.get_or_create_melo(db, current_user.id, tag)
-        melos.append(melo)
+    # Bulk get-or-create M-Elo records for all tags (1 query instead of 12)
+    melos = await MEloService.ensure_melos_for_tags(db, current_user.id, primary_tags)
 
     melo_infos = [
         UserTagEloInfo(

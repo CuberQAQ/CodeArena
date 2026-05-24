@@ -309,11 +309,14 @@ class TrainingService:
     @staticmethod
     async def ensure_topics(db: AsyncSession) -> None:
         """Create predefined topics in the database if they don't exist."""
+        # Batch-fetch all existing topics in one query
+        slugs = [t["slug"] for t in PREDEFINED_TOPICS]
+        stmt = select(TopicCategory).where(TopicCategory.slug.in_(slugs))
+        result = await db.execute(stmt)
+        existing_slugs = {t.slug for t in result.scalars().all()}
+
         for topic_def in PREDEFINED_TOPICS:
-            stmt = select(TopicCategory).where(TopicCategory.slug == topic_def["slug"])
-            result = await db.execute(stmt)
-            existing = result.scalar_one_or_none()
-            if existing is None:
+            if topic_def["slug"] not in existing_slugs:
                 topic = TopicCategory(
                     name=topic_def["name"],
                     slug=topic_def["slug"],
@@ -360,6 +363,25 @@ class TrainingService:
             melo_records = await MEloService.get_all_melos(db, user_id)
             melo_map = {m.tag: m for m in melo_records}
 
+        # Bulk-fetch solved counts for all topics in one query
+        solved_count_map: dict[uuid.UUID, int] = {}
+        if user_id is not None and topics:
+            topic_ids = [t.id for t in topics]
+            solved_stmt = (
+                select(
+                    TrainingProblemRecord.topic_id,
+                    func.count(TrainingProblemRecord.id),
+                )
+                .where(
+                    TrainingProblemRecord.user_id == user_id,
+                    TrainingProblemRecord.topic_id.in_(topic_ids),
+                    TrainingProblemRecord.solved.is_(True),
+                )
+                .group_by(TrainingProblemRecord.topic_id)
+            )
+            solved_result = await db.execute(solved_stmt)
+            solved_count_map = dict(solved_result.all())
+
         topic_infos: list[TopicInfo] = []
         for topic in topics:
             solved_count = 0
@@ -377,20 +399,13 @@ class TrainingService:
                     problems = TrainingService._filter_problems_by_tags(all_problems, cf_tags)
                     total_problems = len(problems)
 
-                # Count distinct solved problems for this user and topic
-                solved_stmt = select(func.count(TrainingProblemRecord.id)).where(
-                    TrainingProblemRecord.user_id == user_id,
-                    TrainingProblemRecord.topic_id == topic.id,
-                    TrainingProblemRecord.solved.is_(True),
-                )
-                solved_result = await db.execute(solved_stmt)
-                solved_count = solved_result.scalar_one()
+                # Use pre-computed solved count
+                solved_count = solved_count_map.get(topic.id, 0)
 
                 # Look up M-Elo for the topic's primary tag
                 if primary_tag:
                     melo_rec = melo_map.get(primary_tag)
                     if melo_rec is None:
-                        # User never touched this tag -- shield active, no melo
                         melo = None
                         shield_active = True
                     else:
