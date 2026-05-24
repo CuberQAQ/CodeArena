@@ -8,6 +8,16 @@ import { setupServer } from "msw/node";
 // Mocks
 // ---------------------------------------------------------------------------
 
+const mockNavigate = vi.fn();
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown> | string) => {
@@ -35,13 +45,17 @@ vi.mock("@/stores/auth", () => ({
   })),
 }));
 
+vi.mock("@/hooks/useTheme", () => ({
+  useTheme: () => ({ theme: "dark", resolved: "dark" }),
+}));
+
 vi.mock("@/components/LoadingSpinner", () => ({
   LoadingSpinner: ({ text }: { text?: string }) => (
     <div data-testid="loading-spinner">{text ?? "Loading..."}</div>
   ),
 }));
 
-vi.mock("@/components/medal", () => ({
+vi.mock("@/components/medal/MedalBadge", () => ({
   MedalBadge: ({ level }: { level: string }) => (
     <div data-testid="medal-badge">{level}</div>
   ),
@@ -64,6 +78,20 @@ vi.mock("@/utils", () => ({
 
 vi.mock("@/services/trainingApi", () => ({
   getRecommendedTopics: vi.fn().mockResolvedValue([]),
+  getMElo: vi.fn().mockResolvedValue({
+    melos: [
+      { tag: "dp", elo: 1300, shield_active: false, total_submissions: 5 },
+    ],
+    global_elo: 1200,
+  }),
+}));
+
+vi.mock("@/components/charts/TrainingRadarChart", () => ({
+  TrainingRadarChart: ({ data }: { data: Array<{ topic: string; value: number }> }) => (
+    <div data-testid="training-radar">
+      {data.length > 0 ? `Radar: ${data.length} dims` : "Radar: empty"}
+    </div>
+  ),
 }));
 
 // ---------------------------------------------------------------------------
@@ -108,6 +136,9 @@ const typicalTopics = [
     stars: 3,
     melo: 1350,
     shield_active: false,
+    medal: { level: "provincial", type: "silver" },
+    current_medal_threshold: 1200,
+    next_medal_threshold: 1400,
   },
   {
     id: "t2",
@@ -122,6 +153,9 @@ const typicalTopics = [
     stars: 0,
     melo: null,
     shield_active: false,
+    medal: null,
+    current_medal_threshold: null,
+    next_medal_threshold: null,
   },
   {
     id: "t3",
@@ -136,6 +170,9 @@ const typicalTopics = [
     stars: 7,
     melo: 2200,
     shield_active: true,
+    medal: { level: "regional", type: "gold" },
+    current_medal_threshold: 1600,
+    next_medal_threshold: null,
   },
 ];
 
@@ -210,7 +247,7 @@ describe("TrainingPage", () => {
     });
   });
 
-  // 4. Normal data -- simplified topic cards render with fallback names
+  // 4. Normal data -- topic cards render with fallback names
   it("renders topic cards with fallback names and progress", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
@@ -220,7 +257,6 @@ describe("TrainingPage", () => {
 
     renderPage();
     await waitFor(() => {
-      // t("topic.dp", "Dynamic Programming") returns "Dynamic Programming" (fallback)
       expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
     });
     expect(screen.getByText("Greedy")).toBeInTheDocument();
@@ -247,6 +283,9 @@ describe("TrainingPage", () => {
         stars: 0,
         melo: 0,
         shield_active: false,
+        medal: { level: "unranked" },
+        current_medal_threshold: null,
+        next_medal_threshold: null,
       },
       {
         id: "t-extreme",
@@ -261,6 +300,9 @@ describe("TrainingPage", () => {
         stars: 7,
         melo: 9999,
         shield_active: true,
+        medal: { level: "world_finals", type: "gold" },
+        current_medal_threshold: 2800,
+        next_medal_threshold: null,
       },
     ];
 
@@ -279,8 +321,8 @@ describe("TrainingPage", () => {
     expect(screen.getByText(/9999\/9999/)).toBeInTheDocument();
   });
 
-  // 6. Progress ring shows correct percentage
-  it("shows progress percentage in the progress ring", async () => {
+  // 6. ProgressRing removed - Elo progress bar replaces it
+  it("no longer shows ProgressRing percentage text", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
         HttpResponse.json({ success: true, data: [typicalTopics[0]], message: "ok" }),
@@ -289,9 +331,10 @@ describe("TrainingPage", () => {
 
     renderPage();
     await waitFor(() => {
-      // DP topic: 5/10 = 50%
-      expect(screen.getByText("50%")).toBeInTheDocument();
+      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
     });
+    // ProgressRing used to show "50%" text - should no longer exist
+    expect(screen.queryByText("50%")).not.toBeInTheDocument();
   });
 
   // 7. Today's training goal section
@@ -326,7 +369,6 @@ describe("TrainingPage", () => {
     await waitFor(() => {
       expect(screen.getByText("recommendedTopics.title")).toBeInTheDocument();
     });
-    // Recommended cards should appear (topics also have same names, so use getAllByText)
     expect(screen.getAllByText("Dynamic Programming").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("Greedy").length).toBeGreaterThanOrEqual(2);
   });
@@ -364,8 +406,90 @@ describe("TrainingPage", () => {
     });
   });
 
-  // 11. Hover-only secondary info present in DOM
-  it("has melo and solved count info in topic cards for hover", async () => {
+  // 11. Radar chart is rendered
+  it("renders the skill radar chart", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("training-radar")).toBeInTheDocument();
+    });
+  });
+
+  // 12. Medal badges are shown on topic cards
+  it("shows medal badges on topic cards", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
+    });
+    // DP has medal level "provincial"
+    const badges = screen.getAllByTestId("medal-badge");
+    expect(badges.length).toBeGreaterThanOrEqual(2); // DP + Graphs both have medals
+    expect(badges.some((b) => b.textContent === "provincial")).toBe(true);
+    expect(badges.some((b) => b.textContent === "regional")).toBe(true);
+  });
+
+  // 13. Medal badge not shown when medal is null
+  it("does not show medal badge when topic has no medal", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: [typicalTopics[1]], message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Greedy")).toBeInTheDocument();
+    });
+    // Greedy topic has medal: null
+    expect(screen.queryByTestId("medal-badge")).not.toBeInTheDocument();
+  });
+
+  // 14. Elo progress bar shows "eloUntilNext" for normal topic
+  it("shows Elo progress info for topics with melo data", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: [typicalTopics[0]], message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
+    });
+    // DP: melo=1350, currentThreshold=1200, nextThreshold=1400
+    // remaining = 1400 - 1350 = 50
+    expect(screen.getByText(/50/)).toBeInTheDocument();
+  });
+
+  // 15. Elo progress bar shows max tier for highest tier topic
+  it("shows max tier message when at highest medal tier", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: [typicalTopics[2]], message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Graph Theory")).toBeInTheDocument();
+    });
+    // Graphs: nextThreshold=null, currentThreshold=1600 -> max tier
+    expect(screen.getByText("eloProgressMax")).toBeInTheDocument();
+  });
+
+  // 16. Hover-only secondary info present in DOM
+  it("has solved count info in topic cards for hover", async () => {
     server.use(
       http.get("*/api/v1/training/topics", () =>
         HttpResponse.json({ success: true, data: [typicalTopics[0]], message: "ok" }),
@@ -377,6 +501,42 @@ describe("TrainingPage", () => {
       expect(screen.getByText("Dynamic Programming")).toBeInTheDocument();
     });
     // The hover info section exists (opacity-0 by default)
-    expect(screen.getByText(/meloLabel/)).toBeInTheDocument();
+    expect(screen.getByText(/solvedCount/)).toBeInTheDocument();
+  });
+
+  // 17. Radar chart shows empty state when M-Elo API fails
+  it("shows empty radar when M-Elo API fails", async () => {
+    const { getMElo } = await import("@/services/trainingApi");
+    vi.mocked(getMElo).mockRejectedValue(new Error("Failed"));
+
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: typicalTopics, message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("training-radar")).toBeInTheDocument();
+    });
+    // When getMElo fails, radarData stays empty
+    expect(screen.getByText("Radar: empty")).toBeInTheDocument();
+  });
+
+  // 18. Topic with null melo does not show Elo progress bar
+  it("does not show Elo progress bar when melo is null", async () => {
+    server.use(
+      http.get("*/api/v1/training/topics", () =>
+        HttpResponse.json({ success: true, data: [typicalTopics[1]], message: "ok" }),
+      ),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Greedy")).toBeInTheDocument();
+    });
+    // Greedy has melo: null, should not show eloUntilNext or eloProgressMax
+    expect(screen.queryByText(/eloUntilNext/)).not.toBeInTheDocument();
+    expect(screen.queryByText("eloProgressMax")).not.toBeInTheDocument();
   });
 });
