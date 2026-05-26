@@ -397,6 +397,197 @@ class SubmissionTracker:
         return result.scalar_one_or_none()
 
     # ------------------------------------------------------------------
+    # 7. Direct submission settlement (system submits on user's behalf)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def settle_direct_submission(
+        db: AsyncSession,
+        session_type: str,
+        session_id: uuid.UUID,
+        user_id: uuid.UUID,
+        contest_id: int,
+        problem_index: str,
+        cf_submission_id: int,
+        verdict: str,
+        time_ms: int | None = None,
+        passed_test_count: int | None = None,
+        error_count: int = 0,
+    ) -> bool:
+        """Settle a tracking record from a direct CF submission.
+
+        Unlike the normal poll-based flow (user submits manually on CF,
+        tracker polls to discover the result), this method is called when
+        the system itself submitted the code via :mod:`cf_submitter` and
+        already knows the verdict.
+
+        The method looks up the matching pending tracking record, marks it
+        as matched with the provided CF data, then runs the same session-
+        specific settlement logic as :meth:`_settle_one`.
+
+        Parameters
+        ----------
+        db:
+            Async database session.
+        session_type:
+            One of ``pve``, ``pvp``, ``training``, ``contest``, ``free_play``.
+        session_id:
+            ID of the game session.
+        user_id:
+            The user who submitted.
+        contest_id:
+            CF contest ID.
+        problem_index:
+            Problem letter (e.g. ``"A"``).
+        cf_submission_id:
+            CF submission ID returned by the submitter.
+        verdict:
+            CF verdict string (e.g. ``"OK"``, ``"WRONG_ANSWER"``).
+        time_ms:
+            Time consumed in milliseconds (from CF API), if available.
+        passed_test_count:
+            Number of passed tests (from CF API), if available.
+        error_count:
+            Number of failed attempts before this submission (0 for first
+            attempt).
+
+        Returns
+        -------
+        bool
+            ``True`` if a tracking record was found and settled,
+            ``False`` if no matching record existed.
+        """
+        problem_id = f"{contest_id}{problem_index}"
+
+        # Find the matching pending tracking record.
+        stmt = (
+            select(SubmissionTracking)
+            .where(
+                and_(
+                    SubmissionTracking.user_id == user_id,
+                    SubmissionTracking.session_type == session_type,
+                    SubmissionTracking.session_id == session_id,
+                    SubmissionTracking.problem_id == problem_id,
+                    SubmissionTracking.status == "pending",
+                )
+            )
+            .order_by(SubmissionTracking.created_at.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        tracking = result.scalar_one_or_none()
+
+        if tracking is None:
+            logger.warning(
+                "No pending tracking record found for direct settlement: user=%s session=%s/%s problem=%s",
+                user_id,
+                session_type,
+                session_id,
+                problem_id,
+            )
+            return False
+
+        # Mark as matched with CF data.
+        tracking.cf_submission_id = cf_submission_id
+        tracking.cf_verdict = verdict
+        tracking.status = "matched"
+        tracking.matched_at = datetime.now(UTC)
+        await db.flush()
+
+        is_solved = verdict in _SOLVED_VERDICTS
+        label = _VERDICT_LABEL.get(verdict, verdict)
+        logger.info(
+            "Direct settlement: tracking=%s verdict=%s cf_id=%d solved=%s",
+            tracking.id,
+            label,
+            cf_submission_id,
+            is_solved,
+        )
+
+        # Compute time_spent from expected_at to now (direct submit mode).
+        expected_at = tracking.expected_at
+        if expected_at.tzinfo is None:
+            expected_at = expected_at.replace(tzinfo=UTC)
+        time_spent = max(0.0, (tracking.matched_at - expected_at).total_seconds())
+
+        # Derive attempts: error_count + 1 (the successful/current attempt).
+        attempts = error_count + 1
+
+        # Dispatch to session-specific settlement (reuses _settle_one logic).
+        try:
+            if tracking.session_type == "pve":
+                await SubmissionTracker._settle_pve(
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
+                    attempts=attempts,
+                    error_count=error_count,
+                    time_spent=time_spent,
+                )
+            elif tracking.session_type == "training":
+                await SubmissionTracker._settle_training(
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
+                    attempts=attempts,
+                    time_spent=time_spent,
+                )
+            elif tracking.session_type == "contest":
+                await SubmissionTracker._settle_contest(
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
+                    attempts=attempts,
+                    time_spent=time_spent,
+                )
+            elif tracking.session_type == "pvp":
+                await SubmissionTracker._settle_pvp(
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
+                    attempts=attempts,
+                    time_spent=time_spent,
+                )
+            elif tracking.session_type == "free_play":
+                await SubmissionTracker._settle_free_play(
+                    db,
+                    tracking,
+                    is_solved,
+                    verdict,
+                    attempts=attempts,
+                    error_count=error_count,
+                    time_spent=time_spent,
+                )
+            else:
+                logger.warning(
+                    "Unknown session type %s for direct settlement tracking %s",
+                    tracking.session_type,
+                    tracking.id,
+                )
+        except Exception:
+            logger.exception(
+                "Direct settlement failed for tracking %s, leaving as matched",
+                tracking.id,
+            )
+            raise
+
+        # Mark as settled only if settlement succeeded.
+        tracking.status = "settled"
+        await db.flush()
+
+        logger.info(
+            "Direct settlement complete: tracking=%s verdict=%s time_spent=%.1f",
+            tracking.id,
+            label,
+            time_spent,
+        )
+        return True
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

@@ -481,3 +481,60 @@ time_factor 对所有 4 种模式（PvE、PvP、专题训练、虚拟比赛）�
 - PWA 资源（manifest、icons、service worker）在 Vite 构建时自动处理
 - 生产构建自动生成 Service Worker 并注入注册代码
 - 不影响现有 Docker/nginx 部署流程
+
+### FR-33: CF 远程提交
+
+用户在 Code Arena 中直接提交代码到 Codeforces，实时查看评测结果，无需手动切换到 CF 网站。体验类似 OJ：选择题目 → 编写代码 → 提交 → 实时看 verdict。
+
+#### FR-33.1 Cookies 配置（引导式教程）
+
+- 设置页提供图文教程，引导用户从浏览器开发者工具（F12 → Application → Cookies）复制 CF cookies
+- 用户粘贴 cookies 后，系统通过 patchright 访问 CF 验证登录状态
+- 验证通过后 cookies 使用 AES-256-GCM 加密存储到数据库
+- 验证失败时给出明确错误提示（"cookies 无效或已过期，请重新获取"）
+- 用户可随时更新或删除已存储的 cookies
+- cookies 状态可见：有效 / 已过期 / 未配置
+- 主密钥通过环境变量 `CF_COOKIE_ENCRYPTION_KEY` 注入，不进代码仓库
+- API 返回中不暴露 cookie 明文
+
+#### FR-33.2 代码提交（Monaco Editor）
+
+- 题目详情页展示 Monaco Editor 代码编辑器，支持语法高亮和自动补全
+- 用户可选择编程语言，至少支持：GNU C11(43)、GNU C++17(54)、GNU C++20(89)、Python 3(31)、PyPy 3(70)、Java 21(87)、Rust 2021(75)、Go(32)、JavaScript(34)
+- 点击"提交"按钮后，代码通过后端 patchright + xvfb 自动提交到 CF
+- 提交过程中按钮显示 loading 状态，禁止重复提交
+- 同一用户同一题目 30 秒内不允许重复提交
+- 同一用户同时只允许一个提交在评测中
+- 提交代码大小不超过 64KB（CF 限制）
+- 如果用户未配置 cookies，引导用户前往设置页
+- 如果 cookies 已过期，提示用户重新配置
+- 提交失败时保留用户已编写的代码
+
+#### FR-33.3 实时评测结果（WebSocket）
+
+- 提交后通过 WebSocket 实时推送评测状态变化
+- 状态流转：提交中 → 排队中 → 评测中 → 最终结果（AC/WA/TLE/MLE/CE/RE）
+- 最终结果展示：verdict 标签、用时(ms)、内存消耗、通过测试点数
+- 提交结果持久化到数据库，用户可查看历史提交记录
+- WebSocket 连接复用现有 JWT 认证机制
+
+#### FR-33.4 游戏模式集成
+
+- 四种游戏模式（PvP 挑战、PvE 挑战、专题训练、虚拟比赛）均支持直接提交
+- 提交结果自动触发对应模式的结算逻辑（ELO/PP/Token 奖励）
+- 与现有 submission_tracker 的结算流程对接
+- 各模式的提交 UI 和流程一致
+
+#### FR-33.5 Cookie 自动刷新
+
+- 系统后台每 20 分钟自动访问 CF 刷新 cf_clearance
+- 刷新成功时自动更新存储的 cookies
+- 刷新失败时标记 cookies 为"已过期"状态
+- 已过期的 cookies 不影响历史提交记录
+- 用户重新提供 cookies 后自动恢复
+
+#### FR-33.6 部署要求
+
+- 后端 Docker 镜像包含 patchright + xvfb
+- 生产环境使用 xvfb-run 启动后端进程
+- 浏览器实例按需启动，空闲超过 60 分钟自动释放资源

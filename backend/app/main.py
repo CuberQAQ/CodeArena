@@ -51,6 +51,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error("Failed to initialize Redis: %s", e)
 
+    # Start CF session manager (patchright browser lazy-init)
+    from app.services.cf_session_manager import cf_session_manager
+
+    await cf_session_manager.start()
+
     yield
     # Shutdown
     await close_redis_pool()
@@ -59,6 +64,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.services.problem_scraper_service import scraper_service
 
     await scraper_service.shutdown()
+    # Close patchright browser used by CF session manager
+    await cf_session_manager.stop()
     logger.info("Shutting down %s", settings.APP_NAME)
     await engine.dispose()
 

@@ -2923,13 +2923,321 @@ PlayerInfoBar 中的在线计时器当前使用 lucide-react 的静态 `Clock` �
 - 配置 VitePWA 插件（manifest、autoUpdate、standalone）
 - index.html 添加 theme-color、apple-mobile-web-app、apple-touch-icon
 
-### Task 50.2: Service Worker 缓存策略 (FR-32.3, FR-32.5) 🔴
+### Task 50.2: Service Worker 缓存策略 (FR-32.3, FR-32.5) 🟢
 
 **依赖**: Task 50.1
 **修改**: frontend/vite.config.ts — 扩展 workbox.runtimeCaching（HTML NetworkFirst、JS/CSS/images CacheFirst、/api/ 不缓存）
 
-### Task 50.3: 安装提示横幅组件 (FR-32.4) 🔴
+### Task 50.3: 安装提示横幅组件 (FR-32.4) 🟢
 
 **依赖**: Task 50.1, Task 50.2
 **新增**: useInstallPrompt hook + InstallBanner 组件
 **修改**: MainLayout.tsx — 集成 InstallBanner（仅已认证页面）
+
+---
+
+## 阶段 51: CF 远程提交 — 后端基础设施 (FR-33)
+
+### Task 51.1: patchright + xvfb 集成到后端 (FR-33.6)
+**状态**: 🟡 待开始
+**优先级**: P0
+**依赖**: 无
+
+#### 任务描述
+将实验阶段的 patchright + xvfb 提交基础设施集成到正式后端。包含：安装 patchright 依赖、更新 Docker 镜像添加 xvfb、实现 CFSessionManager 服务。
+
+#### 需求规格
+- FR-33.6: 后端 Docker 镜像包含 patchright + xvfb
+- FR-33.5: 后台每 20 分钟自动刷新 cf_clearance
+
+#### 需要修改/新增的文件
+
+**后端**:
+- `backend/requirements.txt` — 添加 `patchright`、`httpx`（如无）
+- `Dockerfile.backend` — 添加 `xvfb` 安装、`patchright install chromium`、**CMD 改为 `xvfb-run gunicorn ...`**
+- `backend/app/services/cf_session_manager.py` — **新增**，基于实验版改造：
+  - Cookie 加密存储（AES-256-GCM，密钥从环境变量读取）
+  - `register(handle, cookies_dict)` — 注册并验证 cookies
+  - `create_context(handle)` — 创建注入 cookies 的浏览器 context
+  - `check_session(handle)` — 检查 cookies 有效性，自动提取新 cf_clearance
+  - 后台 asyncio task 每 20 分钟刷新所有已注册用户
+  - **刷新失败时回调更新数据库 `User.cf_cookies_status = 'expired'`**
+  - **浏览器空闲超过 60 分钟自动关闭，下次请求时重新启动**
+  - 浏览器单例 + 按 handle 管理的 cookies 存储
+  - `start()` / `stop()` 生命周期方法
+- `backend/app/core/config.py` — 添加 `CF_COOKIE_ENCRYPTION_KEY` 配置项
+- `backend/app/main.py` — 在 FastAPI startup/shutdown 事件中注册 CFSessionManager 的 start()/stop()
+
+#### 集成点追踪
+
+**调用方清单**（谁会调用这些模块）:
+- cf_submitter 服务（Task 51.2）调用 CFSessionManager
+- Cookie API（Task 52.1）调用 CFSessionManager.register/check_session
+- FastAPI startup/shutdown 事件调用 start()/stop()
+
+**反向集成清单**（这些模块依赖谁）:
+- patchright 库（pip 依赖）
+- xvfb（系统依赖）
+- User 模型（读取 cf_handle）
+
+#### 测试要点
+- CFSessionManager 能启动浏览器并创建 context
+- Cookie 加密/解密正确（存储后能恢复）
+- 后台刷新 task 能正常运行
+- **刷新失败时数据库 cf_cookies_status 正确更新为 'expired'**
+- **空闲超过 60 分钟后浏览器进程被关闭，下次请求能自动重启**
+- 无 cookies 时 create_context 抛出明确错误
+- shutdown 能正确关闭浏览器和刷新 task
+- cookies 过期不影响已有提交记录的完整性
+
+---
+
+### Task 51.2: CF 提交服务 (FR-33.2, FR-33.3)
+**状态**: 🟡 待开始
+**优先级**: P0
+**依赖**: Task 51.1
+
+#### 任务描述
+将实验阶段的 cf_submitter 改造为正式后端服务，集成 CFSessionManager 和 WebSocket 推送。
+
+#### 需求规格
+- FR-33.2: 通过 patchright + xvfb 自动提交到 CF
+- FR-33.3: WebSocket 实时推送评测状态变化
+
+#### 需要修改/新增的文件
+
+**后端**:
+- `backend/app/services/cf_submitter.py` — **新增**，基于实验版改造：
+  - `submit_to_cf(session_mgr, cf_handle, contest_id, problem_index, source_code, language_id)` — 异步提交
+  - 内部调用 CFSessionManager.create_context() 获取浏览器 context
+  - 提交后通过 WebSocket 推送状态变化（使用现有 ws 基础设施或新增）
+  - 轮询 CF API `user.status` 获取 verdict
+  - 每次状态变化通过回调/事件通知 WebSocket
+- `backend/app/services/submission_tracker.py` — 修改：
+  - 新增"直接提交"模式（区别于现有的"用户手动去 CF 提交"模式）
+  - 直接提交模式下不需要轮询匹配，verdict 由 cf_submitter 直接提供
+  - settlement 逻辑复用现有实现
+
+#### 集成点追踪
+
+**调用方清单**:
+- Submission API（Task 52.2）调用 cf_submitter
+- submission_tracker 的 settlement 逻辑处理 verdict
+
+**反向集成清单**:
+- CFSessionManager（Task 51.1）
+- submission_tracker（现有服务）
+
+#### 测试要点
+- 能通过 session manager 的 context 成功提交代码到 CF
+- Turnstile 自动解决
+- 轮询能正确获取最终 verdict
+- 各种 verdict 类型正确映射（OK/WA/TLE/MLE/CE/RE）
+- cookies 过期时返回明确错误
+- 与 submission_tracker 的 settlement 正确对接
+
+---
+
+## 阶段 52: CF 远程提交 — API 与前端 (FR-33)
+
+### Task 52.1: Cookie 管理 API + 设置页 (FR-33.1)
+**状态**: 🟡 待开始
+**优先级**: P0
+**依赖**: Task 51.1
+
+#### 任务描述
+实现 Cookie 管理的 API 端点和前端设置页面（含图文教程）。
+
+#### 需求规格
+- FR-33.1: 引导式教程、加密存储、状态可见
+
+#### 需要修改/新增的文件
+
+**后端**:
+- `backend/app/models/user.py` — 添加字段：
+  - `cf_cookies_encrypted: str | None` — AES-GCM 加密的 cookies JSON
+  - `cf_cookies_nonce: str | None` — 加密 nonce
+  - `cf_cookies_updated_at: datetime | None` — cookies 更新时间
+  - `cf_cookies_status: str` — "none" / "active" / "expired"
+- `backend/app/api/v1/cf_cookies.py` — **新增**：
+  - `POST /api/v1/cf-cookies` — 提交 cookies（接收 JSON dict，加密存储，验证有效性）
+  - `GET /api/v1/cf-cookies/status` — 获取 cookies 状态（不含明文）
+  - `DELETE /api/v1/cf-cookies` — 删除 cookies
+- `backend/app/services/cookie_crypto.py` — **新增**：AES-256-GCM 加密/解密工具
+- Alembic migration — 添加新字段
+
+**前端**:
+- `frontend/src/pages/SettingsPage/` 或新组件 — CF Cookies 设置页：
+  - 图文教程（步骤说明 + 截图占位）
+  - Cookie 输入区域（textarea 粘贴 JSON 或逐项输入）
+  - 验证按钮 → 调用 API → 显示结果
+  - 状态显示（有效/已过期/未配置）
+  - 删除按钮
+  - 路由注册
+
+#### 集成点追踪
+
+**调用方清单**:
+- 前端设置页调用 CF Cookies API
+- CFSessionManager 读取加密的 cookies（启动时加载）
+
+**反向集成清单**:
+- cookie_crypto 服务
+- CFSessionManager（验证 cookies 时）
+- User 模型
+
+#### 测试要点
+- API 能正确加密存储 cookies
+- 验证端点能检测有效/无效 cookies
+- 删除端点能清除 cookies
+- 状态端点不泄露 cookie 明文
+- 前端教程步骤清晰可操作
+- 粘贴无效 cookies 时有明确错误提示
+- **删除 cookies 后历史提交记录仍可查询**
+
+---
+
+### Task 52.2: 代码提交 API + Monaco Editor (FR-33.2)
+**状态**: 🟡 待开始
+**优先级**: P0
+**依赖**: Task 51.2, Task 52.1
+
+#### 任务描述
+实现代码提交 API 端点和前端 Monaco Editor 集成。
+
+#### 需求规格
+- FR-33.2: Monaco Editor、语言选择、提交按钮、防重复提交
+
+#### 需要修改/新增的文件
+
+**后端**:
+- `backend/app/api/v1/cf_submission.py` — **新增**：
+  - `POST /api/v1/cf-submit` — 提交代码到 CF
+    - 参数：contest_id, problem_index, source_code, language_id, session_type(pve/pvp/training/contest)
+    - 返回：submission_id（CF 提交 ID）
+    - 限制：30 秒内同题不允许重复、同时只允许一个提交
+    - **后端校验 source_code 大小 > 64KB 返回 400**
+  - `GET /api/v1/cf-submit/{id}/status` — 查询提交状态
+  - `GET /api/v1/cf-submit/history` — 提交历史
+- `backend/app/models/submission.py` — **新增或修改**：
+  - 记录直接提交的 submission_id、verdict、source_code、language 等
+
+**前端**:
+- `frontend/src/components/CodeEditor/` — **新增** Monaco Editor 组件：
+  - 语言选择下拉框（9 种语言）
+  - 代码编辑区（Monaco Editor）
+  - 提交按钮（loading 状态、防重复）
+  - **提交失败（网络错误、CF 错误等）时不清除编辑器内容，保留用户已编写代码**
+  - 提交结果展示区（verdict、用时、内存、测试点）
+- 集成到题目详情页（PvE/训练/比赛/PvP 共用）
+
+#### 集成点追踪
+
+**调用方清单**:
+- 题目详情页调用提交 API
+- 四种游戏模式的题目页复用 CodeEditor 组件
+
+**反向集成清单**:
+- cf_submitter 服务（Task 51.2）
+- CFSessionManager（Task 51.1，获取 cookies）
+- submission_tracker（结算逻辑）
+
+#### 测试要点
+- API 能提交代码到 CF 并返回 submission_id
+- 30 秒内重复提交被拒绝
+- 语言选择正确映射到 CF language ID
+- Monaco Editor 语法高亮正确
+- 代码超过 64KB 时前端提示
+- 未配置 cookies 时引导用户
+
+---
+
+### Task 52.3: 实时评测 WebSocket 推送 (FR-33.3)
+**状态**: 🟡 待开始
+**优先级**: P1
+**依赖**: Task 51.2, Task 52.2
+
+#### 任务描述
+实现 WebSocket 推送评测状态变化，用户提交后实时看到评测进度。
+
+#### 需求规格
+- FR-33.3: WebSocket 推送、状态流转、结果展示
+
+#### 需要修改/新增的文件
+
+**后端**:
+- `backend/app/api/v1/submission_ws.py` — **新增**：
+  - `WS /api/v1/submission/{submission_id}/live` — 单次提交的实时状态
+  - 认证复用现有 JWT 机制
+  - 推送消息格式：`{status: "pending"/"in_queue"/"testing"/"done", verdict: "...", time_ms: ..., memory_bytes: ..., passed: ...}`
+- 修改 `cf_submitter.py` — 在轮询过程中通过 WebSocket 发送状态变化
+
+**前端**:
+- 修改 `CodeEditor` 组件 — 集成 WebSocket 监听：
+  - 连接 WebSocket
+  - 实时显示评测状态变化（动画/颜色变化）
+  - 最终结果展示（AC 绿色、WA/TLE 红色等）
+  - 断线重连
+
+#### 集成点追踪
+
+**调用方清单**:
+- CodeEditor 组件连接 WebSocket
+- cf_submitter 在状态变化时推送
+
+**反向集成清单**:
+- 现有 WebSocket 认证机制
+- cf_submitter 服务
+
+#### 测试要点
+- WebSocket 连接建立正确
+- 评测状态变化能实时推送到前端
+- 最终 verdict 显示正确（AC/WA/TLE 等）
+- 断线后能自动重连
+- 非提交者不能连接他人的 WebSocket
+
+---
+
+### Task 52.4: 游戏模式集成 + 端到端测试 (FR-33.4)
+**状态**: 🟡 待开始
+**优先级**: P0
+**依赖**: Task 52.2, Task 52.3
+
+#### 任务描述
+将 CodeEditor 组件集成到四种游戏模式的题目详情页，验证端到端流程。
+
+#### 需求规格
+- FR-33.4: 四种模式统一支持直接提交，提交结果触发结算
+
+#### 需要修改/新增的文件
+
+**前端**:
+- PvE 挑战页 — 集成 CodeEditor
+- PvP 挑战页 — 集成 CodeEditor
+- 专题训练页 — 集成 CodeEditor
+- 虚拟比赛页 — 集成 CodeEditor
+- 各模式的 session_type 参数传递
+
+**后端**:
+- 修改 submission_tracker 的 settlement — 支持直接提交模式
+- 确保各模式结算逻辑（ELO/PP/Token）在直接提交下正确触发
+
+#### 集成点追踪
+
+**调用方清单**:
+- 四种模式的题目详情页使用 CodeEditor
+- settlement 服务处理直接提交的 verdict
+
+**反向集成清单**:
+- CodeEditor 组件（Task 52.2）
+- WebSocket 推送（Task 52.3）
+- settlement 逻辑（现有）
+
+#### 测试要点
+- PvE 模式：提交代码 → AC → ELO 增加
+- PvP 模式：双方提交 → 正确结算胜负
+- 训练模式：提交 → AC → PP 增加
+- 比赛模式：提交 → 排行榜更新
+- cookies 过期时各模式正确提示
+- 提交失败时各模式正确回退
+- **四种模式的代码编辑器 UI（语言选择、提交按钮、结果展示）完全一致**

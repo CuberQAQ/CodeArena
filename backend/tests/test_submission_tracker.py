@@ -126,7 +126,7 @@ def _make_user(
         id=user_id or uuid.uuid4(),
         username=f"user_{uuid.uuid4().hex[:6]}",
         email=f"user_{uuid.uuid4().hex[:6]}@test.com",
-        password_hash="hash",
+        password_hash="hashed_value",  # pragma: allowlist secret
         cf_handle=cf_handle,
         elo=elo,
     )
@@ -1349,3 +1349,448 @@ class TestSettleWithStats:
         call_kwargs = mock_pve.submit_result.call_args
         assert call_kwargs.kwargs["attempts"] == 1  # Default fallback
         assert call_kwargs.kwargs["error_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 11. settle_direct_submission tests
+# ---------------------------------------------------------------------------
+
+
+class TestSettleDirectSubmission:
+    async def test_settles_pve_direct_submission(self, db):
+        """Direct submission should settle a PvE tracking record."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        expected = datetime.now(UTC) - timedelta(minutes=5)
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+            expected_at=expected,
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.pve_challenge_service.PvEChallengeService") as mock_pve:
+            mock_pve.submit_result = AsyncMock()
+            result = await SubmissionTracker.settle_direct_submission(
+                db=db,
+                session_type="pve",
+                session_id=session_id,
+                user_id=user.id,
+                contest_id=800,
+                problem_index="A",
+                cf_submission_id=12345,
+                verdict="OK",
+                time_ms=100,
+                passed_test_count=10,
+                error_count=0,
+            )
+
+        assert result is True
+
+        await db.refresh(tracking)
+        assert tracking.status == "settled"
+        assert tracking.cf_submission_id == 12345
+        assert tracking.cf_verdict == "OK"
+        assert tracking.matched_at is not None
+
+    async def test_settles_training_direct_submission(self, db):
+        """Direct submission should settle a training tracking record."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="training",
+            session_id=session_id,
+            problem_id="900B",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.training_service.TrainingService") as mock_training:
+            mock_training.submit_problem = AsyncMock()
+            result = await SubmissionTracker.settle_direct_submission(
+                db=db,
+                session_type="training",
+                session_id=session_id,
+                user_id=user.id,
+                contest_id=900,
+                problem_index="B",
+                cf_submission_id=99999,
+                verdict="OK",
+            )
+
+        assert result is True
+        await db.refresh(tracking)
+        assert tracking.status == "settled"
+
+    async def test_settles_contest_direct_submission(self, db):
+        """Direct submission should settle a contest tracking record."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="contest",
+            session_id=session_id,
+            problem_id="1200C",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.contest_service.ContestService") as mock_contest:
+            mock_contest.submit_problem = AsyncMock()
+            result = await SubmissionTracker.settle_direct_submission(
+                db=db,
+                session_type="contest",
+                session_id=session_id,
+                user_id=user.id,
+                contest_id=1200,
+                problem_index="C",
+                cf_submission_id=88888,
+                verdict="TIME_LIMIT_EXCEEDED",
+                error_count=2,
+            )
+
+        assert result is True
+        await db.refresh(tracking)
+        assert tracking.status == "settled"
+        assert tracking.cf_verdict == "TIME_LIMIT_EXCEEDED"
+
+    async def test_settles_pvp_direct_submission(self, db):
+        """Direct submission should settle a PvP tracking record."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pvp",
+            session_id=session_id,
+            problem_id="1500D",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.challenge_service.ChallengeService") as mock_pvp:
+            mock_pvp.submit_result = AsyncMock()
+            result = await SubmissionTracker.settle_direct_submission(
+                db=db,
+                session_type="pvp",
+                session_id=session_id,
+                user_id=user.id,
+                contest_id=1500,
+                problem_index="D",
+                cf_submission_id=77777,
+                verdict="WRONG_ANSWER",
+            )
+
+        assert result is True
+        await db.refresh(tracking)
+        assert tracking.status == "settled"
+
+    async def test_settles_free_play_direct_submission(self, db):
+        """Direct submission should settle a free_play tracking record."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="free_play",
+            session_id=session_id,
+            problem_id="800A",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.free_play_service.FreePlayService") as mock_fp:
+            mock_fp.submit_result = AsyncMock()
+            result = await SubmissionTracker.settle_direct_submission(
+                db=db,
+                session_type="free_play",
+                session_id=session_id,
+                user_id=user.id,
+                contest_id=800,
+                problem_index="A",
+                cf_submission_id=55555,
+                verdict="OK",
+                error_count=3,
+            )
+
+        assert result is True
+        await db.refresh(tracking)
+        assert tracking.status == "settled"
+
+    async def test_returns_false_when_no_pending_record(self, db):
+        """Should return False when no matching pending record exists."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        # No tracking record exists for this session
+        result = await SubmissionTracker.settle_direct_submission(
+            db=db,
+            session_type="pve",
+            session_id=uuid.uuid4(),
+            user_id=user.id,
+            contest_id=800,
+            problem_index="A",
+            cf_submission_id=12345,
+            verdict="OK",
+        )
+
+        assert result is False
+
+    async def test_ignores_already_matched_record(self, db):
+        """Should not settle a record that is already matched (not pending)."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+            status="matched",
+            cf_verdict="OK",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        result = await SubmissionTracker.settle_direct_submission(
+            db=db,
+            session_type="pve",
+            session_id=session_id,
+            user_id=user.id,
+            contest_id=800,
+            problem_index="A",
+            cf_submission_id=12345,
+            verdict="OK",
+        )
+
+        assert result is False
+
+    async def test_ignores_already_settled_record(self, db):
+        """Should not settle a record that is already settled."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+            status="settled",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        result = await SubmissionTracker.settle_direct_submission(
+            db=db,
+            session_type="pve",
+            session_id=session_id,
+            user_id=user.id,
+            contest_id=800,
+            problem_index="A",
+            cf_submission_id=12345,
+            verdict="OK",
+        )
+
+        assert result is False
+
+    async def test_problem_id_must_match(self, db):
+        """Should not settle when problem_id doesn't match."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        # Try to settle with wrong problem
+        result = await SubmissionTracker.settle_direct_submission(
+            db=db,
+            session_type="pve",
+            session_id=session_id,
+            user_id=user.id,
+            contest_id=800,
+            problem_index="B",  # Wrong problem index
+            cf_submission_id=12345,
+            verdict="OK",
+        )
+
+        assert result is False
+
+    async def test_picks_most_recent_pending(self, db):
+        """When multiple pending records match, settles the most recent."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        old = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+            created_at=datetime.now(UTC) - timedelta(hours=1),
+        )
+        recent = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+        )
+        db.add_all([old, recent])
+        await db.flush()
+
+        with patch("app.services.pve_challenge_service.PvEChallengeService") as mock_pve:
+            mock_pve.submit_result = AsyncMock()
+            result = await SubmissionTracker.settle_direct_submission(
+                db=db,
+                session_type="pve",
+                session_id=session_id,
+                user_id=user.id,
+                contest_id=800,
+                problem_index="A",
+                cf_submission_id=12345,
+                verdict="OK",
+            )
+
+        assert result is True
+
+        await db.refresh(recent)
+        assert recent.status == "settled"
+
+        await db.refresh(old)
+        assert old.status == "pending"
+
+    async def test_settlement_failure_leaves_as_matched(self, db):
+        """If settlement service raises, record should remain as matched."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.pve_challenge_service.PvEChallengeService") as mock_pve:
+            mock_pve.submit_result = AsyncMock(side_effect=Exception("Settlement error"))
+            with pytest.raises(Exception, match="Settlement error"):
+                await SubmissionTracker.settle_direct_submission(
+                    db=db,
+                    session_type="pve",
+                    session_id=session_id,
+                    user_id=user.id,
+                    contest_id=800,
+                    problem_index="A",
+                    cf_submission_id=12345,
+                    verdict="OK",
+                )
+
+        await db.refresh(tracking)
+        # Should be matched (intermediate state), not settled
+        assert tracking.status == "matched"
+        assert tracking.cf_submission_id == 12345
+
+    async def test_time_spent_calculated_from_expected_at(self, db):
+        """time_spent should be computed from expected_at to now."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        expected = datetime.now(UTC) - timedelta(minutes=10)
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+            expected_at=expected,
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.pve_challenge_service.PvEChallengeService") as mock_pve:
+            mock_pve.submit_result = AsyncMock()
+            await SubmissionTracker.settle_direct_submission(
+                db=db,
+                session_type="pve",
+                session_id=session_id,
+                user_id=user.id,
+                contest_id=800,
+                problem_index="A",
+                cf_submission_id=12345,
+                verdict="OK",
+            )
+
+        # Check that settlement was called with reasonable time_spent
+        call_kwargs = mock_pve.submit_result.call_args.kwargs
+        assert call_kwargs["time_spent"] > 0
+        # Should be roughly 600 seconds (10 minutes), allow some slack
+        assert 500 < call_kwargs["time_spent"] < 700
+
+    async def test_attempts_derived_from_error_count(self, db):
+        """attempts should be error_count + 1."""
+        user = _make_user()
+        db.add(user)
+        await db.flush()
+
+        session_id = uuid.uuid4()
+        tracking = _make_tracking(
+            user_id=user.id,
+            session_type="pve",
+            session_id=session_id,
+            problem_id="800A",
+        )
+        db.add(tracking)
+        await db.flush()
+
+        with patch("app.services.pve_challenge_service.PvEChallengeService") as mock_pve:
+            mock_pve.submit_result = AsyncMock()
+            await SubmissionTracker.settle_direct_submission(
+                db=db,
+                session_type="pve",
+                session_id=session_id,
+                user_id=user.id,
+                contest_id=800,
+                problem_index="A",
+                cf_submission_id=12345,
+                verdict="OK",
+                error_count=3,
+            )
+
+        call_kwargs = mock_pve.submit_result.call_args.kwargs
+        assert call_kwargs["attempts"] == 4  # 3 errors + 1 current
+        assert call_kwargs["error_count"] == 3

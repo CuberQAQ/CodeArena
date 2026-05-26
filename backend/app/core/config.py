@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/code_arena"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/code_arena"  # pragma: allowlist secret
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
     DB_POOL_RECYCLE: int = 3600
@@ -32,6 +32,9 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
+
+    # CF Remote Submit
+    CF_COOKIE_ENCRYPTION_KEY: str = ""  # AES-256-GCM master key (env var injection)
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
